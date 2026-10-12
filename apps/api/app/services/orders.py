@@ -1,12 +1,13 @@
-"""Logika pesanan: pembuatan, perubahan status, ETA, dan aturan notifikasi."""
+"""Logika pesanan: pembuatan, perubahan status, janji waktu, ETA, dan aturan notifikasi."""
 
 from __future__ import annotations
 
 import logging
 import re
 import secrets
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime, timedelta
-from decimal import Decimal
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
@@ -18,22 +19,44 @@ from app.models import (
     Notification,
     NotificationType,
     Order,
+    OrderItem,
     OrderStatus,
     OrderStatusHistory,
     PredictionLog,
-    Service,
-    ServiceType,
     User,
 )
-from app.services.eta import get_predictor
+from app.services import pricing
+from app.services.app_settings import AppConfig, day_ops_lookup, load_app_config, load_promises
+from app.services.eta import PROMISE_VERSION, get_predictor
 from app.services.notifications import should_send_delay
-from app.services.queue import active_orders, daily_operation_for, is_ahead, records_active_at
-from gedklin_ml.features import build_features, local_date, queue_stats
+from app.services.queue import (
+    active_orders,
+    is_ahead,
+    order_content,
+    queue_record,
+    records_active_at,
+)
+from gedklin_ml.features import (
+    DayOpsLookup,
+    Promise,
+    build_features,
+    local_date,
+    promised_hours,
+    queue_stats,
+    shift_into_open_hours,
+    summarize_queue,
+)
 
 logger = logging.getLogger(__name__)
 
 TRACKING_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 TRACKING_LENGTH = 10
+
+STATUS_FLOW: dict[OrderStatus, OrderStatus] = {
+    OrderStatus.RECEIVED: OrderStatus.PROCESSING,
+    OrderStatus.PROCESSING: OrderStatus.READY,
+    OrderStatus.READY: OrderStatus.PICKED_UP,
+}
 
 
 class OrderError(ValueError):
@@ -59,23 +82,41 @@ def generate_tracking_code(db: Session) -> str:
 
 
 def next_status(order: Order) -> OrderStatus | None:
-    flow = {
-        OrderStatus.RECEIVED: OrderStatus.WASHING,
-        OrderStatus.WASHING: OrderStatus.DRYING,
-        OrderStatus.DRYING: (
-            OrderStatus.IRONING if order.service_type == ServiceType.CKS else OrderStatus.READY
-        ),
-        OrderStatus.IRONING: OrderStatus.READY,
-        OrderStatus.READY: OrderStatus.PICKED_UP,
-    }
-    return flow.get(order.status)
+    return STATUS_FLOW.get(order.status)
 
 
-# --- ETA -------------------------------------------------------------------
+# --- Janji & ETA -----------------------------------------------------------
+
+
+@dataclass
+class EtaContext:
+    """Pengaturan yang dibaca sekali per perhitungan ulang ETA."""
+
+    config: AppConfig
+    promises: dict[str, Promise]
+    day_ops: DayOpsLookup
+
+    @classmethod
+    def load(cls, db: Session) -> EtaContext:
+        config = load_app_config(db)
+        return cls(config, load_promises(db), day_ops_lookup(db, config))
+
+
+def order_promised_hours(order: Order, ctx: EtaContext) -> float:
+    content = order_content(order)
+    return promised_hours(
+        content.processes, order.is_express, ctx.promises, ctx.config.default_promise_hours
+    )
+
+
+def promised_ready_at(order: Order, ctx: EtaContext) -> datetime:
+    """Janji standar mitra; bila jatuh di luar jam buka, geser ke jam buka berikutnya."""
+    hours = order_promised_hours(order, ctx)
+    return shift_into_open_hours(order.received_at + timedelta(hours=hours), ctx.day_ops)
 
 
 def compute_features(
-    db: Session, order: Order, active: list[Order] | None = None
+    db: Session, order: Order, ctx: EtaContext, active: list[Order] | None = None
 ) -> dict[str, float]:
     """Fitur pesanan memakai feature builder yang sama dengan training.
 
@@ -84,33 +125,38 @@ def compute_features(
     pesanan yang kini berada di depannya, supaya Express yang menyela dan
     antrean yang tidak berkurang ikut tercermin.
     """
-    count, kg = queue_stats(order.received_at, records_active_at(db, order.received_at))
+    queue = queue_stats(order.received_at, records_active_at(db, order.received_at))
     if active is not None:
-        ahead = [o for o in active if is_ahead(o, order)]
-        count = max(count, len(ahead))
-        kg = max(kg, round(sum(o.weight_kg for o in ahead), 2))
-    daily = daily_operation_for(db, local_date(order.received_at))
+        ahead = summarize_queue(queue_record(o, None) for o in active if is_ahead(o, order))
+        queue = queue.max(ahead)
     return build_features(
         received_at=order.received_at,
-        weight_kg=order.weight_kg,
-        service_type=order.service_type.value,
-        is_express=order.is_express,
-        active_orders_count=count,
-        active_kg_total=kg,
-        staff_on_duty=daily.staff_on_duty if daily else None,
-        close_time=daily.close_time if daily else None,
+        content=order_content(order),
+        queue=queue,
+        day=ctx.day_ops(local_date(order.received_at)),
+        promised_hours=order_promised_hours(order, ctx),
     )
 
 
 def predict_eta(
-    db: Session, order: Order, active: list[Order] | None = None, now: datetime | None = None
+    db: Session,
+    order: Order,
+    ctx: EtaContext,
+    active: list[Order] | None = None,
+    now: datetime | None = None,
 ) -> datetime:
-    features = compute_features(db, order, active)
-    minutes, version = get_predictor().predict_minutes(features)
-    eta = order.received_at + timedelta(minutes=minutes)
+    features = compute_features(db, order, ctx, active)
+    hours, version = get_predictor().predict_hours(features)
+    if hours is None:
+        # Model tidak tersedia: fallback ke janji standar mitra.
+        eta = order.promised_ready_at or promised_ready_at(order, ctx)
+        version = PROMISE_VERSION
+    else:
+        eta = shift_into_open_hours(order.received_at + timedelta(hours=hours), ctx.day_ops)
     if now is not None and eta <= now:
         # Sudah lewat ETA tapi belum READY: geser ke depan.
-        eta = now + timedelta(minutes=get_settings().overdue_buffer_minutes)
+        buffer = timedelta(minutes=get_settings().overdue_buffer_minutes)
+        eta = shift_into_open_hours(now + buffer, ctx.day_ops)
 
     previous = order.predicted_ready_at
     if previous is None or abs(eta - previous) >= timedelta(minutes=1):
@@ -118,7 +164,7 @@ def predict_eta(
             PredictionLog(
                 order_id=order.id,
                 features_json=features,
-                predicted_minutes=round((eta - order.received_at) / timedelta(minutes=1), 2),
+                predicted_hours=round((eta - order.received_at) / timedelta(hours=1), 3),
                 model_version=version,
             )
         )
@@ -129,10 +175,11 @@ def predict_eta(
 def recompute_etas(db: Session, now: datetime | None = None) -> list[int]:
     """Hitung ulang ETA pesanan aktif dan antrekan notifikasi keterlambatan."""
     now = now or utcnow()
+    ctx = EtaContext.load(db)
     active = active_orders(db)
     delay_notifications: list[Notification] = []
     for order in active:
-        eta = predict_eta(db, order, active, now)
+        eta = predict_eta(db, order, ctx, active, now)
         if should_send_delay(order, eta):
             order.last_notified_eta = eta
             order.delay_notif_count += 1
@@ -160,39 +207,59 @@ def upsert_customer(db: Session, name: str, phone_raw: str) -> Customer:
     return customer
 
 
+def quote_order(
+    db: Session, items: Sequence[pricing.ItemRequest], is_express: bool
+) -> pricing.Quote:
+    try:
+        return pricing.quote(
+            db,
+            items,
+            is_express=is_express,
+            express_multiplier=load_app_config(db).express_multiplier,
+        )
+    except pricing.PricingError as exc:
+        raise OrderError(str(exc)) from exc
+
+
 def create_order(
     db: Session,
     *,
     customer_name: str,
     customer_phone: str,
-    service_type: ServiceType,
     is_express: bool,
-    weight_kg: float,
+    items: Sequence[pricing.ItemRequest],
     user: User | None,
     now: datetime | None = None,
 ) -> Order:
     now = now or utcnow()
-    if weight_kg <= 0:
-        raise OrderError("Berat harus lebih dari 0 kg")
-    service = db.scalar(select(Service).where(Service.code == service_type))
-    if service is None:
-        raise OrderError(f"Layanan {service_type} belum diatur")
-
+    quote = quote_order(db, items, is_express)
     customer = upsert_customer(db, customer_name, customer_phone)
-    price_per_kg = service.price_per_kg_express if is_express else service.price_per_kg_regular
     order = Order(
         tracking_code=generate_tracking_code(db),
         customer=customer,
-        service_type=service_type,
         is_express=is_express,
-        weight_kg=weight_kg,
-        price_total=(Decimal(str(weight_kg)) * price_per_kg).quantize(Decimal("1")),
+        price_total=quote.total,
         received_at=now,
         status=OrderStatus.RECEIVED,
         delay_notif_count=0,
         ready_notif_sent=False,
         needs_followup=False,
         created_by=user.id if user else None,
+        items=[
+            OrderItem(
+                catalog_code=i.catalog_code,
+                name=i.name,
+                group=i.group,
+                process=i.process,
+                weight_kg=i.weight_kg,
+                qty_pcs=i.qty_pcs,
+                loads=i.loads,
+                extra_kg=i.extra_kg,
+                extra_pcs=i.extra_pcs,
+                subtotal=i.subtotal,
+            )
+            for i in quote.items
+        ],
     )
     db.add(order)
     db.flush()
@@ -205,8 +272,10 @@ def create_order(
             changed_by=order.created_by,
         )
     )
+    ctx = EtaContext.load(db)
+    order.promised_ready_at = promised_ready_at(order, ctx)
     # ETA awal dicantumkan di nota, jadi dianggap sudah diberitahukan.
-    order.last_notified_eta = predict_eta(db, order)
+    order.last_notified_eta = predict_eta(db, order, ctx)
     db.commit()
     recompute_etas(db, now)
     db.refresh(order)

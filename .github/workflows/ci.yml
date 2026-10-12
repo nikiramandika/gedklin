@@ -43,7 +43,7 @@ jobs:
         run: pytest -q
       - name: Smoke test pipeline ML (data dummy)
         working-directory: ml
-        run: python scripts/generate_dummy.py --days 12 && python scripts/train_compare.py --test-days 3
+        run: python scripts/generate_dummy.py --days 12 && python scripts/build_dataset.py && python scripts/train_compare.py --test-days 3
 
   web:
     runs-on: ubuntu-latest

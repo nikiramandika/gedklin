@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Card, ErrorText, Loading } from "@/components/ui";
 import { api } from "@/lib/api";
-import { formatDateTime, formatRupiah, serviceLabel } from "@/lib/format";
+import { formatDateTime, formatRupiah, speedLabel, summarizeItems } from "@/lib/format";
 import type { Order, Role } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 
@@ -63,7 +63,7 @@ export default function AdminPage() {
                     <td className="px-4 py-2">
                       <p className="font-mono text-xs">{o.tracking_code}</p>
                       <p className="text-xs text-slate-500">
-                        {serviceLabel(o.service_type, o.is_express)} · {o.weight_kg} kg ·{" "}
+                        {speedLabel(o.is_express)} · {summarizeItems(o.items)} ·{" "}
                         {formatRupiah(o.price_total)}
                       </p>
                     </td>

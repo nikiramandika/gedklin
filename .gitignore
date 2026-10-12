@@ -5,6 +5,15 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.log
+
+# Celery beat menyimpan state jadwal di cwd (di Windows: .bak/.dat/.dir)
+celerybeat-schedule*
+celerybeat.pid
 
 # Env & secret
 .env
@@ -23,5 +32,7 @@ ml/reports/*_dummy*
 
 # OS / editor
 .DS_Store
+Thumbs.db
+desktop.ini
 .idea/
 .vscode/

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
 import { useRequireRole } from "@/lib/auth";
-import { formatDateTime, formatRupiah, serviceLabel } from "@/lib/format";
+import { describeItem, formatDateTime, formatRupiah, speedLabel } from "@/lib/format";
 import type { Receipt, Role } from "@/lib/types";
 
 import { Button, ErrorText, Loading } from "../ui";
@@ -37,8 +37,11 @@ export function ReceiptView({ id }: { id: string }) {
       <Row label="Kode" value={o.tracking_code} bold />
       <Row label="Pelanggan" value={o.customer.name} />
       <Row label="Masuk" value={formatDateTime(o.received_at)} />
-      <Row label="Layanan" value={serviceLabel(o.service_type, o.is_express)} />
-      <Row label="Berat" value={`${o.weight_kg} kg`} />
+      <Row label="Kecepatan" value={speedLabel(o.is_express)} />
+      <hr className="my-2 border-dashed border-black" />
+      {o.items.map((item, i) => (
+        <Row key={i} label={describeItem(item)} value={formatRupiah(item.subtotal)} />
+      ))}
       <hr className="my-2 border-dashed border-black" />
       <Row label="TOTAL" value={formatRupiah(o.price_total)} bold />
       <hr className="my-2 border-dashed border-black" />

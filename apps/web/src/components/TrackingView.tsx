@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { ApiError, api } from "@/lib/api";
-import { STATUS_LABEL, formatDateTime, relativeEta, serviceLabel } from "@/lib/format";
+import { STATUS_LABEL, formatDateTime, relativeEta, speedLabel, summarizeItems } from "@/lib/format";
 import type { OrderStatus, Tracking } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 
@@ -12,11 +12,7 @@ import { Button, ErrorText, ExpressBadge, Loading, StatusBadge } from "./ui";
 
 const REFRESH_MS = 60_000;
 
-function steps(order: Tracking): OrderStatus[] {
-  const base: OrderStatus[] = ["RECEIVED", "WASHING", "DRYING"];
-  if (order.service_type === "CKS") base.push("IRONING");
-  return [...base, "READY", "PICKED_UP"];
-}
+const STEPS: OrderStatus[] = ["RECEIVED", "PROCESSING", "READY", "PICKED_UP"];
 
 export function TrackingView({ code }: { code: string }) {
   const [order, setOrder] = useState<Tracking | null>(null);
@@ -59,8 +55,7 @@ export function TrackingView({ code }: { code: string }) {
       </div>
     );
 
-  const flow = steps(order);
-  const currentIndex = flow.indexOf(order.status);
+  const currentIndex = STEPS.indexOf(order.status);
   const reached = new Map(order.history.map((h) => [h.to_status, h.changed_at]));
   const isDone = order.status === "READY" || order.status === "PICKED_UP";
 
@@ -89,22 +84,26 @@ export function TrackingView({ code }: { code: string }) {
             <p className="text-sm text-teal-100">Perkiraan siap diambil</p>
             <p className="text-lg font-semibold">{formatDateTime(order.predicted_ready_at)}</p>
             <p className="text-xs text-teal-100">{relativeEta(order.predicted_ready_at, now)}</p>
+            {order.promised_ready_at && order.promised_ready_at !== order.predicted_ready_at && (
+              <p className="mt-1 text-xs text-teal-100">
+                Janji standar: {formatDateTime(order.promised_ready_at)}
+              </p>
+            )}
           </div>
         )}
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-slate-700">
-          <span className="font-medium">{serviceLabel(order.service_type, order.is_express)}</span>
+          <span className="font-medium">{speedLabel(order.is_express)}</span>
           {order.is_express && <ExpressBadge />}
-          <span className="text-slate-400">·</span>
-          <span>{order.weight_kg} kg</span>
           <span className="ml-auto">
             <StatusBadge status={order.status} />
           </span>
         </div>
+        <p className="mb-3 text-sm text-slate-600">{summarizeItems(order.items)}</p>
         <ol className="space-y-3">
-          {flow.map((s, i) => {
+          {STEPS.map((s, i) => {
             const done = i <= currentIndex;
             return (
               <li key={s} className="flex items-start gap-3">

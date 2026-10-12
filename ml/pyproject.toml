@@ -29,4 +29,4 @@ target-version = "py311"
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["gedklin_ml", "build_features"]
+known-first-party = ["gedklin_ml"]

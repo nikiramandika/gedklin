@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,7 +15,8 @@ from app.models import (
     OrderStatus,
     PredictionLog,
 )
-from app.services.orders import mark_followups
+from app.services.orders import create_order, mark_followups
+from app.services.pricing import ItemRequest
 from app.workers.tasks import send_notification
 from tests.conftest import new_order
 
@@ -29,31 +30,70 @@ def advance(client: TestClient, headers: dict, order_id: int, *statuses: str) ->
     return body
 
 
-def test_create_order_sets_price_eta_and_logs_prediction(
+def test_create_order_with_items_prices_and_promise(
     client: TestClient, cashier: dict, db: Session
 ) -> None:
-    order = new_order(client, cashier, weight_kg=3.5, is_express=True)
-    assert order["price_total"] == "35000.00"
+    items = [
+        {"catalog_code": "CKS", "weight_kg": 8},
+        {"catalog_code": "KEMEJA_PANJANG", "qty_pcs": 2},
+    ]
+    order = new_order(client, cashier, items=items, is_express=True)
+    # Express = Reguler x 2 untuk semua item: (55.000 + 34.000) x 2.
+    assert order["price_total"] == 178_000
+    assert [(i["catalog_code"], i["loads"], i["extra_kg"]) for i in order["items"]] == [
+        ("CKS", 1, 1),
+        ("KEMEJA_PANJANG", None, None),
+    ]
     assert order["customer"]["phone_wa"] == "6281234567890"
     assert len(order["tracking_code"]) == 10
-    assert order["predicted_ready_at"] is not None
-    assert order["next_status"] == "WASHING"
+    assert order["next_status"] == "PROCESSING"
+    # Tanpa model: ETA = janji standar mitra.
+    assert order["promised_ready_at"] is not None
+    assert order["predicted_ready_at"] == order["promised_ready_at"]
 
     log = db.scalar(select(PredictionLog).where(PredictionLog.order_id == order["id"]))
-    assert log is not None and log.model_version == "baseline-median"
+    assert log is not None and log.model_version == "janji-mitra"
+    assert log.features_json["max_process_level"] == 4
+    assert log.features_json["n_satuan_items"] == 2
     assert "phone" not in str(log.features_json)
 
 
-def test_ck_flow_skips_ironing_and_sends_ready_once(
+def test_quote_endpoint_and_validation(client: TestClient, cashier: dict) -> None:
+    body: dict = {"is_express": False, "items": [{"catalog_code": "SETRIKA", "weight_kg": 3}]}
+    res = client.post("/orders/quote", json=body, headers=cashier)
+    assert res.status_code == 200, res.text
+    assert res.json()["total"] == 25_000  # minimal 5 kg
+
+    body["items"] = [{"catalog_code": "CKS"}]
+    res = client.post("/orders/quote", json=body, headers=cashier)
+    assert res.status_code == 422 and "berat" in res.json()["detail"]
+    order = {**body, "customer_name": "A", "customer_phone": "081234567890"}
+    assert client.post("/orders", json=order, headers=cashier).status_code == 422
+
+
+def test_promise_after_closing_moves_to_next_opening(db: Session) -> None:
+    # Diterima Selasa 20/10 18.00 WIB, CKL Reguler janji 2 hari -> Kamis 18.00,
+    # lewat jam tutup 17.00 -> Jumat 08.00 WIB.
+    order = create_order(
+        db,
+        customer_name="Budi",
+        customer_phone="081234567890",
+        is_express=False,
+        items=[ItemRequest("CKL", weight_kg=5)],
+        user=None,
+        now=datetime(2026, 10, 20, 11, 0, tzinfo=UTC),
+    )
+    assert order.promised_ready_at == datetime(2026, 10, 23, 1, 0, tzinfo=UTC)
+
+
+def test_flow_and_ready_notification_sent_once(
     client: TestClient, cashier: dict, db: Session
 ) -> None:
-    order = new_order(client, cashier, service_type="CK")
-    res = client.post(
-        f"/orders/{order['id']}/status", json={"to_status": "DRYING"}, headers=cashier
-    )
+    order = new_order(client, cashier)
+    res = client.post(f"/orders/{order['id']}/status", json={"to_status": "READY"}, headers=cashier)
     assert res.status_code == 409
 
-    body = advance(client, cashier, order["id"], "WASHING", "DRYING")
+    body = advance(client, cashier, order["id"], "PROCESSING")
     assert body["next_status"] == "READY"
     body = advance(client, cashier, order["id"], "READY")
     assert body["ready_at"] is not None
@@ -75,13 +115,6 @@ def test_ck_flow_skips_ironing_and_sends_ready_once(
 
     body = advance(client, cashier, order["id"], "PICKED_UP")
     assert body["picked_up_at"] is not None and body["next_status"] is None
-
-
-def test_cks_flow_requires_ironing(client: TestClient, cashier: dict) -> None:
-    order = new_order(client, cashier, service_type="CKS")
-    body = advance(client, cashier, order["id"], "WASHING", "DRYING")
-    assert body["next_status"] == "IRONING"
-    advance(client, cashier, order["id"], "IRONING", "READY")
 
 
 def test_queue_is_express_first_then_fifo(client: TestClient, cashier: dict) -> None:
@@ -134,7 +167,7 @@ def test_followup_marked_after_three_days_without_whatsapp(
     client: TestClient, cashier: dict, admin: dict, db: Session
 ) -> None:
     order = new_order(client, cashier)
-    advance(client, cashier, order["id"], "WASHING", "DRYING", "READY")
+    advance(client, cashier, order["id"], "PROCESSING", "READY")
 
     assert mark_followups(db, utcnow() + timedelta(days=2)) == 0
     assert mark_followups(db, utcnow() + timedelta(days=4)) == 1
@@ -154,8 +187,11 @@ def test_public_tracking_has_no_personal_data(client: TestClient, cashier: dict)
     assert res.status_code == 200
     text = res.text
     assert "Siti" not in text and "6281234567890" not in text
-    assert "customer" not in res.json()
+    assert "customer" not in res.json() and "price_total" not in res.json()
     assert res.json()["history"][0]["to_status"] == OrderStatus.RECEIVED.value
+    assert res.json()["items"] == [
+        {"name": "Cuci + Kering + Lipat", "weight_kg": 5.0, "qty_pcs": None}
+    ]
 
     assert client.get("/public/track/TIDAKADA00").status_code == 404
 
@@ -163,14 +199,60 @@ def test_public_tracking_has_no_personal_data(client: TestClient, cashier: dict)
 def test_role_access(client: TestClient, cashier: dict, admin: dict, owner: dict) -> None:
     assert client.get("/dashboard/summary", headers=cashier).status_code == 403
     assert client.get("/dashboard/summary", headers=owner).status_code == 200
+    assert client.get("/settings", headers=cashier).status_code == 403
     assert client.post("/orders", json={}, headers=admin).status_code == 403
     assert client.get("/admin/followups", headers=cashier).status_code == 403
     assert client.get("/orders/queue").status_code == 401
 
 
 def test_receipt_contains_whatsapp_link(client: TestClient, cashier: dict) -> None:
-    order = new_order(client, cashier, weight_kg=2)
+    order = new_order(client, cashier)
     res = client.get(f"/orders/{order['id']}/receipt", headers=cashier).json()
     assert res["whatsapp_link"].startswith("https://wa.me/6281234567890?text=")
-    assert "Rp12.000" in res["message"]
+    assert "Cuci + Kering + Lipat 5 kg: Rp25.000" in res["message"]
+    assert "Total: Rp25.000" in res["message"]
     assert order["tracking_code"] in res["tracking_url"]
+
+
+def test_owner_changes_price_and_express_multiplier(
+    client: TestClient, owner: dict, cashier: dict
+) -> None:
+    body = {"is_express": True, "items": [{"catalog_code": "CKL", "weight_kg": 5}]}
+    assert client.post("/orders/quote", json=body, headers=cashier).json()["total"] == 50_000
+
+    res = client.put("/settings", json={"express_multiplier": 1.5}, headers=owner)
+    assert res.status_code == 200 and res.json()["express_multiplier"] == 1.5
+    res = client.put("/catalog/CKL", json={"price": 30_000}, headers=owner)
+    assert res.status_code == 200
+    assert client.post("/orders/quote", json=body, headers=cashier).json()["total"] == 45_000
+
+    assert client.put("/catalog/CKL", json={"price": 1}, headers=cashier).status_code == 403
+    client.put("/catalog/CKL", json={"is_active": False}, headers=owner)
+    codes = [c["code"] for c in client.get("/catalog", headers=cashier).json()]
+    assert "CKL" not in codes and "CKS" in codes
+
+
+def test_daily_operations_capacity_and_promises(client: TestClient, owner: dict) -> None:
+    body = {
+        "is_open": True,
+        "staff_on_duty": 1,
+        "washers_available": 3,
+        "dryers_available": 2,
+        "open_time": "08:00",
+        "close_time": "17:00",
+        "machine_issue_note": "1 mesin cuci rusak",
+    }
+    res = client.put("/daily-operations/2026-10-20", json=body, headers=owner)
+    assert res.status_code == 200, res.text
+    assert res.json()["washers_available"] == 3
+
+    promises = client.get("/service-promises", headers=owner).json()
+    by_process = {p["process"]: p for p in promises}
+    assert by_process["CKS"]["regular_hours"] == 96
+    assert by_process["CKS"]["min_regular_hours"] == 72
+    assert by_process["CK"]["regular_hours"] is None
+
+    res = client.put(
+        "/service-promises/CK", json={"regular_hours": 36, "express_hours": 24}, headers=owner
+    )
+    assert res.status_code == 200 and res.json()["regular_hours"] == 36

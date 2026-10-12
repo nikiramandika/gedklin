@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Order
-from app.schemas import StatusHistoryOut, TrackingOut
+from app.schemas import StatusHistoryOut, TrackingItemOut, TrackingOut
 
 router = APIRouter(prefix="/public", tags=["public"])
 
@@ -19,11 +19,11 @@ def track(tracking_code: str, db: Session = Depends(get_db)) -> TrackingOut:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Kode pesanan tidak ditemukan")
     return TrackingOut(
         tracking_code=order.tracking_code,
-        service_type=order.service_type,
         is_express=order.is_express,
-        weight_kg=order.weight_kg,
+        items=[TrackingItemOut.model_validate(i) for i in order.items],
         status=order.status,
         received_at=order.received_at,
+        promised_ready_at=order.promised_ready_at,
         predicted_ready_at=order.predicted_ready_at,
         ready_at=order.ready_at,
         picked_up_at=order.picked_up_at,

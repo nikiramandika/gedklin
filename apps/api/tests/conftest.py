@@ -1,7 +1,6 @@
 import os
 import tempfile
 from collections.abc import Iterator
-from decimal import Decimal
 
 _tmp = tempfile.mkdtemp()
 os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL", f"sqlite:///{_tmp}/test.db")
@@ -16,8 +15,9 @@ from sqlalchemy.orm import Session  # noqa: E402
 
 from app.db import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import Role, Service, ServiceType, User  # noqa: E402
+from app.models import Role, User  # noqa: E402
 from app.security import hash_password  # noqa: E402
+from app.seed import seed_reference_data  # noqa: E402
 
 PASSWORD = "rahasia123"
 
@@ -27,22 +27,7 @@ def schema() -> Iterator[None]:
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
-        db.add_all(
-            [
-                Service(
-                    code=ServiceType.CK,
-                    name="Cuci Kering",
-                    price_per_kg_regular=Decimal("6000"),
-                    price_per_kg_express=Decimal("10000"),
-                ),
-                Service(
-                    code=ServiceType.CKS,
-                    name="Cuci Kering Setrika",
-                    price_per_kg_regular=Decimal("8000"),
-                    price_per_kg_express=Decimal("13000"),
-                ),
-            ]
-        )
+        seed_reference_data(db)
         for role in Role:
             db.add(
                 User(
@@ -93,9 +78,8 @@ def new_order(client: TestClient, headers: dict[str, str], **overrides: object) 
     payload = {
         "customer_name": "Budi",
         "customer_phone": "0812-3456-7890",
-        "service_type": "CK",
         "is_express": False,
-        "weight_kg": 3.5,
+        "items": [{"catalog_code": "CKL", "weight_kg": 5}],
         **overrides,
     }
     res = client.post("/orders", json=payload, headers=headers)

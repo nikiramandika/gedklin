@@ -1,35 +1,42 @@
-"""Fitur pemilik: layanan/harga, akun, operasional harian, dasbor."""
+"""Fitur pemilik: katalog/harga, pengaturan, janji waktu, akun, operasional harian, dasbor."""
 
 from datetime import date, datetime, time, timedelta
-from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db import get_db, utcnow
 from app.models import (
     ACTIVE_STATUSES,
     DailyOperation,
     Order,
+    OrderItem,
     OrderStatus,
+    Process,
     Role,
-    Service,
-    ServiceType,
+    ServiceCatalog,
+    ServicePromise,
     User,
 )
 from app.schemas import (
+    AppSettingsIn,
+    AppSettingsOut,
+    CatalogItemOut,
+    CatalogItemUpdate,
     DailyCount,
     DailyOperationIn,
     DailyOperationOut,
     DashboardOut,
-    ServiceOut,
-    ServiceUpdate,
+    ServicePromiseIn,
+    ServicePromiseOut,
     UserCreate,
     UserOut,
     UserUpdate,
 )
 from app.security import get_current_user, hash_password, require_roles
+from app.services.app_settings import load_app_config, save_app_settings
 from app.services.eta import get_predictor
 from gedklin_ml.features import LOCAL_TZ
 
@@ -37,25 +44,105 @@ router = APIRouter(tags=["owner"])
 owner = require_roles(Role.OWNER)
 
 
-# --- Layanan ---------------------------------------------------------------
+# --- Katalog layanan & harga -----------------------------------------------
 
 
-@router.get("/services", response_model=list[ServiceOut])
-def list_services(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    return list(db.scalars(select(Service).order_by(Service.code)))
+@router.get("/catalog", response_model=list[CatalogItemOut])
+def list_catalog(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    include_inactive: bool = False,
+):
+    stmt = select(ServiceCatalog).order_by(ServiceCatalog.sort_order, ServiceCatalog.id)
+    if not (include_inactive and user.role == Role.OWNER):
+        stmt = stmt.where(ServiceCatalog.is_active.is_(True))
+    return list(db.scalars(stmt))
 
 
-@router.put("/services/{code}", response_model=ServiceOut)
-def update_service(
-    code: ServiceType, data: ServiceUpdate, db: Session = Depends(get_db), _: User = Depends(owner)
-) -> Service:
-    service = db.scalar(select(Service).where(Service.code == code))
-    if service is None:
+@router.put("/catalog/{code}", response_model=CatalogItemOut)
+def update_catalog_item(
+    code: str, data: CatalogItemUpdate, db: Session = Depends(get_db), _: User = Depends(owner)
+) -> ServiceCatalog:
+    item = db.scalar(select(ServiceCatalog).where(ServiceCatalog.code == code))
+    if item is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Layanan tidak ditemukan")
-    for key, value in data.model_dump(exclude_none=True).items():
-        setattr(service, key, value)
+    changes = data.model_dump(exclude_unset=True)
+    for key in ("name", "price", "is_active"):
+        if key in changes and changes[key] is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{key} wajib diisi")
+    for key, value in changes.items():
+        setattr(item, key, value)
     db.commit()
-    return service
+    return item
+
+
+# --- Pengaturan & janji waktu ----------------------------------------------
+
+
+def _settings_out(db: Session) -> AppSettingsOut:
+    config = load_app_config(db)
+    day = config.default_day
+    return AppSettingsOut(
+        express_multiplier=config.express_multiplier,
+        default_promise_hours=config.default_promise_hours,
+        default_staff_on_duty=day.staff_on_duty,
+        default_washers_available=day.washers_available,
+        default_dryers_available=day.dryers_available,
+        default_open_time=day.open_time,
+        default_close_time=day.close_time,
+    )
+
+
+def _setting_value(value: object) -> str:
+    if isinstance(value, time):
+        return value.strftime("%H:%M")
+    if isinstance(value, float):
+        return f"{value:g}"
+    return str(value)
+
+
+@router.get("/settings", response_model=AppSettingsOut)
+def get_app_settings(db: Session = Depends(get_db), _: User = Depends(owner)) -> AppSettingsOut:
+    return _settings_out(db)
+
+
+@router.put("/settings", response_model=AppSettingsOut)
+def update_app_settings(
+    data: AppSettingsIn, db: Session = Depends(get_db), _: User = Depends(owner)
+) -> AppSettingsOut:
+    changes = data.model_dump(exclude_none=True)
+    current = _settings_out(db)
+    open_t = changes.get("default_open_time", current.default_open_time)
+    close_t = changes.get("default_close_time", current.default_close_time)
+    if close_t <= open_t:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "Jam tutup harus setelah jam buka"
+        )
+    save_app_settings(db, {k: _setting_value(v) for k, v in changes.items()})
+    db.commit()
+    return _settings_out(db)
+
+
+@router.get("/service-promises", response_model=list[ServicePromiseOut])
+def list_promises(db: Session = Depends(get_db), _: User = Depends(owner)):
+    return list(db.scalars(select(ServicePromise).order_by(ServicePromise.id)))
+
+
+@router.put("/service-promises/{process}", response_model=ServicePromiseOut)
+def upsert_promise(
+    process: Process,
+    data: ServicePromiseIn,
+    db: Session = Depends(get_db),
+    _: User = Depends(owner),
+) -> ServicePromise:
+    row = db.scalar(select(ServicePromise).where(ServicePromise.process == process))
+    if row is None:
+        row = ServicePromise(process=process)
+        db.add(row)
+    for key, value in data.model_dump().items():
+        setattr(row, key, value)
+    db.commit()
+    return row
 
 
 # --- Akun ------------------------------------------------------------------
@@ -145,60 +232,77 @@ def _local_day_bounds(day: date) -> tuple[datetime, datetime]:
     return start, start + timedelta(days=1)
 
 
+def _hours(delta: timedelta) -> float:
+    return abs(delta.total_seconds()) / 3600
+
+
 @router.get("/dashboard/summary", response_model=DashboardOut)
 def dashboard(db: Session = Depends(get_db), _: User = Depends(owner)) -> DashboardOut:
     today = datetime.now(LOCAL_TZ).date()
-    start, end = _local_day_bounds(today)
 
-    def day_stats(s: datetime, e: datetime) -> tuple[int, Decimal, float]:
+    def day_stats(s: datetime, e: datetime) -> tuple[int, int]:
         row = db.execute(
-            select(
-                func.count(Order.id),
-                func.coalesce(func.sum(Order.price_total), 0),
-                func.coalesce(func.sum(Order.weight_kg), 0.0),
-            ).where(Order.received_at >= s, Order.received_at < e)
+            select(func.count(Order.id), func.coalesce(func.sum(Order.price_total), 0)).where(
+                Order.received_at >= s, Order.received_at < e
+            )
         ).one()
-        return int(row[0]), Decimal(row[1]), float(row[2])
+        return int(row[0]), int(row[1])
 
-    today_orders, today_revenue, today_kg = day_stats(start, end)
+    start, end = _local_day_bounds(today)
+    today_orders, today_revenue = day_stats(start, end)
+    today_kg = db.scalar(
+        select(func.coalesce(func.sum(OrderItem.weight_kg), 0.0))
+        .join(Order)
+        .where(Order.received_at >= start, Order.received_at < end)
+    )
 
     last_7_days = []
     for offset in range(6, -1, -1):
         day = today - timedelta(days=offset)
-        n, revenue, _kg = day_stats(*_local_day_bounds(day))
+        n, revenue = day_stats(*_local_day_bounds(day))
         last_7_days.append(DailyCount(date=day, orders=n, revenue=revenue))
 
-    active = db.execute(
-        select(func.count(Order.id), func.coalesce(func.sum(Order.weight_kg), 0.0)).where(
-            Order.status.in_(ACTIVE_STATUSES)
-        )
-    ).one()
+    active_orders = db.scalar(select(func.count(Order.id)).where(Order.status.in_(ACTIVE_STATUSES)))
+    active_loads = db.scalar(
+        select(func.coalesce(func.sum(OrderItem.loads), 0))
+        .join(Order)
+        .where(Order.status.in_(ACTIVE_STATUSES))
+    )
     status_counts = {
         s.value: int(c)
         for s, c in db.execute(select(Order.status, func.count(Order.id)).group_by(Order.status))
     }
 
-    # Akurasi ETA 7 hari terakhir: |ready_at - predicted_ready_at| untuk pesanan READY.
+    # Akurasi 7 hari terakhir pada pesanan READY: model vs janji standar mitra.
+    settings = get_settings()
     since = utcnow() - timedelta(days=7)
-    pairs = db.execute(
-        select(Order.ready_at, Order.predicted_ready_at).where(
+    rows = db.execute(
+        select(Order.ready_at, Order.predicted_ready_at, Order.promised_ready_at).where(
             Order.ready_at >= since, Order.predicted_ready_at.is_not(None)
         )
     ).all()
-    errors = [abs((r - p).total_seconds()) / 60 for r, p in pairs if r and p]
+    eta_errors = [_hours(r - p) for r, p, _ in rows]
+    promise_errors = [_hours(r - j) for r, _, j in rows if j is not None]
 
+    def mean(values: list[float]) -> float | None:
+        return round(sum(values) / len(values), 1) if values else None
+
+    within = [e < settings.eta_tolerance_hours for e in eta_errors]
     return DashboardOut(
         today_orders=today_orders,
         today_revenue=today_revenue,
-        today_kg=today_kg,
-        active_orders=int(active[0]),
-        active_kg=float(active[1]),
+        today_kg=float(today_kg or 0),
+        active_orders=int(active_orders or 0),
+        active_loads=int(active_loads or 0),
         ready_not_picked=status_counts.get(OrderStatus.READY.value, 0),
         needs_followup=int(
             db.scalar(select(func.count(Order.id)).where(Order.needs_followup.is_(True))) or 0
         ),
-        eta_mae_minutes_7d=round(sum(errors) / len(errors), 1) if errors else None,
-        eta_samples_7d=len(errors),
+        eta_mae_hours_7d=mean(eta_errors),
+        eta_within_tolerance_pct_7d=round(100 * sum(within) / len(within), 1) if within else None,
+        promise_mae_hours_7d=mean(promise_errors),
+        eta_samples_7d=len(eta_errors),
+        eta_tolerance_hours=settings.eta_tolerance_hours,
         model_version=get_predictor().model_version,
         last_7_days=last_7_days,
         status_counts=status_counts,

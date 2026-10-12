@@ -9,14 +9,7 @@ import { formatDate, formatRupiah } from "@/lib/format";
 import type { Dashboard, OrderStatus, Role } from "@/lib/types";
 
 const ROLES: Role[] = ["owner"];
-const STATUS_ORDER: OrderStatus[] = [
-  "RECEIVED",
-  "WASHING",
-  "DRYING",
-  "IRONING",
-  "READY",
-  "PICKED_UP",
-];
+const STATUS_ORDER: OrderStatus[] = ["RECEIVED", "PROCESSING", "READY", "PICKED_UP"];
 
 export default function DasborPage() {
   return (
@@ -54,7 +47,7 @@ function DashboardContent() {
         <Stat
           label="Sedang diproses"
           value={data.active_orders}
-          hint={`${data.active_kg.toFixed(1)} kg dalam antrean`}
+          hint={`${data.active_loads} load dalam antrean`}
         />
         <Stat
           label="Siap, belum diambil"
@@ -82,16 +75,28 @@ function DashboardContent() {
 
         <div className="space-y-6">
           <Card title="Akurasi perkiraan (7 hari)">
-            {data.eta_mae_minutes_7d === null ? (
+            {data.eta_mae_hours_7d === null ? (
               <p className="text-sm text-slate-500">Belum ada pesanan selesai.</p>
             ) : (
               <>
                 <p className="text-3xl font-semibold text-slate-900">
-                  ±{Math.round(data.eta_mae_minutes_7d)} <span className="text-base">menit</span>
+                  ±{data.eta_mae_hours_7d.toFixed(1)} <span className="text-base">jam</span>
                 </p>
                 <p className="text-xs text-slate-500">
                   Rata-rata selisih perkiraan vs. waktu siap aktual ({data.eta_samples_7d} pesanan)
                 </p>
+                <dl className="mt-3 grid grid-cols-2 gap-y-1 text-sm">
+                  <dt className="text-slate-500">Tepat (± {data.eta_tolerance_hours} jam)</dt>
+                  <dd className="text-right font-medium">
+                    {data.eta_within_tolerance_pct_7d ?? "-"}%
+                  </dd>
+                  <dt className="text-slate-500">Selisih janji standar</dt>
+                  <dd className="text-right font-medium">
+                    {data.promise_mae_hours_7d === null
+                      ? "-"
+                      : `±${data.promise_mae_hours_7d.toFixed(1)} jam`}
+                  </dd>
+                </dl>
               </>
             )}
             <p className="mt-3 text-xs text-slate-400">Model: {data.model_version}</p>

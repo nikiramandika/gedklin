@@ -8,7 +8,7 @@ dasbor pemilik, dan portal tracking pelanggan (PWA).
 ## Struktur
 
 ```
-apps/api   FastAPI + SQLAlchemy + Alembic + Celery (antrean, ETA, notifikasi)
+apps/api   FastAPI + SQLAlchemy + Alembic + Celery (harga, antrean, ETA, notifikasi)
 apps/web   Next.js 16 (App Router, TypeScript strict): kasir, dasbor, admin, portal /lacak (PWA)
 ml/        Paket gedklin_ml (feature builder bersama API & training) + script pipeline
 infra/     docker-compose (Postgres + Redis; profil `app` untuk semua service)
@@ -27,13 +27,13 @@ python3.11 -m venv .venv && source .venv/bin/activate
 pip install -r apps/api/requirements-dev.txt
 
 # 3. Model (pakai data dummy sampai data mitra terkumpul)
-cd ml && python scripts/generate_dummy.py && python scripts/train_compare.py && cd ..
+cd ml && python scripts/generate_dummy.py && python scripts/build_dataset.py && python scripts/train_compare.py && cd ..
 
 # 4. API
 cd apps/api
 cp .env.example .env            # isi SEED_OWNER_PASSWORD dan JWT_SECRET
 alembic upgrade head
-python -m app.seed              # layanan CK/CKS + akun owner
+python -m app.seed              # katalog harga, janji waktu, pengaturan + akun owner
 uvicorn app.main:app --reload   # http://localhost:8000/docs
 
 # 5. Worker + beat (terminal lain). Tanpa Redis: set CELERY_TASK_ALWAYS_EAGER=true di .env
@@ -42,6 +42,54 @@ celery -A app.workers worker -B --loglevel=info
 # 6. Web (terminal lain)
 cd apps/web && cp .env.example .env.local && npm install && npm run dev   # http://localhost:3000
 ```
+
+### Windows (PowerShell)
+
+Jalankan dari root repo. Docker Desktop harus sudah menyala.
+
+```powershell
+# 1. Database & Redis
+docker compose -f infra/docker-compose.yml up -d
+
+# 2. Python env (dipakai API dan ML)
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+# Jika muncul error "running scripts is disabled", jalankan sekali:
+#   Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+pip install -r apps/api/requirements-dev.txt
+
+# 3. Model (pakai data dummy sampai data mitra terkumpul)
+cd ml
+python scripts/generate_dummy.py
+python scripts/build_dataset.py
+python scripts/train_compare.py
+cd ..
+
+# 4. API
+cd apps/api
+Copy-Item .env.example .env     # isi SEED_OWNER_PASSWORD dan JWT_SECRET
+alembic upgrade head
+python -m app.seed              # katalog harga, janji waktu, pengaturan + akun owner
+uvicorn app.main:app --reload   # http://localhost:8000/docs
+
+# 5a. Worker (terminal lain, aktifkan .venv dulu, dari apps/api)
+#     Windows tidak mendukung pool prefork maupun opsi -B, jadi pakai --pool=solo
+#     dan jalankan beat terpisah. Tanpa Redis: set CELERY_TASK_ALWAYS_EAGER=true di .env
+celery -A app.workers worker --pool=solo --loglevel=info
+
+# 5b. Beat / jadwal berkala (terminal lain, aktifkan .venv dulu, dari apps/api)
+celery -A app.workers beat --loglevel=info
+
+# 6. Web (terminal lain, dari root repo)
+cd apps/web
+Copy-Item .env.example .env.local
+npm install
+npm run dev                     # http://localhost:3000
+```
+
+Di terminal baru, aktifkan venv dengan `.\.venv\Scripts\Activate.ps1` (dari root repo) sebelum
+menjalankan `uvicorn` atau `celery`. Kalau pakai Command Prompt (cmd), aktivasinya
+`.venv\Scripts\activate.bat` dan ganti `Copy-Item` dengan `copy`.
 
 Halaman: `/login`, `/kasir`, `/dasbor` (+ `/operasional`, `/layanan`, `/akun`), `/admin`,
 `/lacak` dan `/lacak/<kode>` (publik).
@@ -54,11 +102,29 @@ ruff check apps/api ml && ruff format --check apps/api ml
 cd apps/web && npm run lint && npx tsc --noEmit && npm run build
 ```
 
+## Harga & janji waktu
+
+- Price list mitra ada di `apps/api/seed/price_catalog.json` (sumber kebenaran). `python -m app.seed`
+  mengisinya ke tabel `service_catalog`, `service_promise`, dan `app_settings`; item yang sudah ada
+  tidak ditimpa. Pemilik mengubah harga, pengali Express, dan janji waktu di `/dasbor/layanan`.
+- Semua aturan harga (load 7 kg + tambahan per kg, minimal kg, per pcs, per load item khusus,
+  Express = Reguler × `express_multiplier`) ada di `apps/api/app/services/pricing.py`.
+  Form kasir memanggil `POST /orders/quote`, jadi aturan harga tidak diduplikasi di frontend.
+- Status pesanan: `RECEIVED → PROCESSING → READY → PICKED_UP`.
+
 ## Data & model
 
-- Data mitra disimpan di `ml/data/raw/orders.csv` dan `ml/data/raw/daily.csv` (tidak di-commit).
+- Form pencatatan mitra: `ml/data/raw/orders.csv` (`order_id, received_at, ready_at, layanan_utama,
+  express, berat_kg, pcs_khusus, pcs_satuan, ada_setrika`) dan `ml/data/raw/daily.csv` (`date,
+  staff_on_duty, washers_available, dryers_available, open_time, close_time`). Tidak di-commit.
   Jika ada, script otomatis memakainya; jika tidak, memakai `*_dummy.csv`.
-- `train_compare.py` membandingkan baseline median, Linear Regression, Random Forest, dan XGBoost
-  dengan split berbasis waktu, lalu menyimpan `ml/models/best_model.joblib` + `metadata.json`.
-- Hasil dari data dummy ditulis ke `ml/reports/comparison_dummy.csv` dan **tidak boleh dilaporkan**.
-- API memuat model dari `MODEL_PATH`; jika gagal, otomatis fallback ke baseline median.
+- `build_dataset.py` mengubah data mentah menjadi fitur (`ml/data/processed/features.csv`) memakai
+  feature builder bersama `ml/gedklin_ml/features.py` yang juga dipakai API.
+- `train_compare.py` membandingkan baseline janji mitra, baseline median, Linear Regression,
+  Random Forest, dan XGBoost dengan split berbasis waktu. Target `duration_hours` (jam kalender);
+  error dalam jam, toleransi `ETA_TOLERANCE_HOURS` (default 6). Hasil: `ml/reports/comparison.csv`,
+  `comparison_by_group.csv` (MAE per `max_process_level` dan Reguler/Express),
+  `ml/models/best_model.joblib` + `metadata.json`.
+- Hasil dari data dummy ditulis ke `ml/reports/*_dummy.csv` dan **tidak boleh dilaporkan**.
+- API memuat model dari `MODEL_PATH`; jika gagal atau fiturnya tidak cocok, ETA memakai
+  `promised_ready_at` (janji standar mitra).

@@ -1,45 +1,125 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { api } from "@/lib/api";
-import { SERVICE_LABEL, formatDateTime, formatRupiah, relativeEta } from "@/lib/format";
-import type { Customer, Order, Receipt, Service, ServiceType } from "@/lib/types";
+import {
+  GROUP_LABEL,
+  formatDateTime,
+  formatRupiah,
+  itemInputs,
+  priceRule,
+  relativeEta,
+} from "@/lib/format";
+import type {
+  CatalogGroup,
+  CatalogItem,
+  Customer,
+  Order,
+  OrderItemInput,
+  Quote,
+  Receipt,
+} from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 
 import { Button, Card, ErrorText, Field, inputClass } from "../ui";
 
-const EMPTY = { phone: "", name: "", service: "CKS" as ServiceType, express: false, weight: "" };
+interface Line {
+  key: number;
+  code: string;
+  weight: string;
+  pcs: string;
+}
+
+const GROUPS: CatalogGroup[] = ["KILOAN", "SETRIKA", "KHUSUS", "SATUAN"];
+const DEFAULT_CODE = "CKS";
+const QUOTE_DELAY_MS = 300;
+
+let nextKey = 1;
+function newLine(code: string): Line {
+  return { key: nextKey++, code, weight: "", pcs: "" };
+}
+
+function parseNumber(value: string): number | null {
+  const n = Number(value.replace(",", "."));
+  return value.trim() !== "" && Number.isFinite(n) ? n : null;
+}
+
+function toInput(line: Line, item: CatalogItem | undefined): OrderItemInput {
+  const inputs = item ? itemInputs(item) : { weight: false, pcs: false };
+  return {
+    catalog_code: line.code,
+    weight_kg: inputs.weight ? parseNumber(line.weight) : null,
+    qty_pcs: inputs.pcs ? parseNumber(line.pcs) : null,
+  };
+}
 
 export function NewOrderForm({ onCreated }: { onCreated: () => void }) {
-  const [services, setServices] = useState<Service[]>([]);
-  const [form, setForm] = useState(EMPTY);
+  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+  const [phone, setPhone] = useState("");
+  const [name, setName] = useState("");
+  const [express, setExpress] = useState(false);
+  const [lines, setLines] = useState<Line[]>([]);
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const now = useNow();
 
   useEffect(() => {
-    api<Service[]>("/services")
-      .then(setServices)
+    api<CatalogItem[]>("/catalog")
+      .then((items) => {
+        setCatalog(items);
+        const first = items.find((i) => i.code === DEFAULT_CODE) ?? items[0];
+        if (first) setLines((ls) => (ls.length ? ls : [newLine(first.code)]));
+      })
       .catch((e: Error) => setError(e.message));
   }, []);
 
-  const service = services.find((s) => s.code === form.service);
-  const pricePerKg = service
-    ? Number(form.express ? service.price_per_kg_express : service.price_per_kg_regular)
-    : 0;
-  const weight = Number(form.weight.replace(",", "."));
-  const total = weight > 0 ? Math.round(weight * pricePerKg) : 0;
+  const byCode = useMemo(() => new Map(catalog.map((c) => [c.code, c])), [catalog]);
+  const items = useMemo(
+    () => lines.map((l) => toInput(l, byCode.get(l.code))),
+    [lines, byCode],
+  );
+  const complete =
+    items.length > 0 &&
+    items.every((i, idx) => {
+      const inputs = itemInputs(byCode.get(lines[idx].code)!);
+      return (!inputs.weight || (i.weight_kg ?? 0) > 0) && (!inputs.pcs || i.qty_pcs !== null);
+    });
+
+  // Harga dihitung server (services/pricing.py), jadi aturan harga tidak diduplikasi di sini.
+  useEffect(() => {
+    if (!complete) return;
+    const id = setTimeout(() => {
+      api<Quote>("/orders/quote", { method: "POST", body: { is_express: express, items } })
+        .then((q) => {
+          setQuote(q);
+          setQuoteError(null);
+        })
+        .catch((e: Error) => {
+          setQuote(null);
+          setQuoteError(e.message);
+        });
+    }, QUOTE_DELAY_MS);
+    return () => clearTimeout(id);
+  }, [complete, express, items]);
+
+  const shownQuote = complete ? quote : null;
+
+  function updateLine(key: number, patch: Partial<Line>) {
+    setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+  }
 
   async function lookupCustomer() {
-    if (form.phone.replace(/\D/g, "").length < 9) return;
+    if (phone.replace(/\D/g, "").length < 9) return;
     try {
       const c = await api<Customer | null>(
-        `/orders/customers/lookup?phone=${encodeURIComponent(form.phone)}`,
+        `/orders/customers/lookup?phone=${encodeURIComponent(phone)}`,
       );
-      if (c && !form.name) setForm((f) => ({ ...f, name: c.name }));
+      if (c && !name) setName(c.name);
     } catch {
       /* pencarian pelanggan opsional */
     }
@@ -52,16 +132,14 @@ export function NewOrderForm({ onCreated }: { onCreated: () => void }) {
     try {
       const order = await api<Order>("/orders", {
         method: "POST",
-        body: {
-          customer_name: form.name,
-          customer_phone: form.phone,
-          service_type: form.service,
-          is_express: form.express,
-          weight_kg: weight,
-        },
+        body: { customer_name: name, customer_phone: phone, is_express: express, items },
       });
       setReceipt(await api<Receipt>(`/orders/${order.id}/receipt`));
-      setForm(EMPTY);
+      setPhone("");
+      setName("");
+      setExpress(false);
+      setLines(byCode.has(DEFAULT_CODE) ? [newLine(DEFAULT_CODE)] : []);
+      setQuote(null);
       onCreated();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal menyimpan pesanan");
@@ -120,8 +198,8 @@ export function NewOrderForm({ onCreated }: { onCreated: () => void }) {
             className={inputClass}
             inputMode="tel"
             placeholder="08xxxxxxxxxx"
-            value={form.phone}
-            onChange={(e) => setForm({ ...form, phone: e.target.value })}
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
             onBlur={lookupCustomer}
             required
           />
@@ -129,57 +207,125 @@ export function NewOrderForm({ onCreated }: { onCreated: () => void }) {
         <Field label="Nama Pelanggan">
           <input
             className={inputClass}
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
             required
           />
         </Field>
-        <Field label="Layanan">
-          <div className="grid grid-cols-2 gap-2">
-            {(["CK", "CKS"] as ServiceType[]).map((code) => (
-              <button
-                type="button"
-                key={code}
-                onClick={() => setForm({ ...form, service: code })}
-                className={`rounded-lg border px-3 py-2 text-left text-sm ${
-                  form.service === code
-                    ? "border-teal-500 bg-teal-50 text-teal-900"
-                    : "border-slate-300 text-slate-700"
-                }`}
-              >
-                <span className="font-semibold">{code}</span>
-                <span className="block text-xs text-slate-500">{SERVICE_LABEL[code]}</span>
-              </button>
-            ))}
-          </div>
-        </Field>
+
+        <div className="space-y-2">
+          <span className="block text-xs font-medium text-slate-600">Item</span>
+          {lines.map((line, idx) => {
+            const item = byCode.get(line.code);
+            const inputs = item ? itemInputs(item) : { weight: false, pcs: false, pcsLabel: "" };
+            const priced = shownQuote?.items[idx];
+            return (
+              <div key={line.key} className="space-y-2 rounded-lg border border-slate-200 p-2">
+                <div className="flex gap-2">
+                  <select
+                    className={inputClass}
+                    value={line.code}
+                    onChange={(e) =>
+                      updateLine(line.key, { code: e.target.value, weight: "", pcs: "" })
+                    }
+                    aria-label="Layanan"
+                  >
+                    {GROUPS.map((g) => (
+                      <optgroup key={g} label={GROUP_LABEL[g]}>
+                        {catalog
+                          .filter((c) => c.group === g)
+                          .map((c) => (
+                            <option key={c.code} value={c.code}>
+                              {c.name}
+                            </option>
+                          ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    aria-label="Hapus item"
+                    disabled={lines.length === 1}
+                    onClick={() => setLines((ls) => ls.filter((l) => l.key !== line.key))}
+                  >
+                    ✕
+                  </Button>
+                </div>
+                {item && <p className="text-xs text-slate-500">{priceRule(item)}</p>}
+                <div className="flex items-end gap-2">
+                  {inputs.weight && (
+                    <Field label="Berat (kg)">
+                      <input
+                        className={inputClass}
+                        inputMode="decimal"
+                        placeholder="5,5"
+                        value={line.weight}
+                        onChange={(e) => updateLine(line.key, { weight: e.target.value })}
+                        required
+                      />
+                    </Field>
+                  )}
+                  {inputs.pcs && (
+                    <Field label={inputs.pcsLabel}>
+                      <input
+                        className={inputClass}
+                        inputMode="numeric"
+                        placeholder={inputs.weight ? "0" : "1"}
+                        value={line.pcs}
+                        onChange={(e) => updateLine(line.key, { pcs: e.target.value })}
+                        required={!inputs.weight}
+                      />
+                    </Field>
+                  )}
+                  <span className="ml-auto whitespace-nowrap pb-2 text-sm font-medium">
+                    {priced ? formatRupiah(priced.subtotal) : "-"}
+                  </span>
+                </div>
+                {priced?.loads != null && (
+                  <p className="text-xs text-slate-500">
+                    {priced.loads} load
+                    {priced.extra_kg ? ` + ${priced.extra_kg} kg` : ""}
+                    {priced.extra_pcs ? ` + ${priced.extra_pcs} pcs` : ""}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+          <Button
+            type="button"
+            variant="secondary"
+            className="w-full"
+            disabled={catalog.length === 0}
+            onClick={() => setLines((ls) => [...ls, newLine(catalog[0].code)])}
+          >
+            + Tambah item
+          </Button>
+        </div>
+
         <label className="flex items-center gap-2 text-sm text-slate-700">
           <input
             type="checkbox"
             className="h-4 w-4 accent-rose-600"
-            checked={form.express}
-            onChange={(e) => setForm({ ...form, express: e.target.checked })}
+            checked={express}
+            onChange={(e) => setExpress(e.target.checked)}
           />
-          Express (diproses lebih dulu)
+          Express (diproses lebih dulu
+          {shownQuote ? `, harga ×${shownQuote.express_multiplier}` : ""})
         </label>
-        <Field label="Berat (kg)">
-          <input
-            className={inputClass}
-            inputMode="decimal"
-            placeholder="3,5"
-            value={form.weight}
-            onChange={(e) => setForm({ ...form, weight: e.target.value })}
-            required
-          />
-        </Field>
         <div className="flex items-baseline justify-between rounded-lg bg-slate-50 px-3 py-2">
-          <span className="text-xs text-slate-500">
-            {pricePerKg ? `${formatRupiah(pricePerKg)}/kg` : "-"}
+          <span className="text-xs text-slate-500">Total</span>
+          <span className="text-lg font-semibold">
+            {shownQuote ? formatRupiah(shownQuote.total) : "-"}
           </span>
-          <span className="text-lg font-semibold">{formatRupiah(total)}</span>
         </div>
+        <ErrorText message={complete ? quoteError : null} />
         <ErrorText message={error} />
-        <Button type="submit" className="w-full" disabled={busy || !(weight > 0)}>
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={busy || !complete || !shownQuote || quoteError !== null}
+        >
           {busy ? "Menyimpan..." : "Simpan & Hitung Perkiraan"}
         </Button>
       </form>

@@ -11,11 +11,13 @@ class Settings(BaseSettings):
     model_path: str = "../../ml/models/best_model.joblib"
 
     # Menunggu kesepakatan mitra.
-    delay_threshold_minutes: int = 30
+    delay_threshold_hours: float = 6
     max_delay_notifications: int = 2
     followup_after_days: int = 3
+    # Batas error yang dianggap "tepat" untuk metrik akurasi ETA.
+    eta_tolerance_hours: float = 6
     # ETA yang sudah lewat tapi pesanan belum READY digeser ke now + buffer ini.
-    overdue_buffer_minutes: int = 30
+    overdue_buffer_minutes: int = 60
 
     wa_provider: str = "console"
     wa_api_key: str = ""

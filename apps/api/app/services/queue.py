@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import datetime
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.models import ACTIVE_STATUSES, DailyOperation, Order
-from gedklin_ml.features import QueueRecord
+from app.models import ACTIVE_STATUSES, Order
+from gedklin_ml.features import OrderContent, QueueRecord, content_from_items
 
 
 def active_orders(db: Session) -> list[Order]:
@@ -20,12 +20,20 @@ def active_orders(db: Session) -> list[Order]:
     return list(db.scalars(stmt))
 
 
+def order_content(order: Order) -> OrderContent:
+    return content_from_items(order.items, order.is_express)
+
+
+def queue_record(order: Order, ready_at: datetime | None) -> QueueRecord:
+    return QueueRecord.from_content(order.received_at, ready_at, order_content(order))
+
+
 def records_active_at(db: Session, at: datetime) -> list[QueueRecord]:
     """Pesanan yang sudah masuk sebelum `at` dan belum READY pada saat itu."""
-    stmt = select(Order.received_at, Order.ready_at, Order.weight_kg).where(
+    stmt = select(Order).where(
         Order.received_at < at, or_(Order.ready_at.is_(None), Order.ready_at > at)
     )
-    return [QueueRecord(r.received_at, r.ready_at, r.weight_kg) for r in db.execute(stmt)]
+    return [queue_record(o, o.ready_at) for o in db.scalars(stmt)]
 
 
 def is_ahead(other: Order, order: Order) -> bool:
@@ -35,7 +43,3 @@ def is_ahead(other: Order, order: Order) -> bool:
     if other.is_express != order.is_express:
         return other.is_express
     return (other.received_at, other.id) < (order.received_at, order.id)
-
-
-def daily_operation_for(db: Session, day: date) -> DailyOperation | None:
-    return db.scalar(select(DailyOperation).where(DailyOperation.date == day))

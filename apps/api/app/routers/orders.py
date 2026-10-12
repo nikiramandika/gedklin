@@ -18,13 +18,17 @@ from app.schemas import (
     NotificationOut,
     OrderCreate,
     OrderDetailOut,
+    OrderItemIn,
     OrderOut,
+    QuoteIn,
+    QuoteOut,
     ReceiptOut,
     StatusChange,
 )
 from app.security import require_roles
 from app.services import orders as order_service
-from app.services.notifications import format_local, tracking_url
+from app.services.notifications import describe_item, format_local, format_rupiah, tracking_url
+from app.services.pricing import ItemRequest
 from app.services.queue import active_orders
 
 router = APIRouter(prefix="/orders", tags=["orders"])
@@ -45,12 +49,33 @@ def get_order_or_404(db: Session, order_id: int) -> Order:
     return order
 
 
+def to_requests(items: list[OrderItemIn]) -> list[ItemRequest]:
+    return [ItemRequest(i.catalog_code, i.weight_kg, i.qty_pcs) for i in items]
+
+
+@router.post("/quote", response_model=QuoteOut)
+def quote_order(data: QuoteIn, db: Session = Depends(get_db), _: User = Depends(staff)) -> QuoteOut:
+    """Hitung harga tanpa menyimpan, untuk ditampilkan di form kasir."""
+    try:
+        result = order_service.quote_order(db, to_requests(data.items), data.is_express)
+    except order_service.OrderError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    return QuoteOut.model_validate(result, from_attributes=True)
+
+
 @router.post("", response_model=OrderOut, status_code=status.HTTP_201_CREATED)
 def create_order(
     data: OrderCreate, db: Session = Depends(get_db), user: User = Depends(staff)
 ) -> OrderOut:
     try:
-        order = order_service.create_order(db, **data.model_dump(), user=user)
+        order = order_service.create_order(
+            db,
+            customer_name=data.customer_name,
+            customer_phone=data.customer_phone,
+            is_express=data.is_express,
+            items=to_requests(data.items),
+            user=user,
+        )
     except order_service.OrderError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     return to_out(order)
@@ -126,15 +151,14 @@ def receipt(order_id: int, db: Session = Depends(get_db), _: User = Depends(staf
     """Nota digital. Link WA dibuka manual oleh kasir, bukan lewat gateway."""
     order = get_order_or_404(db, order_id)
     url = tracking_url(order)
-    layanan = f"{order.service_type.value} {'Express' if order.is_express else 'Reguler'}"
     eta = format_local(order.predicted_ready_at) if order.predicted_ready_at else "-"
-    total = f"{order.price_total:,.0f}".replace(",", ".")
+    lines = "\n".join(f"- {describe_item(i)}: {format_rupiah(i.subtotal)}" for i in order.items)
     message = (
         f"Nota Gedklin Laundry\n"
         f"Kode: {order.tracking_code}\n"
-        f"Layanan: {layanan}\n"
-        f"Berat: {order.weight_kg:g} kg\n"
-        f"Total: Rp{total}\n"
+        f"Kecepatan: {'Express' if order.is_express else 'Reguler'}\n"
+        f"{lines}\n"
+        f"Total: {format_rupiah(order.price_total)}\n"
         f"Perkiraan siap: {eta}\n"
         f"Lacak: {url}"
     )

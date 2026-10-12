@@ -9,7 +9,8 @@ import {
   formatDateTime,
   formatRupiah,
   relativeEta,
-  serviceLabel,
+  speedLabel,
+  summarizeItems,
 } from "@/lib/format";
 import type { Order } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
@@ -131,7 +132,7 @@ export function OrderBoard({ refreshKey }: { refreshKey: number }) {
               <tr className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
                 {tab === "queue" && <th className="px-4 py-2">#</th>}
                 <th className="px-4 py-2">Pesanan</th>
-                <th className="px-4 py-2">Layanan</th>
+                <th className="px-4 py-2">Isi</th>
                 <th className="px-4 py-2">Masuk</th>
                 <th className="px-4 py-2">{tab === "ready" ? "Siap" : "Perkiraan"}</th>
                 <th className="px-4 py-2">Status</th>
@@ -164,11 +165,11 @@ export function OrderBoard({ refreshKey }: { refreshKey: number }) {
                     </td>
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-1">
-                        {serviceLabel(o.service_type, o.is_express)}
+                        {speedLabel(o.is_express)}
                         {o.is_express && <ExpressBadge />}
                       </div>
-                      <p className="text-xs text-slate-500">
-                        {o.weight_kg} kg · {formatRupiah(o.price_total)}
+                      <p className="max-w-64 text-xs text-slate-500">
+                        {summarizeItems(o.items)} · {formatRupiah(o.price_total)}
                       </p>
                     </td>
                     <td className="px-4 py-2 text-xs text-slate-600">

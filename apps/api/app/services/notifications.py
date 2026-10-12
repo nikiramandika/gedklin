@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 
 from app.config import Settings, get_settings
-from app.models import Order
+from app.models import Order, OrderItem
 from gedklin_ml.features import to_local
 
 logger = logging.getLogger(__name__)
@@ -44,13 +44,27 @@ def should_send_delay(order: Order, new_eta: datetime, settings: Settings | None
         return False
     if order.delay_notif_count >= settings.max_delay_notifications:
         return False
-    return new_eta > order.last_notified_eta + timedelta(minutes=settings.delay_threshold_minutes)
+    return new_eta > order.last_notified_eta + timedelta(hours=settings.delay_threshold_hours)
 
 
 def format_local(dt: datetime) -> str:
     days = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
     local = to_local(dt)
     return f"{days[local.weekday()]}, {local:%d/%m/%Y %H:%M} WIB"
+
+
+def format_rupiah(value: int) -> str:
+    return "Rp" + f"{value:,}".replace(",", ".")
+
+
+def describe_item(item: OrderItem) -> str:
+    """Mis. "Cuci + Kering + Setrika 8 kg" atau "Kemeja Lengan Panjang 2 pcs"."""
+    parts = []
+    if item.weight_kg is not None:
+        parts.append(f"{item.weight_kg:g} kg")
+    if item.qty_pcs:
+        parts.append(f"{'+' if item.weight_kg is not None else ''}{item.qty_pcs} pcs")
+    return " ".join([item.name, *parts])
 
 
 def tracking_url(order: Order, settings: Settings | None = None) -> str:

@@ -1,0 +1,52 @@
+{
+  "_source": "Foto price list Gedklin Laundry, 12 Oktober 2026. Harga dalam Rupiah.",
+  "_notes": [
+    "process: C = cuci, CK = cuci+kering, CKL = cuci+kering+lipat, CKS = cuci+kering+setrika, S = setrika saja, SATUAN = per potong",
+    "unit: LOAD_7KG = per load maksimal 7 kg, KG = per kg, PCS = per potong, LOAD = per load item khusus",
+    "Express tersedia menurut mitra walau tidak tercetak di price list. Harga Express = harga Reguler x express_multiplier, termasuk tambahan per kg."
+  ],
+  "promise_hours": {
+    "_note": "Janji waktu standar dari mitra. null = belum diketahui. 1 hari = 24 jam kalender. default dipakai bila semua layanan di pesanan belum punya janji (sementara, menunggu konfirmasi mitra). regular_min = batas bawah janji.",
+    "express": 24,
+    "regular": {"C": null, "CK": null, "CKL": 48, "CKS": 96, "S": null, "SATUAN": null},
+    "regular_min": {"CKS": 72},
+    "default": 48
+  },
+  "express_multiplier": 2,
+  "kiloan": [
+    {"code": "C", "name": "Cuci", "process": "C", "unit": "LOAD_7KG", "price": 10000, "extra_price_per_kg": 3000, "max_extra_kg": 1},
+    {"code": "CK", "name": "Cuci + Kering", "process": "CK", "unit": "LOAD_7KG", "price": 20000, "extra_price_per_kg": 5000, "max_extra_kg": 1},
+    {"code": "CKL", "name": "Cuci + Kering + Lipat", "process": "CKL", "unit": "LOAD_7KG", "price": 25000, "extra_price_per_kg": 7000, "max_extra_kg": 1},
+    {"code": "CKS", "name": "Cuci + Kering + Setrika", "process": "CKS", "unit": "LOAD_7KG", "price": 45000, "extra_price_per_kg": 10000, "max_extra_kg": 1},
+    {"code": "SETRIKA", "name": "Setrika per kg", "process": "S", "unit": "KG", "price": 5000, "min_qty": 5}
+  ],
+  "khusus": [
+    {"code": "BEDCOVER_K", "name": "Bed Cover Kecil", "process": "CKL", "unit": "PCS", "price": 30000},
+    {"code": "BEDCOVER_B", "name": "Bed Cover Besar", "process": "CKL", "unit": "PCS", "price": 35000},
+    {"code": "GORDYN", "name": "Gordyn Non Ring per kg", "process": "CKL", "unit": "KG", "price": 10000, "min_qty": 5},
+    {"code": "JAKET", "name": "Jaket Non Kulit", "process": "CKS", "unit": "PCS", "price": 25000},
+    {"code": "SELIMUT_K", "name": "Selimut Kecil", "process": "CKL", "unit": "LOAD", "price": 25000, "min_pcs_per_load": 3, "extra_price_per_pcs": 5000, "max_extra_pcs": 2},
+    {"code": "SELIMUT_B", "name": "Selimut Besar", "process": "CKL", "unit": "LOAD", "price": 25000, "max_pcs_per_load": 2, "extra_price_per_pcs": 10000, "max_extra_pcs": 1},
+    {"code": "SPREI_K", "name": "Sprei Kecil", "process": "CKL", "unit": "LOAD", "price": 25000, "max_kg_per_load": 5, "extra_price_per_pcs": 5000, "max_extra_pcs": 2},
+    {"code": "SPREI_B_RIMPLE", "name": "Sprei Besar Rimple", "process": "CKL", "unit": "LOAD", "price": 25000, "max_pcs_per_load": 2, "extra_price_per_pcs": 10000, "max_extra_pcs": 1},
+    {"code": "SPREI_B_NONRIMPLE", "name": "Sprei Besar Non Rimple", "process": "CKL", "unit": "LOAD", "price": 25000, "max_pcs_per_load": 4, "extra_price_per_pcs": 7000, "max_extra_pcs": 1}
+  ],
+  "satuan": [
+    {"code": "BONEKA_S", "name": "Boneka S", "price": 10000},
+    {"code": "BONEKA_M", "name": "Boneka M", "price": 20000},
+    {"code": "BONEKA_L", "name": "Boneka L", "price": 30000},
+    {"code": "CELANA_BAHAN", "name": "Celana Panjang Bahan", "price": 15000},
+    {"code": "CELANA_JEANS", "name": "Celana Panjang Jeans", "price": 17000},
+    {"code": "GAMIS_RINGAN", "name": "Gamis Ringan", "price": 20000},
+    {"code": "GAMIS_BERAT", "name": "Gamis Berat", "price": 25000},
+    {"code": "GAUN_NONPAYET", "name": "Gaun Non Payet", "price": 22000},
+    {"code": "GAUN_PAYET", "name": "Gaun Payet", "price": 25000},
+    {"code": "KAOS_OBLONG", "name": "Kaos/Tshirt Oblong", "price": 10000},
+    {"code": "KAOS_BERKERAH", "name": "Kaos/Tshirt Berkerah", "price": 12000},
+    {"code": "KEMEJA_PENDEK", "name": "Kemeja Lengan Pendek", "price": 15000},
+    {"code": "KEMEJA_PANJANG", "name": "Kemeja Lengan Panjang", "price": 17000},
+    {"code": "KHIMAR_M", "name": "Khimar M", "price": 12000},
+    {"code": "KHIMAR_L", "name": "Khimar L", "price": 15000},
+    {"code": "KHIMAR_XL", "name": "Khimar XL", "price": 18000}
+  ]
+}

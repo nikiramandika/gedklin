@@ -1,6 +1,7 @@
-"""Bandingkan baseline median, Linear Regression, Random Forest, dan XGBoost.
+"""Bandingkan baseline janji mitra, baseline median, Linear Regression, Random Forest, dan XGBoost.
 
-Split berdasarkan waktu: hari-hari terakhir (`--test-days`) menjadi data uji.
+Membaca tabel fitur hasil build_dataset.py. Split berdasarkan waktu: hari-hari
+terakhir (`--test-days`) menjadi data uji. Semua durasi dan error dalam jam.
 Model dengan MAE terkecil disimpan ke ml/models/best_model.joblib + metadata.json.
 """
 
@@ -8,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -22,17 +24,17 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 from xgboost import XGBRegressor
 
-from build_features import resolve_inputs
-from gedklin_ml.baseline import GroupMedianRegressor
-from gedklin_ml.data import prepare_dataset
+from gedklin_ml.baseline import GroupMedianRegressor, PromiseBaseline
 from gedklin_ml.features import FEATURE_ORDER, TARGET
 
 ROOT = Path(__file__).resolve().parents[1]
+BASELINES = ("promise_baseline", "median_baseline")
 
 
 def candidates(seed: int) -> dict[str, RegressorMixin]:
     return {
-        "baseline_median": GroupMedianRegressor(),
+        "promise_baseline": PromiseBaseline(),
+        "median_baseline": GroupMedianRegressor(),
         "linear_regression": make_pipeline(StandardScaler(), LinearRegression()),
         "random_forest": RandomForestRegressor(
             n_estimators=300, min_samples_leaf=3, random_state=seed, n_jobs=-1
@@ -48,14 +50,38 @@ def candidates(seed: int) -> dict[str, RegressorMixin]:
     }
 
 
-def evaluate(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
+def evaluate(y_true: np.ndarray, y_pred: np.ndarray, tolerance_hours: float) -> dict[str, float]:
     err = np.abs(y_true - y_pred)
     return {
         "mae": float(mean_absolute_error(y_true, y_pred)),
         "rmse": float(np.sqrt(mean_squared_error(y_true, y_pred))),
         "r2": float(r2_score(y_true, y_pred)),
-        "pct_err_lt_30": float((err < 30).mean() * 100),
+        "pct_within_tolerance": float((err < tolerance_hours).mean() * 100),
     }
+
+
+def group_mae(test: pd.DataFrame, preds: dict[str, np.ndarray]) -> pd.DataFrame:
+    """MAE per max_process_level dan per Reguler/Express."""
+    groups = {
+        "max_process_level": test["max_process_level"].astype(int).astype(str),
+        "kecepatan": np.where(test["is_express"] >= 0.5, "Express", "Reguler"),
+    }
+    y = test[TARGET].to_numpy()
+    rows = []
+    for name, pred in preds.items():
+        err = pd.Series(np.abs(y - pred), index=test.index)
+        for group_type, labels in groups.items():
+            for label, e in err.groupby(np.asarray(labels)):
+                rows.append(
+                    {
+                        "model": name,
+                        "group_type": group_type,
+                        "group": label,
+                        "n": len(e),
+                        "mae": float(e.mean()),
+                    }
+                )
+    return pd.DataFrame(rows)
 
 
 def time_split(frame: pd.DataFrame, test_days: int) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -65,18 +91,26 @@ def time_split(frame: pd.DataFrame, test_days: int) -> tuple[pd.DataFrame, pd.Da
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--orders", type=Path)
-    parser.add_argument("--daily", type=Path)
-    parser.add_argument("--skip-days", type=int, default=2)
+    parser.add_argument(
+        "--features", type=Path, default=ROOT / "data" / "processed" / "features.csv"
+    )
     parser.add_argument("--test-days", type=int, default=7)
+    parser.add_argument(
+        "--tolerance-hours",
+        type=float,
+        default=float(os.environ.get("ETA_TOLERANCE_HOURS", 6)),
+        help="Batas error untuk metrik persentase prediksi tepat (ETA_TOLERANCE_HOURS)",
+    )
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    orders, daily, source = resolve_inputs(args.orders, args.daily)
+    if not args.features.exists():
+        raise SystemExit(f"{args.features} belum ada. Jalankan scripts/build_dataset.py dulu.")
+    frame = pd.read_csv(args.features)
+    source = str(frame["data_source"].iloc[0]) if "data_source" in frame else "custom"
     if source == "dummy":
         print("!! PERINGATAN: memakai DATA DUMMY. Metrik ini TIDAK boleh dilaporkan sebagai hasil.")
 
-    frame = prepare_dataset(orders, daily, skip_days=args.skip_days)
     frame["received_at"] = pd.to_datetime(frame["received_at"], utc=True)
     train, test = time_split(frame, args.test_days)
     print(f"Train: {len(train)} baris, Test: {len(test)} baris")
@@ -86,45 +120,62 @@ def main() -> None:
 
     results = []
     fitted: dict[str, RegressorMixin] = {}
+    preds: dict[str, np.ndarray] = {}
     for name, model in candidates(args.seed).items():
         model.fit(X_train, y_train)
-        metrics = evaluate(y_test, model.predict(X_test))
-        results.append({"model": name, **metrics})
+        preds[name] = model.predict(X_test)
+        results.append({"model": name, **evaluate(y_test, preds[name], args.tolerance_hours)})
         fitted[name] = model
 
     report = pd.DataFrame(results).sort_values("mae").reset_index(drop=True)
     report.insert(0, "data_source", source)
+    by_group = group_mae(test, preds)
+    by_group.insert(0, "data_source", source)
+
     reports_dir = ROOT / "reports"
     reports_dir.mkdir(exist_ok=True)
     # Laporan dari data dummy diberi nama terpisah dan tidak di-commit.
-    report_name = "comparison_dummy.csv" if source == "dummy" else "comparison.csv"
-    report.to_csv(reports_dir / report_name, index=False)
+    suffix = "_dummy" if source == "dummy" else ""
+    report.to_csv(reports_dir / f"comparison{suffix}.csv", index=False)
+    by_group.to_csv(reports_dir / f"comparison_by_group{suffix}.csv", index=False)
+    print(f"Error dalam jam, toleransi {args.tolerance_hours:g} jam")
     print(report.to_string(index=False, float_format=lambda v: f"{v:.2f}"))
+    print()
+    print(
+        by_group.pivot_table(index=["group_type", "group"], columns="model", values="mae")
+        .round(2)
+        .to_string()
+    )
 
     best_name = str(report.loc[0, "model"])
-    baseline_mae = float(report.loc[report["model"] == "baseline_median", "mae"].iloc[0])
+    best_mae = float(report.loc[0, "mae"])
+    baseline_mae = {
+        name: float(report.loc[report["model"] == name, "mae"].iloc[0]) for name in BASELINES
+    }
     trained_at = datetime.now(UTC)
-    baseline: GroupMedianRegressor = fitted["baseline_median"]  # type: ignore[assignment]
     metadata = {
         "model_name": best_name,
         "model_version": f"{best_name}-{trained_at:%Y%m%d%H%M%S}",
         "data_source": source,
         "features": FEATURE_ORDER,
         "target": TARGET,
+        "unit": "hours",
         "trained_at": trained_at.isoformat(),
         "train_rows": len(train),
         "test_rows": len(test),
-        "metrics": report.loc[0, ["mae", "rmse", "r2", "pct_err_lt_30"]].to_dict(),
+        "eta_tolerance_hours": args.tolerance_hours,
+        "metrics": report.loc[0, ["mae", "rmse", "r2", "pct_within_tolerance"]].to_dict(),
         "baseline_mae": baseline_mae,
-        "beats_baseline": float(report.loc[0, "mae"]) < baseline_mae,
-        "baseline_medians": baseline.medians_,
+        "beats_baselines": all(best_mae < mae for mae in baseline_mae.values()),
     }
 
     models_dir = ROOT / "models"
     models_dir.mkdir(exist_ok=True)
     joblib.dump(fitted[best_name], models_dir / "best_model.joblib")
     (models_dir / "metadata.json").write_text(json.dumps(metadata, indent=2, default=float))
-    print(f"Model terbaik: {best_name} (MAE {metadata['metrics']['mae']:.1f} menit)")
+    print(f"\nModel terbaik: {best_name} (MAE {best_mae:.1f} jam)")
+    if not metadata["beats_baselines"]:
+        print("!! Model terbaik belum mengalahkan kedua baseline.")
 
 
 if __name__ == "__main__":
