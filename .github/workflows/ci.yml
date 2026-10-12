@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  api-ml:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: gedklin
+          POSTGRES_PASSWORD: gedklin
+          POSTGRES_DB: gedklin_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U gedklin" --health-interval 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://gedklin:gedklin@localhost:5432/gedklin_test
+      TEST_DATABASE_URL: postgresql+psycopg://gedklin:gedklin@localhost:5432/gedklin_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: apps/api/requirements*.txt
+      - name: Install
+        working-directory: apps/api
+        run: pip install -r requirements-dev.txt
+      - name: Lint
+        run: |
+          ruff check apps/api ml
+          ruff format --check apps/api ml
+      - name: Migrasi
+        working-directory: apps/api
+        run: alembic upgrade head && alembic check && alembic downgrade base
+      - name: Test API
+        working-directory: apps/api
+        run: pytest -q
+      - name: Smoke test pipeline ML (data dummy)
+        working-directory: ml
+        run: python scripts/generate_dummy.py --days 12 && python scripts/train_compare.py --test-days 3
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000

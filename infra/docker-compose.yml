@@ -1,0 +1,77 @@
+# Dev: `docker compose -f infra/docker-compose.yml up -d` hanya menyalakan Postgres + Redis.
+# Semua service (api, worker, web): tambahkan `--profile app`.
+name: gedklin
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: gedklin
+      POSTGRES_PASSWORD: gedklin
+      POSTGRES_DB: gedklin
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gedklin"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  api:
+    profiles: ["app"]
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    env_file: ../apps/api/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://gedklin:gedklin@db:5432/gedklin
+      REDIS_URL: redis://redis:6379/0
+      MODEL_PATH: /srv/ml/models/best_model.joblib
+      CELERY_TASK_ALWAYS_EAGER: "false"
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../ml/models:/srv/ml/models:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  worker:
+    profiles: ["app"]
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    env_file: ../apps/api/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://gedklin:gedklin@db:5432/gedklin
+      REDIS_URL: redis://redis:6379/0
+      MODEL_PATH: /srv/ml/models/best_model.joblib
+      CELERY_TASK_ALWAYS_EAGER: "false"
+    command: celery -A app.workers worker -B --loglevel=info
+    volumes:
+      - ../ml/models:/srv/ml/models:ro
+    depends_on:
+      - api
+
+  web:
+    profiles: ["app"]
+    build:
+      context: ../apps/web
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
