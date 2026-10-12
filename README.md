@@ -4,7 +4,6 @@ Platform manajemen operasional laundry kiloan untuk mitra **Gedklin Laundry, Med
 kasir/POS, prediksi waktu siap diambil berbasis ML, notifikasi WhatsApp terbatas,
 dasbor pemilik, dan portal tracking pelanggan (PWA).
 
-Panduan lengkap scope, aturan bisnis, dan konvensi ada di [CLAUDE.md](CLAUDE.md).
 
 ## Struktur
 
