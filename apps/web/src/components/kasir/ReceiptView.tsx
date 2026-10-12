@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
@@ -7,7 +8,8 @@ import { useRequireRole } from "@/lib/auth";
 import { describeItem, formatDateTime, formatRupiah, speedLabel } from "@/lib/format";
 import type { Receipt, Role } from "@/lib/types";
 
-import { Button, ErrorText, Loading } from "../ui";
+import { IconArrowLeft, IconChat, IconPrinter } from "../icons";
+import { Button, ButtonLink, ErrorText, Loading } from "../ui";
 
 const ROLES: Role[] = ["cashier", "owner"];
 
@@ -23,49 +25,83 @@ export function ReceiptView({ id }: { id: string }) {
       .catch((e: Error) => setError(e.message));
   }, [id, user]);
 
-  if (error) return <ErrorText message={error} />;
-  if (!receipt) return <Loading />;
-  const o = receipt.order;
-
   return (
-    <div className="mx-auto w-full max-w-[320px] px-2 py-6 font-mono text-sm text-black print:py-0">
-      <div className="text-center">
-        <p className="text-base font-bold">GEDKLIN LAUNDRY</p>
-        <p className="text-xs">Medan</p>
-      </div>
-      <hr className="my-2 border-dashed border-black" />
-      <Row label="Kode" value={o.tracking_code} bold />
-      <Row label="Pelanggan" value={o.customer.name} />
-      <Row label="Masuk" value={formatDateTime(o.received_at)} />
-      <Row label="Kecepatan" value={speedLabel(o.is_express)} />
-      <hr className="my-2 border-dashed border-black" />
-      {o.items.map((item, i) => (
-        <Row key={i} label={describeItem(item)} value={formatRupiah(item.subtotal)} />
-      ))}
-      <hr className="my-2 border-dashed border-black" />
-      <Row label="TOTAL" value={formatRupiah(o.price_total)} bold />
-      <hr className="my-2 border-dashed border-black" />
-      <p className="text-xs">Perkiraan siap diambil:</p>
-      <p className="font-bold">{formatDateTime(o.predicted_ready_at)}</p>
-      <p className="mt-2 text-xs">Lacak status cucian:</p>
-      <p className="break-all text-xs">{receipt.tracking_url}</p>
-      <p className="mt-3 text-center text-xs">Terima kasih!</p>
+    <main className="min-h-dvh bg-canvas px-4 py-6 print:bg-white print:p-0">
+      <div className="mx-auto w-full max-w-[360px]">
+        <div className="mb-4 flex items-center justify-between print:hidden">
+          <Link
+            href="/kasir"
+            className="inline-flex h-11 items-center gap-2 rounded-lg px-2 text-sm font-medium text-muted hover:text-ink"
+          >
+            <IconArrowLeft size={18} />
+            Kembali ke kasir
+          </Link>
+        </div>
 
-      <div className="mt-6 flex gap-2 print:hidden">
-        <Button onClick={() => window.print()}>Cetak</Button>
-        <a href={receipt.whatsapp_link} target="_blank" rel="noopener noreferrer">
-          <Button variant="secondary">Kirim via WA</Button>
-        </a>
+        {error ? (
+          <ErrorText message={error} />
+        ) : !receipt ? (
+          <div className="rounded-xl bg-surface">
+            <Loading rows={6} />
+          </div>
+        ) : (
+          <>
+            <article className="rounded-xl bg-white px-5 py-6 font-mono text-[13px] leading-relaxed text-black shadow-raise ring-1 ring-line print:rounded-none print:px-0 print:py-0 print:shadow-none print:ring-0">
+              <div className="text-center">
+                <p className="text-base font-bold tracking-wide">GEDKLIN LAUNDRY</p>
+                <p className="text-xs">Medan</p>
+              </div>
+              <Divider />
+              <Row label="Kode" value={receipt.order.tracking_code} bold />
+              <Row label="Pelanggan" value={receipt.order.customer.name} />
+              <Row label="Masuk" value={formatDateTime(receipt.order.received_at)} />
+              <Row label="Kecepatan" value={speedLabel(receipt.order.is_express)} />
+              <Divider />
+              {receipt.order.items.map((item, i) => (
+                <Row key={i} label={describeItem(item)} value={formatRupiah(item.subtotal)} />
+              ))}
+              <Divider />
+              <Row label="TOTAL" value={formatRupiah(receipt.order.price_total)} bold />
+              <Divider />
+              <p className="text-xs">Perkiraan siap diambil:</p>
+              <p className="font-bold">{formatDateTime(receipt.order.predicted_ready_at)}</p>
+              <p className="mt-2 text-xs">Lacak status cucian:</p>
+              <p className="break-all text-xs">{receipt.tracking_url}</p>
+              <p className="mt-4 text-center text-xs">Terima kasih!</p>
+            </article>
+
+            <div className="mt-4 grid grid-cols-2 gap-2 print:hidden">
+              <Button size="lg" onClick={() => window.print()}>
+                <IconPrinter size={18} />
+                Cetak
+              </Button>
+              <ButtonLink
+                variant="whatsapp"
+                size="lg"
+                href={receipt.whatsapp_link}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <IconChat size={18} />
+                Kirim WA
+              </ButtonLink>
+            </div>
+          </>
+        )}
       </div>
-    </div>
+    </main>
   );
+}
+
+function Divider() {
+  return <hr className="my-2.5 border-dashed border-black" />;
 }
 
 function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
   return (
-    <div className="flex justify-between gap-2">
+    <div className="flex justify-between gap-3">
       <span>{label}</span>
-      <span className={`text-right ${bold ? "font-bold" : ""}`}>{value}</span>
+      <span className={`text-right tabular ${bold ? "font-bold" : ""}`}>{value}</span>
     </div>
   );
 }

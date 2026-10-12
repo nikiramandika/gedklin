@@ -3,7 +3,21 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
-import { Button, Card, ErrorText, Field, Loading, inputClass } from "@/components/ui";
+import { IconCalendar, IconList } from "@/components/icons";
+import {
+  Button,
+  Card,
+  EmptyState,
+  ErrorText,
+  Field,
+  Loading,
+  PageHeader,
+  SavedNote,
+  Stepper,
+  Switch,
+  inputClass,
+  textareaClass,
+} from "@/components/ui";
 import { api } from "@/lib/api";
 import { formatDate, todayLocalISO } from "@/lib/format";
 import type { AppSettings, DailyOperation, Role } from "@/lib/types";
@@ -21,6 +35,7 @@ export default function OperasionalPage() {
 // Dirender hanya setelah login (di klien), jadi tanggal hari ini aman dibaca saat render.
 function OperasionalContent() {
   const [rows, setRows] = useState<DailyOperation[] | null>(null);
+  const [defaults, setDefaults] = useState<AppSettings | null>(null);
   const [form, setForm] = useState({
     date: todayLocalISO(),
     is_open: true,
@@ -32,7 +47,8 @@ function OperasionalContent() {
     machine_issue_note: "",
   });
   const [error, setError] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(
     () =>
@@ -46,7 +62,8 @@ function OperasionalContent() {
     load();
     // Isi awal form dari kapasitas normal mitra di pengaturan.
     api<AppSettings>("/settings")
-      .then((s) =>
+      .then((s) => {
+        setDefaults(s);
         setForm((f) => ({
           ...f,
           staff_on_duty: String(s.default_staff_on_duty),
@@ -54,12 +71,18 @@ function OperasionalContent() {
           dryers_available: String(s.default_dryers_available),
           open_time: s.default_open_time.slice(0, 5),
           close_time: s.default_close_time.slice(0, 5),
-        })),
-      )
+        }));
+      })
       .catch(() => {});
   }, [load]);
 
+  function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
+    setSaved(false);
+    setForm((f) => ({ ...f, [key]: value }));
+  }
+
   function edit(row: DailyOperation) {
+    setSaved(false);
     setForm({
       date: row.date,
       is_open: row.is_open,
@@ -70,23 +93,27 @@ function OperasionalContent() {
       close_time: row.close_time.slice(0, 5),
       machine_issue_note: row.machine_issue_note ?? "",
     });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
+
+  const below = (value: string, normal: number | undefined) =>
+    normal !== undefined && Number(value) < normal;
 
   return (
     <>
-      <h1 className="mb-1 text-xl font-semibold text-slate-900">Operasional Harian</h1>
-      <p className="mb-4 text-sm text-slate-500">
-        Petugas, mesin yang bisa dipakai, dan jam buka dipakai sebagai fitur perkiraan waktu siap.
-        Isi setiap hari, terutama saat ada mesin rusak atau petugas izin.
-      </p>
-      <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
-        <Card title="Isi / ubah data">
+      <PageHeader
+        title="Operasional Harian"
+        description="Jumlah petugas, mesin yang bisa dipakai, dan jam buka ikut menentukan perkiraan waktu siap. Isi setiap hari, terutama saat ada mesin rusak atau petugas izin."
+      />
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(340px,420px)_minmax(0,1fr)]">
+        <Card icon={IconCalendar} title="Isi atau ubah data" description="Data tanggal yang sama akan ditimpa.">
           <form
-            className="space-y-3"
+            className="space-y-5"
             onSubmit={async (e) => {
               e.preventDefault();
               setError(null);
-              setMsg(null);
+              setSaved(false);
+              setBusy(true);
               try {
                 await api(`/daily-operations/${form.date}`, {
                   method: "PUT",
@@ -100,10 +127,12 @@ function OperasionalContent() {
                     machine_issue_note: form.machine_issue_note || null,
                   },
                 });
-                setMsg("Tersimpan");
+                setSaved(true);
                 await load();
               } catch (err) {
                 setError(err instanceof Error ? err.message : "Gagal menyimpan");
+              } finally {
+                setBusy(false);
               }
             }}
           >
@@ -112,58 +141,43 @@ function OperasionalContent() {
                 className={inputClass}
                 type="date"
                 value={form.date}
-                onChange={(e) => setForm({ ...form, date: e.target.value })}
+                onChange={(e) => set("date", e.target.value)}
                 required
               />
             </Field>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-teal-600"
-                checked={form.is_open}
-                onChange={(e) => setForm({ ...form, is_open: e.target.checked })}
-              />
-              Buka pada tanggal ini
-            </label>
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="Petugas">
-                <input
-                  className={inputClass}
-                  type="number"
-                  min={0}
-                  value={form.staff_on_duty}
-                  onChange={(e) => setForm({ ...form, staff_on_duty: e.target.value })}
-                  required
-                />
+            <Switch
+              label="Buka pada tanggal ini"
+              description={form.is_open ? "Outlet beroperasi" : "Outlet tutup, pesanan bergeser ke hari berikutnya"}
+              checked={form.is_open}
+              onChange={(v) => set("is_open", v)}
+            />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+              <Field
+                label="Petugas"
+                hint={below(form.staff_on_duty, defaults?.default_staff_on_duty) ? "Kurang dari normal" : undefined}
+              >
+                <Stepper label="petugas" value={form.staff_on_duty} onChange={(v) => set("staff_on_duty", v)} />
               </Field>
-              <Field label="Mesin cuci">
-                <input
-                  className={inputClass}
-                  type="number"
-                  min={0}
-                  value={form.washers_available}
-                  onChange={(e) => setForm({ ...form, washers_available: e.target.value })}
-                  required
-                />
+              <Field
+                label="Mesin cuci"
+                hint={below(form.washers_available, defaults?.default_washers_available) ? "Kurang dari normal" : undefined}
+              >
+                <Stepper label="mesin cuci" value={form.washers_available} onChange={(v) => set("washers_available", v)} />
               </Field>
-              <Field label="Pengering">
-                <input
-                  className={inputClass}
-                  type="number"
-                  min={0}
-                  value={form.dryers_available}
-                  onChange={(e) => setForm({ ...form, dryers_available: e.target.value })}
-                  required
-                />
+              <Field
+                label="Pengering"
+                hint={below(form.dryers_available, defaults?.default_dryers_available) ? "Kurang dari normal" : undefined}
+              >
+                <Stepper label="pengering" value={form.dryers_available} onChange={(v) => set("dryers_available", v)} />
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
               <Field label="Jam buka">
                 <input
                   className={inputClass}
                   type="time"
                   value={form.open_time}
-                  onChange={(e) => setForm({ ...form, open_time: e.target.value })}
+                  onChange={(e) => set("open_time", e.target.value)}
                   required
                 />
               </Field>
@@ -172,67 +186,80 @@ function OperasionalContent() {
                   className={inputClass}
                   type="time"
                   value={form.close_time}
-                  onChange={(e) => setForm({ ...form, close_time: e.target.value })}
+                  onChange={(e) => set("close_time", e.target.value)}
                   required
                 />
               </Field>
             </div>
-            <Field label="Catatan kendala mesin (opsional)">
+            <Field label="Catatan kendala mesin" hint="Opsional, mis. pengering 2 rusak sejak pagi.">
               <textarea
-                className={inputClass}
+                className={textareaClass}
                 rows={2}
                 value={form.machine_issue_note}
-                onChange={(e) => setForm({ ...form, machine_issue_note: e.target.value })}
+                onChange={(e) => set("machine_issue_note", e.target.value)}
               />
             </Field>
             <ErrorText message={error} />
-            <div className="flex items-center gap-3">
-              <Button type="submit">Simpan</Button>
-              {msg && <span className="text-sm text-emerald-700">{msg}</span>}
+            <div className="flex items-center gap-4">
+              <Button type="submit" loading={busy}>
+                Simpan
+              </Button>
+              <SavedNote show={saved} />
             </div>
           </form>
         </Card>
 
-        <Card title="30 hari terakhir">
+        <Card flush icon={IconList} tone="neutral" title="30 hari terakhir" description="Ketuk Ubah untuk mengisi ulang form.">
           {!rows ? (
-            <Loading />
+            <Loading rows={5} />
           ) : rows.length === 0 ? (
-            <p className="py-6 text-center text-sm text-slate-500">Belum ada data.</p>
+            <EmptyState icon={IconCalendar} title="Belum ada data harian">
+              Simpan data hari ini lewat form di samping. Tanpa data, perkiraan memakai kapasitas normal.
+            </EmptyState>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs uppercase text-slate-500">
-                  <th className="py-2">Tanggal</th>
-                  <th className="py-2">Petugas</th>
-                  <th className="py-2">Cuci/Kering</th>
-                  <th className="py-2">Jam</th>
-                  <th className="py-2">Catatan</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.date} className="border-b border-slate-100 last:border-0">
-                    <td className="py-2">{formatDate(r.date)}</td>
-                    <td className="py-2">{r.staff_on_duty}</td>
-                    <td className="py-2">
-                      {r.washers_available}/{r.dryers_available}
-                    </td>
-                    <td className="py-2">
-                      {r.is_open
-                        ? `${r.open_time.slice(0, 5)}–${r.close_time.slice(0, 5)}`
-                        : "Tutup"}
-                    </td>
-                    <td className="py-2 text-slate-600">{r.machine_issue_note ?? "-"}</td>
-                    <td className="py-2 text-right">
-                      <Button variant="ghost" onClick={() => edit(r)}>
-                        Ubah
-                      </Button>
-                    </td>
+            <div className="overflow-x-auto px-3 pb-3 sm:px-4 sm:pb-4">
+              <table className="w-full min-w-[560px] border-separate border-spacing-y-1.5 text-sm">
+                <thead>
+                  <tr className="text-left text-xs font-medium text-muted">
+                    <th className="px-4 py-1.5 font-medium">Tanggal</th>
+                    <th className="px-3 py-1.5 font-medium">Petugas</th>
+                    <th className="px-3 py-1.5 font-medium">Cuci / Kering</th>
+                    <th className="px-3 py-1.5 font-medium">Jam</th>
+                    <th className="px-3 py-1.5 font-medium">Catatan</th>
+                    <th className="px-4 py-1.5" />
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr
+                      key={r.date}
+                      className={`[&>td]:py-3 [&>td:first-child]:rounded-l-xl [&>td:last-child]:rounded-r-xl ${
+                        form.date === r.date ? "[&>td]:bg-brand-50" : "[&>td]:bg-subtle hover:[&>td]:bg-tint"
+                      }`}
+                    >
+                      <td className="whitespace-nowrap px-4 font-medium text-ink">{formatDate(r.date)}</td>
+                      <td className="tabular px-3">{r.staff_on_duty}</td>
+                      <td className="tabular px-3">
+                        {r.washers_available} / {r.dryers_available}
+                      </td>
+                      <td className="tabular whitespace-nowrap px-3">
+                        {r.is_open ? (
+                          `${r.open_time.slice(0, 5)}–${r.close_time.slice(0, 5)}`
+                        ) : (
+                          <span className="font-medium text-muted">Tutup</span>
+                        )}
+                      </td>
+                      <td className="max-w-[240px] truncate px-3 text-muted">{r.machine_issue_note ?? "–"}</td>
+                      <td className="px-3 text-right">
+                        <Button variant="ghost" size="sm" onClick={() => edit(r)}>
+                          Ubah
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </Card>
       </div>

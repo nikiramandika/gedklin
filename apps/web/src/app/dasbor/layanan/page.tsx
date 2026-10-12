@@ -3,7 +3,19 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
-import { Button, Card, ErrorText, Field, Loading, inputClass } from "@/components/ui";
+import {
+  Button,
+  Card,
+  ErrorText,
+  Field,
+  Loading,
+  PageHeader,
+  SavedNote,
+  inputClass,
+  tileClass,
+  tileListClass,
+} from "@/components/ui";
+import { IconBolt, IconClock } from "@/components/icons";
 import { api } from "@/lib/api";
 import { GROUP_LABEL, PROCESS_LABEL, priceRule } from "@/lib/format";
 import type { AppSettings, CatalogGroup, CatalogItem, Role, ServicePromise } from "@/lib/types";
@@ -13,6 +25,7 @@ const GROUPS: CatalogGroup[] = ["KILOAN", "SETRIKA", "KHUSUS", "SATUAN"];
 
 export default function LayananPage() {
   const [catalog, setCatalog] = useState<CatalogItem[] | null>(null);
+  const [group, setGroup] = useState<CatalogGroup>("KILOAN");
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(
@@ -27,50 +40,95 @@ export default function LayananPage() {
     load();
   }, [load]);
 
+  const items = catalog?.filter((c) => c.group === group) ?? null;
+
   return (
     <AppShell roles={ROLES}>
-      <h1 className="mb-1 text-xl font-semibold text-slate-900">Layanan & Harga</h1>
-      <p className="mb-4 text-sm text-slate-500">
-        Harga awal diambil dari price list mitra. Perubahan di sini langsung dipakai kasir.
-      </p>
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        <div className="space-y-6">
-          <ErrorText message={error} />
-          {!catalog ? (
-            <Loading />
-          ) : (
-            GROUPS.map((g) => (
-              <Card key={g} title={GROUP_LABEL[g]}>
-                <div className="-mx-4 overflow-x-auto">
-                  <table className="w-full min-w-[620px] text-sm">
-                    <thead>
-                      <tr className="border-b text-left text-xs uppercase text-slate-500">
-                        <th className="px-4 py-2">Layanan</th>
-                        <th className="px-4 py-2">Harga</th>
-                        <th className="px-4 py-2">Tambahan</th>
-                        <th className="px-4 py-2">Aktif</th>
-                        <th className="px-4 py-2" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {catalog
-                        .filter((c) => c.group === g)
-                        .map((c) => (
-                          <CatalogRow key={c.code} item={c} onSaved={load} />
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-            ))
+      <PageHeader
+        title="Layanan & Harga"
+        description="Harga awal diambil dari price list mitra. Perubahan langsung dipakai kasir untuk pesanan berikutnya."
+      />
+      <div className="grid grid-cols-1 items-start gap-6 2xl:grid-cols-[minmax(0,1fr)_400px]">
+        <Card flush>
+          <div
+            role="tablist"
+            aria-label="Kelompok layanan"
+            className="m-3 flex gap-1 overflow-x-auto rounded-xl bg-canvas p-1 sm:m-4"
+          >
+            {GROUPS.map((g) => {
+              const active = g === group;
+              const n = catalog?.filter((c) => c.group === g).length;
+              return (
+                <button
+                  key={g}
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setGroup(g)}
+                  className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors duration-150 ${
+                    active ? "bg-surface text-brand-700 shadow-tile" : "text-muted hover:bg-surface/70 hover:text-ink"
+                  }`}
+                >
+                  {GROUP_LABEL[g]}
+                  {n !== undefined && <span className="tabular text-xs opacity-70">{n}</span>}
+                </button>
+              );
+            })}
+          </div>
+          {error && (
+            <div className="p-4">
+              <ErrorText message={error} />
+            </div>
           )}
-        </div>
-        <div className="space-y-6">
+          {!items ? (
+            <Loading rows={5} />
+          ) : (
+            <>
+            <div
+              aria-hidden="true"
+              className="hidden px-7 pb-1 sm:px-8 text-xs font-medium text-muted md:grid md:grid-cols-[minmax(0,1fr)_140px_140px_190px] md:gap-4"
+            >
+              <span>Layanan</span>
+              <span>Harga</span>
+              <span>Tambahan</span>
+              <span />
+            </div>
+            <ul className={tileListClass}>
+              {items.map((c) => (
+                <CatalogRow key={c.code} item={c} onSaved={load} />
+              ))}
+            </ul>
+            </>
+          )}
+        </Card>
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2 2xl:grid-cols-1">
           <SettingsCard />
           <PromiseCard />
         </div>
       </div>
     </AppShell>
+  );
+}
+
+function MoneyInput({
+  value,
+  onChange,
+  label,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  label: string;
+}) {
+  return (
+    <div className="relative">
+      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted">Rp</span>
+      <input
+        className={`${inputClass} tabular pl-9`}
+        inputMode="numeric"
+        value={value}
+        onChange={(e) => onChange(e.target.value.replace(/\D/g, ""))}
+        aria-label={label}
+      />
+    </div>
   );
 }
 
@@ -81,6 +139,8 @@ function CatalogRow({ item, onSaved }: { item: CatalogItem; onSaved: () => void 
     active: item.is_active,
   });
   const [status, setStatus] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
   const dirty =
     form.price !== String(item.price) ||
     form.extra !== (item.extra_price === null ? "" : String(item.extra_price)) ||
@@ -88,6 +148,7 @@ function CatalogRow({ item, onSaved }: { item: CatalogItem; onSaved: () => void 
 
   async function save() {
     setStatus(null);
+    setBusy(true);
     try {
       await api(`/catalog/${encodeURIComponent(item.code)}`, {
         method: "PUT",
@@ -97,66 +158,80 @@ function CatalogRow({ item, onSaved }: { item: CatalogItem; onSaved: () => void 
           is_active: form.active,
         },
       });
+      setSaved(true);
       onSaved();
     } catch (err) {
       setStatus(err instanceof Error ? err.message : "Gagal menyimpan");
+    } finally {
+      setBusy(false);
     }
   }
 
+  const update = (patch: Partial<typeof form>) => {
+    setSaved(false);
+    setForm((f) => ({ ...f, ...patch }));
+  };
+
   return (
-    <tr className="border-b border-slate-100 align-top last:border-0">
-      <td className="px-4 py-2">
-        <p className={item.is_active ? "font-medium" : "font-medium text-slate-400"}>{item.name}</p>
-        <p className="text-xs text-slate-500">
-          {PROCESS_LABEL[item.process]} · {priceRule(item)}
+    <li className={`${tileClass} grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_140px_140px_190px] md:items-center md:gap-4`}>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className={`font-medium ${form.active ? "text-ink" : "text-faint line-through"}`}>{item.name}</p>
+          {!item.is_active && (
+            <span className="rounded-full bg-canvas px-2 py-0.5 text-xs font-medium text-muted ring-1 ring-line">
+              Nonaktif
+            </span>
+          )}
+        </div>
+        <p className="mt-0.5 text-[13px] text-muted">
+          {priceRule(item)}
         </p>
-        {status && <p className="text-xs text-rose-600">{status}</p>}
-      </td>
-      <td className="px-4 py-2">
-        <input
-          className={`${inputClass} w-28`}
-          type="number"
-          min={0}
-          step={500}
-          value={form.price}
-          onChange={(e) => setForm({ ...form, price: e.target.value })}
-          aria-label={`Harga ${item.name}`}
-        />
-      </td>
-      <td className="px-4 py-2">
-        {item.extra_price !== null && (
-          <input
-            className={`${inputClass} w-24`}
-            type="number"
-            min={0}
-            step={500}
-            value={form.extra}
-            onChange={(e) => setForm({ ...form, extra: e.target.value })}
-            aria-label={`Harga tambahan ${item.name}`}
-          />
+        {status && <p className="mt-1 text-[13px] text-danger-600">{status}</p>}
+      </div>
+      <div className="grid grid-cols-2 gap-3 md:contents">
+        <Field label="Harga" className="md:[&>span:first-child]:sr-only">
+          <MoneyInput label={`Harga ${item.name}`} value={form.price} onChange={(v) => update({ price: v })} />
+        </Field>
+        {item.extra_price !== null ? (
+          <Field label="Tambahan" className="md:[&>span:first-child]:sr-only">
+            <MoneyInput
+              label={`Harga tambahan ${item.name}`}
+              value={form.extra}
+              onChange={(v) => update({ extra: v })}
+            />
+          </Field>
+        ) : (
+          <span className="hidden text-center text-sm text-faint md:block">–</span>
         )}
-      </td>
-      <td className="px-4 py-2">
-        <input
-          type="checkbox"
-          className="mt-2 h-4 w-4 accent-teal-600"
-          checked={form.active}
-          onChange={(e) => setForm({ ...form, active: e.target.checked })}
-          aria-label={`${item.name} aktif`}
-        />
-      </td>
-      <td className="px-4 py-2 text-right">
-        <Button variant="secondary" disabled={!dirty} onClick={save}>
-          Simpan
-        </Button>
-      </td>
-    </tr>
+      </div>
+      <div className="flex items-center justify-between gap-3 md:justify-end">
+        <label className="flex h-11 cursor-pointer items-center gap-2 text-sm text-ink-2">
+          <input
+            type="checkbox"
+            className="h-5 w-5 rounded accent-brand-600"
+            checked={form.active}
+            onChange={(e) => update({ active: e.target.checked })}
+          />
+          Aktif
+        </label>
+        {saved && !dirty ? (
+          <span className="w-24 text-right">
+            <SavedNote show />
+          </span>
+        ) : (
+          <Button variant={dirty ? "primary" : "secondary"} disabled={!dirty} loading={busy} onClick={save} className="w-24">
+            Simpan
+          </Button>
+        )}
+      </div>
+    </li>
   );
 }
 
 function SettingsCard() {
   const [form, setForm] = useState<{ multiplier: string; promise: string } | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -170,16 +245,20 @@ function SettingsCard() {
       .catch((e: Error) => setError(e.message));
   }, []);
 
-  if (!form) return <Card title="Express">{error ? <ErrorText message={error} /> : <Loading />}</Card>;
+  if (!form)
+    return (
+      <Card title="Express & janji default">{error ? <ErrorText message={error} /> : <Loading rows={2} />}</Card>
+    );
 
   return (
-    <Card title="Express & janji default">
+    <Card icon={IconBolt} tone="warn" title="Express & janji default">
       <form
-        className="space-y-3"
+        className="space-y-4"
         onSubmit={async (e) => {
           e.preventDefault();
-          setMsg(null);
+          setSaved(false);
           setError(null);
+          setBusy(true);
           try {
             await api("/settings", {
               method: "PUT",
@@ -188,33 +267,46 @@ function SettingsCard() {
                 default_promise_hours: Number(form.promise),
               },
             });
-            setMsg("Tersimpan");
+            setSaved(true);
           } catch (err) {
             setError(err instanceof Error ? err.message : "Gagal menyimpan");
+          } finally {
+            setBusy(false);
           }
         }}
       >
-        <Field label="Pengali harga Express (× harga Reguler)">
-          <input
-            className={inputClass}
-            inputMode="decimal"
-            value={form.multiplier}
-            onChange={(e) => setForm({ ...form, multiplier: e.target.value })}
-          />
+        <Field label="Pengali harga Express" hint="Harga Express = harga Reguler × pengali ini.">
+          <div className="relative">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted">×</span>
+            <input
+              className={`${inputClass} tabular pl-8`}
+              inputMode="decimal"
+              value={form.multiplier}
+              onChange={(e) => {
+                setSaved(false);
+                setForm({ ...form, multiplier: e.target.value });
+              }}
+            />
+          </div>
         </Field>
-        <Field label="Janji default bila layanan belum punya janji (jam)">
+        <Field label="Janji default (jam)" hint="Dipakai bila layanan belum punya janji waktu sendiri.">
           <input
-            className={inputClass}
+            className={`${inputClass} tabular`}
             type="number"
             min={1}
             value={form.promise}
-            onChange={(e) => setForm({ ...form, promise: e.target.value })}
+            onChange={(e) => {
+              setSaved(false);
+              setForm({ ...form, promise: e.target.value });
+            }}
           />
         </Field>
         <ErrorText message={error} />
-        <div className="flex items-center gap-3">
-          <Button type="submit">Simpan</Button>
-          {msg && <span className="text-sm text-emerald-700">{msg}</span>}
+        <div className="flex items-center gap-4">
+          <Button type="submit" loading={busy}>
+            Simpan
+          </Button>
+          <SavedNote show={saved} />
         </div>
       </form>
     </Card>
@@ -228,7 +320,8 @@ function hoursValue(v: string): number | null {
 function PromiseCard() {
   const [rows, setRows] = useState<ServicePromise[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     api<ServicePromise[]>("/service-promises")
@@ -237,23 +330,29 @@ function PromiseCard() {
   }, []);
 
   function update(i: number, patch: Partial<ServicePromise>) {
+    setSaved(false);
     setRows((rs) => rs && rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   }
 
   return (
-    <Card title="Janji waktu standar (jam)">
-      <p className="mb-3 text-xs text-slate-500">
-        Dipakai sebagai janji di nota dan fallback perkiraan bila model belum tersedia. Kosongkan
-        bila belum diketahui. 1 hari = 24 jam.
+    <Card
+      icon={IconClock}
+      tone="neutral"
+      title="Janji waktu standar"
+      description="Dalam jam (1 hari = 24 jam). Kosongkan bila belum diketahui."
+    >
+      <p className="mb-4 text-[13px] text-muted">
+        Dipakai sebagai janji di nota dan cadangan perkiraan bila model belum tersedia.
       </p>
       {!rows ? (
-        <Loading />
+        error ? <ErrorText message={error} /> : <Loading rows={4} />
       ) : (
         <form
           onSubmit={async (e) => {
             e.preventDefault();
             setError(null);
-            setMsg(null);
+            setSaved(false);
+            setBusy(true);
             try {
               await Promise.all(
                 rows.map((r) =>
@@ -267,54 +366,52 @@ function PromiseCard() {
                   }),
                 ),
               );
-              setMsg("Tersimpan");
+              setSaved(true);
             } catch (err) {
               setError(err instanceof Error ? err.message : "Gagal menyimpan");
+            } finally {
+              setBusy(false);
             }
           }}
         >
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs uppercase text-slate-500">
-                <th className="py-1">Proses</th>
-                <th className="py-1">Reguler</th>
-                <th className="py-1">Express</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={r.process}>
-                  <td className="py-1 pr-2 text-xs">{PROCESS_LABEL[r.process]}</td>
-                  <td className="py-1 pr-2">
-                    <input
-                      className={inputClass}
-                      type="number"
-                      min={1}
-                      placeholder="?"
-                      value={r.regular_hours ?? ""}
-                      onChange={(e) => update(i, { regular_hours: hoursValue(e.target.value) })}
-                      aria-label={`Janji Reguler ${r.process}`}
-                    />
-                  </td>
-                  <td className="py-1">
-                    <input
-                      className={inputClass}
-                      type="number"
-                      min={1}
-                      placeholder="?"
-                      value={r.express_hours ?? ""}
-                      onChange={(e) => update(i, { express_hours: hoursValue(e.target.value) })}
-                      aria-label={`Janji Express ${r.process}`}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <ErrorText message={error} />
-          <div className="mt-3 flex items-center gap-3">
-            <Button type="submit">Simpan</Button>
-            {msg && <span className="text-sm text-emerald-700">{msg}</span>}
+          <div className="mb-2 grid grid-cols-[minmax(0,1fr)_84px_84px] gap-2 text-xs font-medium text-muted">
+            <span>Proses</span>
+            <span>Reguler</span>
+            <span>Express</span>
+          </div>
+          <ul className="space-y-2">
+            {rows.map((r, i) => (
+              <li key={r.process} className="grid grid-cols-[minmax(0,1fr)_84px_84px] items-center gap-2">
+                <span className="text-[13px] text-ink-2">{PROCESS_LABEL[r.process]}</span>
+                <input
+                  className={`${inputClass} tabular px-2.5 text-center`}
+                  type="number"
+                  min={1}
+                  placeholder="?"
+                  value={r.regular_hours ?? ""}
+                  onChange={(e) => update(i, { regular_hours: hoursValue(e.target.value) })}
+                  aria-label={`Janji Reguler ${PROCESS_LABEL[r.process]} (jam)`}
+                />
+                <input
+                  className={`${inputClass} tabular px-2.5 text-center`}
+                  type="number"
+                  min={1}
+                  placeholder="?"
+                  value={r.express_hours ?? ""}
+                  onChange={(e) => update(i, { express_hours: hoursValue(e.target.value) })}
+                  aria-label={`Janji Express ${PROCESS_LABEL[r.process]} (jam)`}
+                />
+              </li>
+            ))}
+          </ul>
+          <div className="mt-4 space-y-3">
+            <ErrorText message={error} />
+            <div className="flex items-center gap-4">
+              <Button type="submit" loading={busy}>
+                Simpan janji
+              </Button>
+              <SavedNote show={saved} />
+            </div>
           </div>
         </form>
       )}

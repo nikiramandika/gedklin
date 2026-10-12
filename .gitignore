@@ -36,3 +36,8 @@ Thumbs.db
 desktop.ini
 .idea/
 .vscode/
+
+# Impeccable (alat desain lokal: brief, mock, screenshot review)
+.impeccable/
+/PRODUCT.md
+/DESIGN.md

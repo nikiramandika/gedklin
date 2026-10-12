@@ -1,19 +1,28 @@
 import type { MetadataRoute } from "next";
 
+// Aplikasi staf (kasir, admin, pemilik). Portal pelanggan punya manifest sendiri: /lacak.webmanifest.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Gedklin Laundry - Lacak Cucian",
+    id: "/?app=staf",
+    name: "Gedklin - Kasir & Dasbor",
     short_name: "Gedklin",
-    description: "Pantau status dan perkiraan waktu siap cucian Anda",
-    start_url: "/lacak",
+    description: "Kasir, antrean, dan dasbor operasional Gedklin Laundry",
+    start_url: "/login",
     scope: "/",
     display: "standalone",
-    background_color: "#f8fafc",
-    theme_color: "#0d9488",
+    orientation: "any",
+    background_color: "#eef1f6",
+    theme_color: "#0e1730",
     lang: "id",
+    categories: ["business", "productivity"],
     icons: [
-      { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
-      { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "maskable" },
+      { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/icons/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+    ],
+    shortcuts: [
+      { name: "Pesanan baru", url: "/kasir", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
+      { name: "Tindak lanjut", url: "/admin", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
     ],
   };
 }

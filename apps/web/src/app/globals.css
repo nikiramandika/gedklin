@@ -1,11 +1,177 @@
 @import "tailwindcss";
 
+/*
+ * Token Gedklin. Kanvas terang untuk konter yang terang; sidebar navy untuk navigasi;
+ * biru Gedklin hanya untuk aksi utama, seleksi, dan status Diproses.
+ */
 @theme inline {
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
-body {
-  background: #f8fafc;
-  color: #0f172a;
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+@theme {
+  --color-brand-50: #eff4ff;
+  --color-brand-100: #dce6fe;
+  --color-brand-200: #bccffd;
+  --color-brand-300: #8eacfa;
+  --color-brand-500: #3b66f5;
+  --color-brand-600: #2450e6;
+  --color-brand-700: #1c3fc0;
+  --color-brand-800: #1b3599;
+  --color-brand-900: #14266b;
+
+  --color-canvas: #eef1f6;
+  --color-surface: #ffffff;
+  --color-subtle: #f6f8fb;
+  --color-tint: #f2f5fb;
+  --color-line: #e8ecf2;
+  --color-line-strong: #d3d9e3;
+  --color-ink: #111827;
+  --color-ink-2: #374151;
+  --color-muted: #5b6474;
+  --color-faint: #8a93a3;
+
+  --color-nav: #0e1730;
+  --color-nav-2: #18244a;
+  --color-nav-ink: #c9d2e8;
+  --color-nav-faint: #8391b4;
+
+  --color-ok-50: #e7f6ee;
+  --color-ok-600: #168a4e;
+  --color-ok-700: #10703f;
+  --color-warn-50: #fff3e8;
+  --color-warn-600: #c2530a;
+  --color-warn-700: #a3440a;
+  --color-danger-50: #fdeceb;
+  --color-danger-600: #d12a1f;
+  --color-danger-700: #ac2218;
+
+  --shadow-pop: 0 1px 2px rgb(16 24 40 / 0.06), 0 8px 24px -6px rgb(16 24 40 / 0.14);
+  --shadow-raise: 0 1px 2px rgb(16 24 40 / 0.05), 0 1px 3px rgb(16 24 40 / 0.06);
+  --shadow-card: 0 0 0 1px rgb(16 24 40 / 0.04), 0 1px 2px rgb(16 24 40 / 0.04),
+    0 4px 12px -2px rgb(16 24 40 / 0.06), 0 16px 32px -16px rgb(16 24 40 / 0.12);
+  --shadow-tile: 0 0 0 1px rgb(16 24 40 / 0.05), 0 1px 2px rgb(16 24 40 / 0.05),
+    0 2px 6px -1px rgb(16 24 40 / 0.05);
+
+  --animate-spin-slow: spin 0.9s linear infinite;
+}
+
+@layer base {
+  /* Tailwind v4 memakai currentColor (hitam) untuk border tanpa warna; ganti ke garis lembut. */
+  *,
+  ::before,
+  ::after,
+  ::backdrop {
+    border-color: var(--color-line);
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+    font-feature-settings: "ss01", "cv11";
+  }
+
+  ::selection {
+    background: var(--color-brand-200);
+    color: var(--color-brand-900);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+  }
+
+  input,
+  select,
+  textarea {
+    caret-color: var(--color-brand-600);
+  }
+
+  /* Angka di tabel dan harga tidak boleh bergeser saat berubah. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+
+  a {
+    text-underline-offset: 3px;
+  }
+}
+
+@layer components {
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--color-line) 0%,
+      var(--color-subtle) 50%,
+      var(--color-line) 100%
+    );
+    background-size: 200% 100%;
+    animation: skeleton 1.4s ease-in-out infinite;
+    border-radius: 6px;
+  }
+
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+}
+
+@keyframes skeleton {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes enter-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media print {
+  body {
+    background: #fff;
+  }
 }

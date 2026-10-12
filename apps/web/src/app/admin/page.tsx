@@ -1,11 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
-import { Card, ErrorText, Loading } from "@/components/ui";
+import { IconAlert, IconChat, IconPackageCheck, IconRefresh } from "@/components/icons";
+import {
+  ButtonLink,
+  Card,
+  EmptyState,
+  ErrorText,
+  ExpressBadge,
+  IconButton,
+  Loading,
+  PageHeader,
+  tileClass,
+  tileListClass,
+} from "@/components/ui";
 import { api } from "@/lib/api";
-import { formatDateTime, formatRupiah, speedLabel, summarizeItems } from "@/lib/format";
+import { formatDateTime, formatRupiah, summarizeItems } from "@/lib/format";
 import type { Order, Role } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 
@@ -21,73 +33,94 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const now = useNow();
 
+  const load = useCallback(
+    () =>
+      api<Order[]>("/admin/followups")
+        .then((o) => {
+          setOrders(o);
+          setError(null);
+        })
+        .catch((e: Error) => setError(e.message)),
+    [],
+  );
+
   useEffect(() => {
-    api<Order[]>("/admin/followups")
-      .then(setOrders)
-      .catch((e: Error) => setError(e.message));
-  }, []);
+    load();
+  }, [load]);
+
+  const sorted = orders
+    ? [...orders].sort((a, b) => daysSince(b.ready_at, now) - daysSince(a.ready_at, now))
+    : null;
 
   return (
     <AppShell roles={ROLES}>
-      <h1 className="mb-1 text-xl font-semibold text-slate-900">Perlu Ditindaklanjuti</h1>
-      <p className="mb-4 text-sm text-slate-500">
-        Cucian sudah siap lebih dari 3 hari tetapi belum diambil. Sistem tidak mengirim WA otomatis;
-        silakan hubungi pelanggan secara manual.
-      </p>
-      <ErrorText message={error} />
-      <Card>
-        {!orders ? (
-          <Loading />
-        ) : orders.length === 0 ? (
-          <p className="py-8 text-center text-sm text-slate-500">
-            Tidak ada pesanan yang perlu ditindaklanjuti.
-          </p>
-        ) : (
-          <div className="-mx-4 overflow-x-auto">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs uppercase text-slate-500">
-                  <th className="px-4 py-2">Pelanggan</th>
-                  <th className="px-4 py-2">Pesanan</th>
-                  <th className="px-4 py-2">Siap sejak</th>
-                  <th className="px-4 py-2 text-right">Hubungi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.map((o) => (
-                  <tr key={o.id} className="border-b border-slate-100 last:border-0">
-                    <td className="px-4 py-2">
-                      <p className="font-medium">{o.customer.name}</p>
-                      <p className="font-mono text-xs text-slate-500">+{o.customer.phone_wa}</p>
-                    </td>
-                    <td className="px-4 py-2">
-                      <p className="font-mono text-xs">{o.tracking_code}</p>
-                      <p className="text-xs text-slate-500">
-                        {speedLabel(o.is_express)} · {summarizeItems(o.items)} ·{" "}
-                        {formatRupiah(o.price_total)}
-                      </p>
-                    </td>
-                    <td className="px-4 py-2">
-                      {formatDateTime(o.ready_at)}
-                      <p className="text-xs font-semibold text-rose-600">
-                        {daysSince(o.ready_at, now)} hari
-                      </p>
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      <a
-                        className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700"
-                        href={`https://wa.me/${o.customer.phone_wa}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        Buka WhatsApp
-                      </a>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <PageHeader
+        title="Tindak Lanjut"
+        description="Cucian yang sudah siap lebih dari 3 hari tetapi belum diambil. Sistem tidak mengirim WA otomatis untuk ini; hubungi pelanggan secara manual."
+      />
+      <Card
+        flush
+        icon={IconAlert}
+        tone="warn"
+        title={sorted ? `${sorted.length} pesanan menunggu` : "Pesanan menunggu"}
+        description="Diurutkan dari yang paling lama"
+        action={<IconButton label="Muat ulang" icon={IconRefresh} size={18} onClick={load} />}
+      >
+        {error && (
+          <div className="p-4">
+            <ErrorText message={error} />
           </div>
+        )}
+        {!sorted ? (
+          <Loading rows={4} />
+        ) : sorted.length === 0 ? (
+          <EmptyState icon={IconPackageCheck} title="Tidak ada yang perlu ditindaklanjuti">
+            Semua cucian yang siap sudah diambil dalam 3 hari. Daftar diperbarui otomatis setiap hari.
+          </EmptyState>
+        ) : (
+          <ul className={tileListClass}>
+            {sorted.map((o) => {
+              const days = daysSince(o.ready_at, now);
+              return (
+                <li
+                  key={o.id}
+                  className={`${tileClass} grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center`}
+                >
+                  <div className="flex min-w-0 gap-4">
+                    <div className="flex w-14 shrink-0 flex-col items-center justify-center rounded-lg bg-warn-50 py-2 text-warn-700 ring-1 ring-inset ring-warn-600/15">
+                      <span className="tabular text-xl font-semibold leading-none">{days}</span>
+                      <span className="mt-1 text-[11px] font-medium">hari</span>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-ink">{o.customer.name}</p>
+                        {o.is_express && <ExpressBadge />}
+                      </div>
+                      <p className="mt-0.5 text-[13px] text-muted">
+                        <span className="font-mono font-medium tracking-wider text-ink-2">
+                          {o.tracking_code}
+                        </span>{" "}
+                        · <span className="tabular">+{o.customer.phone_wa}</span> ·{" "}
+                        <span className="tabular">{formatRupiah(o.price_total)}</span>
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-[13px] text-ink-2">{summarizeItems(o.items)}</p>
+                      <p className="mt-1 text-xs text-muted">Siap sejak {formatDateTime(o.ready_at)}</p>
+                    </div>
+                  </div>
+                  <ButtonLink
+                    variant="whatsapp"
+                    href={`https://wa.me/${o.customer.phone_wa}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full sm:w-auto"
+                  >
+                    <IconChat size={18} />
+                    Hubungi via WA
+                  </ButtonLink>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </Card>
     </AppShell>
