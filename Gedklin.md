@@ -79,33 +79,35 @@ infra/
 
 | Role | Akses |
 |---|---|
-| `owner` | Dasbor, kelola katalog dan harga, akun kasir dan admin, data operasional harian |
+| `owner` | Dasbor, laporan + unduh CSV, kelola katalog dan harga, akun kasir dan admin, data operasional harian, log aktivitas, batalkan catatan pembayaran yang salah |
 | `admin` | Daftar pesanan yang perlu ditindaklanjuti (belum diambil > 3 hari) |
-| `cashier` | Buat pesanan, lihat harga dan ETA, kirim nota digital, update status termasuk menandai `READY` |
+| `cashier` | Buat pesanan, lihat harga dan ETA, kirim nota digital, update status termasuk menandai `READY`, catat pembayaran, koreksi/batalkan pesanan sebelum siap, kelola data pelanggan |
 | Pelanggan | Tanpa login. Akses portal tracking lewat `tracking_code` |
 
 Tidak ada role `staff`. Petugas cuci/setrika tidak memakai sistem, semua perubahan status dilakukan oleh kasir.
 
 ## Katalog layanan dan harga
 
-Sumber kebenaran: `apps/api/seed/price_catalog.json`. Di-seed ke tabel `service_catalog`, dan pemilik bisa mengubah harga dari dasbor. **Jangan hardcode harga di kode.**
+Price list awal: `apps/api/seed/price_catalog.json`. Di-seed ke tabel `service_catalog` saat katalog masih kosong. Setelah itu pemilik mengelola layanan dari dasbor (tambah, ubah, nonaktifkan, hapus bila belum pernah dipesan). **Jangan hardcode harga di kode.**
 
 Kelompok layanan:
 
 | Kelompok | Contoh | Satuan harga |
 |---|---|---|
-| Kiloan | Cuci (C), Cuci+Kering (CK), Cuci+Kering+Lipat (CKL), Cuci+Kering+Setrika (CKS) | Per load 7 kg + tambahan per kg (maks 1 kg per load) |
+| Kiloan | Cuci (C), Cuci+Kering (CK), Cuci+Kering+Lipat (CKL), Cuci+Kering+Setrika (CKS) | Harga 7 kg pertama + tambahan per kg untuk sisa beratnya |
 | Setrika saja | Setrika per kg | Per kg, minimal 5 kg |
 | Khusus | Bed cover, gordyn, jaket, selimut, sprei | Per pcs, per kg, atau per load, dengan aturan min/maks |
-| Satuan | Boneka, celana, gamis, gaun, kaos, kemeja, khimar | Per pcs |
+| Satuan | Boneka, celana, gamis, gaun, kaos, kemeja, khimar | Per pcs, dicuci dan disetrika **manual tanpa mesin** |
+| Dry clean | Songket, kain tenun, kebaya payet | Per pcs, harga belum diketahui |
 
-Setiap item katalog punya `process` (C, CK, CKL, CKS, S, SATUAN) yang dipakai untuk fitur ML.
+Setiap item katalog punya `process`: C, CK, CKL, CKS, S (setrika saja), SATUAN (cuci-setrika manual), DRY_CLEAN. Process dipakai untuk fitur ML.
 
-**Express:** tidak ada di price list, tetapi tersedia menurut mitra. Harga Express = **harga Reguler × 2**, berlaku untuk harga dasar **dan** tambahan per kg.
+**Express:** tidak ada di price list, tetapi tersedia menurut mitra, dan **hanya untuk item CKL dan CKS**.
+- Harga Express = harga Reguler × 2, berlaku untuk harga 7 kg pertama **dan** tambahan per kg.
 - Contoh CKS 8 kg: Reguler = 45.000 + 10.000 = 55.000. Express = 90.000 + 20.000 = 110.000.
-- Simpan sebagai pengaturan `express_multiplier` (default 2) yang bisa diubah pemilik, jangan hardcode.
-- Hitung di `pricing.py`: `subtotal_express = subtotal_reguler * express_multiplier`.
-- Express berlaku per pesanan, jadi semua item dalam pesanan Express ikut dikali 2 (menunggu konfirmasi untuk item khusus dan satuan).
+- Simpan sebagai pengaturan `express_multiplier` (default 2) dan flag `express_eligible` per item katalog. Jangan hardcode.
+- Di UI kasir, pilihan Express hanya aktif jika pesanan berisi item CKL atau CKS. Validasi yang sama juga wajib di backend.
+- Jika pesanan Express berisi item lain (misalnya bed cover), hanya item CKL/CKS yang dikali 2. Item lain tetap harga Reguler.
 
 **Janji waktu standar mitra** (dipakai sebagai `promised_ready_at` dan sebagai baseline ML):
 
@@ -113,16 +115,21 @@ Setiap item katalog punya `process` (C, CK, CKL, CKS, S, SATUAN) yang dipakai un
 |---|---|
 | Reguler CKL | 2 hari |
 | Reguler CKS | 3–4 hari (pakai 4 hari sebagai janji, 3 hari sebagai batas bawah) |
-| Express (semua layanan) | 1 hari |
-| Reguler C, CK, setrika saja, item khusus, satuan | Belum diketahui, simpan di tabel pengaturan `service_promise` agar mudah diisi |
+| Express CKL dan CKS | 1 hari |
+| Reguler C, CK, setrika saja, item khusus, satuan, dry clean | Belum diketahui, simpan di tabel pengaturan `service_promise` agar mudah diisi |
 
 Satu "hari" dihitung sebagai hari kalender. Jika janji jatuh setelah jam tutup, geser ke jam buka hari berikutnya.
 
-**Aturan hitung load kiloan (default, menunggu konfirmasi mitra):**
-- `loads = max(1, ceil((weight_kg - 1) / 7))`
-- `extra_kg = max(0, weight_kg - 7 * loads)`, dibulatkan ke atas per kg
-- `subtotal = loads * price + extra_kg * extra_price_per_kg`
-- Contoh: 5 kg = 1 load. 8 kg = 1 load + 1 kg. 9 kg = 2 load.
+**Aturan harga kiloan (sudah dikonfirmasi mitra):**
+- `extra_kg = max(0, ceil(weight_kg - 7))` (pembulatan ke atas per kg masih asumsi)
+- `subtotal = price + extra_kg * extra_price_per_kg`
+- Berat di atas 8 kg **tidak** dihitung load kedua. Semua kelebihan di atas 7 kg kena tarif tambahan per kg.
+- Tarif tambahan per kg: C 3.000, CK 5.000, CKL 7.000, CKS 10.000.
+- Contoh CKS Reguler: 5 kg = 45.000. 8 kg = 55.000. 12 kg = 45.000 + 5 × 10.000 = 95.000.
+
+**Load operasional (untuk fitur ML, terpisah dari harga):**
+- Satu mesin menampung maksimal 8 kg, jadi `machine_loads = ceil(weight_kg / 8)`.
+- Contoh: 8 kg = 1 load mesin, 12 kg = 2 load mesin, walaupun harganya dihitung per kg.
 
 Semua logika harga ada di satu modul `services/pricing.py` dengan unit test untuk setiap aturan min/maks di katalog.
 
@@ -144,9 +151,14 @@ Semua logika harga ada di satu modul `services/pricing.py` dengan unit test untu
 
 ```
 RECEIVED → PROCESSING → READY → PICKED_UP
+    └──────────┴──→ CANCELLED (dengan alasan)
 ```
 
 - Status sengaja disederhanakan karena hanya kasir yang memperbarui status.
+- `CANCELLED` hanya dari `RECEIVED`/`PROCESSING` dan hanya bila belum lunas. Pesanan batal keluar dari antrean, tidak dihitung pendapatan, dan tidak masuk fitur antrean ML setelah `cancelled_at`.
+- Isi pesanan bisa dikoreksi (salah input berat/layanan) dengan syarat yang sama; harga dan janji dihitung ulang.
+- Pembayaran dicatat di konter (tunai/QRIS/transfer), bukan pembayaran online. Bisa lunas saat pesanan dibuat atau saat diambil; `PICKED_UP` wajib lunas.
+- Lokasi rak (opsional) diisi saat `READY` supaya cucian cepat ditemukan.
 - `ready_at` diisi saat status berubah ke `READY` (selesai dikemas). Ini **target ML**, bukan `picked_up_at`.
 - Setiap perubahan status dicatat di `order_status_history`.
 
@@ -160,13 +172,17 @@ RECEIVED → PROCESSING → READY → PICKED_UP
   - received_at, ready_at, picked_up_at, status, price_total, is_express
   - promised_ready_at (dari janji standar), predicted_ready_at (dari model), last_notified_eta, delay_notif_count (0–2)
   - ready_notif_sent (bool), needs_followup (bool)
-- `order_items` (order_id, catalog_code, process, weight_kg, qty_pcs, loads, extra_kg, subtotal)
+  - notes (catatan kondisi/permintaan), rack_location
+  - payment_method (CASH/QRIS/TRANSFER), paid_at (NULL = belum lunas)
+  - cancelled_at, cancel_reason
+- `order_items` (order_id, catalog_code, process, weight_kg, qty_pcs, machine_loads, extra_kg, is_express, subtotal)
   - Satu pesanan bisa berisi beberapa item, misalnya 6 kg CKS + 1 bed cover + 2 kemeja.
 - `order_status_history` (order_id, from_status, to_status, changed_at, changed_by)
 - `daily_operations` (date, is_open, staff_on_duty (default 2), washers_available (default 4), dryers_available (default 3), open_time (default 08:00), close_time (default 17:00), machine_issue_note)
 - `notifications` (order_id, type: READY/DELAY, sent_at, status, provider_msg_id)
   - Unique constraint untuk (order_id, type='READY') supaya notifikasi siap diambil tidak dobel.
 - `prediction_logs` (order_id, features_json, predicted_hours, model_version, created_at)
+- `activity_logs` (user_id, action, entity_type, entity_id, summary, changes, created_at): siapa melakukan apa dan kapan, termasuk sebelum → sesudah untuk perubahan layanan, harga, akun, pengaturan, dan operasional. Password tidak pernah dicatat. Hanya pemilik yang bisa melihat (`/dasbor/log`).
 
 Simpan waktu dalam UTC di database, tampilkan dalam **Asia/Jakarta**.
 
@@ -177,14 +193,14 @@ Simpan waktu dalam UTC di database, tampilkan dalam **Asia/Jakarta**.
 
    | Kelompok | Fitur |
    |---|---|
-   | Isi pesanan | `is_express`, `total_loads`, `total_weight_kg`, `max_process_level` (C=1, CK=2, CKL=3, CKS=4), `has_ironing`, `ironing_kg`, `n_special_items`, `n_satuan_items` |
+   | Isi pesanan | `is_express`, `total_machine_loads`, `total_weight_kg`, `max_process_level` (C=1, CK=2, CKL=3, CKS=4), `has_ironing`, `ironing_kg`, `n_special_items`, `n_satuan_items`, `n_dry_clean_items` |
    | Waktu | `hour_of_day`, `day_of_week`, `minutes_to_close` |
-   | Antrean | `active_orders_count`, `active_express_count`, `active_loads_total`, `active_ironing_kg` (pesanan yang sudah masuk tapi belum `READY` pada saat itu) |
+   | Antrean | `active_orders_count`, `active_express_count`, `active_loads_total`, `active_ironing_kg`, `active_satuan_items` (pesanan yang sudah masuk tapi belum `READY` pada saat itu) |
    | Janji | `promised_hours` (janji standar dalam jam, dari tabel `service_promise`) |
    | Operasional | `staff_on_duty`, `washers_available`, `dryers_available` dari `daily_operations` |
    | Rasio beban | `loads_per_washer` = `active_loads_total / washers_available`, `dry_loads_per_dryer` = load aktif yang butuh pengering / `dryers_available` |
 
-   `has_ironing` bernilai true jika ada item dengan process CKS atau S. Setrika diperlakukan terpisah karena dikerjakan manual oleh petugas dan kemungkinan besar jadi penyebab antrean.
+   `has_ironing` bernilai true jika ada item dengan process CKS, S, atau SATUAN. Setrika dan item satuan dikerjakan manual oleh 2 petugas yang sama, tanpa mesin, sehingga kemungkinan besar jadi penyebab antrean. Item satuan dan dry clean tidak menambah `machine_loads`.
 3. ETA dihitung ulang saat ada pesanan baru atau perubahan status, untuk pesanan yang belum `READY`.
 4. Service `eta` memuat model dari `MODEL_PATH`. Jika model tidak ada atau gagal, **fallback ke `promised_ready_at`**. Aplikasi tidak boleh crash karena model.
 
@@ -203,7 +219,7 @@ Simpan waktu dalam UTC di database, tampilkan dalam **Asia/Jakarta**.
 
 **Data**
 - Sumber: pencatatan pesanan di mitra (±14 Okt – 7 Nov 2026).
-- Form pencatatan mentah (satu baris per pesanan): `order_id, received_at, ready_at, layanan_utama, express, berat_kg, pcs_khusus, pcs_satuan, ada_setrika`, plus tabel harian `date, staff_on_duty, washers_available, dryers_available, open_time, close_time`.
+- Form pencatatan mentah (satu baris per pesanan): `order_id, received_at, ready_at, layanan_utama, express, berat_kg, pcs_khusus, pcs_satuan, pcs_dry_clean, ada_setrika`, plus tabel harian `date, staff_on_duty, washers_available, dryers_available, open_time, close_time`.
 - `build_dataset.py` mengubah data mentah menjadi fitur di atas. Fitur antrean dihitung dari data itu sendiri, tidak dicatat manual.
 - Buang 2–3 hari pertama jika stok cucian awal tidak tercatat.
 
@@ -263,10 +279,9 @@ Simpan waktu dalam UTC di database, tampilkan dalam **Asia/Jakarta**.
 
 ## Hal yang masih terbuka (konfirmasi ke mitra)
 
-- Apakah aturan Express × 2 juga berlaku untuk item khusus (bed cover, selimut, sprei, dll.) dan item satuan.
-- Janji waktu Reguler untuk Cuci, Cuci+Kering, setrika saja, item khusus, dan item satuan.
-- Aturan load: apakah berat di atas 8 kg dihitung 2 load, dan apakah tambahan dibulatkan per kg.
-- Item satuan diproses bagaimana (cuci, setrika, dry clean).
+- Harga dry clean untuk songket, kain tenun, dan kebaya payet, serta apakah dikerjakan sendiri atau dititipkan ke pihak lain.
+- Janji waktu Reguler untuk Cuci, Cuci+Kering, setrika saja, item khusus, item satuan, dan dry clean.
+- Kelebihan berat dibulatkan ke atas per kg atau dihitung per ons (misalnya 7,3 kg).
 - Provider WhatsApp gateway.
 - Nilai final `DELAY_THRESHOLD_HOURS`.
 - Hari libur: apakah buka setiap hari termasuk Minggu dan tanggal merah.

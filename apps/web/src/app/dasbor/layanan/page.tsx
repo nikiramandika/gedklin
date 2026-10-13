@@ -3,30 +3,54 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import { IconBolt, IconClock, IconPlus, IconTag, IconTrash } from "@/components/icons";
+import { ConfirmDialog, Drawer, useToast } from "@/components/overlay";
 import {
   Button,
   Card,
+  EmptyState,
   ErrorText,
   Field,
+  IconButton,
   Loading,
   PageHeader,
-  SavedNote,
+  Segmented,
+  Select,
+  Switch,
   inputClass,
   tileClass,
   tileListClass,
 } from "@/components/ui";
-import { IconBolt, IconClock } from "@/components/icons";
 import { api } from "@/lib/api";
-import { GROUP_LABEL, PROCESS_LABEL, priceRule } from "@/lib/format";
-import type { AppSettings, CatalogGroup, CatalogItem, Role, ServicePromise } from "@/lib/types";
+import { GROUP_RULES, PRICE_LABEL, UNIT_LABEL, codeFromName } from "@/lib/catalog";
+import { GROUP_LABEL, PROCESS_LABEL, formatRupiah, priceRule } from "@/lib/format";
+import type {
+  AppSettings,
+  CatalogGroup,
+  CatalogItem,
+  CatalogUnit,
+  Process,
+  Role,
+  ServicePromise,
+} from "@/lib/types";
 
 const ROLES: Role[] = ["owner"];
-const GROUPS: CatalogGroup[] = ["KILOAN", "SETRIKA", "KHUSUS", "SATUAN"];
+const GROUPS: CatalogGroup[] = ["KILOAN", "SETRIKA", "KHUSUS", "SATUAN", "DRY_CLEAN"];
+
+/** Drawer tertutup = null; terbuka untuk layanan baru = {}; untuk mengubah = { item }. */
+type Editor = { item?: CatalogItem } | null;
+/** Aksi yang menunggu konfirmasi: hapus, atau aktif/nonaktifkan. */
+type Pending = { action: "delete" | "toggle"; item: CatalogItem } | null;
 
 export default function LayananPage() {
+  const toast = useToast();
   const [catalog, setCatalog] = useState<CatalogItem[] | null>(null);
   const [group, setGroup] = useState<CatalogGroup>("KILOAN");
   const [error, setError] = useState<string | null>(null);
+  const [editor, setEditor] = useState<Editor>(null);
+  const [pending, setPending] = useState<Pending>(null);
+  const [pendingBusy, setPendingBusy] = useState(false);
+  const [pendingError, setPendingError] = useState<string | null>(null);
 
   const load = useCallback(
     () =>
@@ -40,13 +64,47 @@ export default function LayananPage() {
     load();
   }, [load]);
 
+  function ask(action: "delete" | "toggle", item: CatalogItem) {
+    setPendingError(null);
+    setPending({ action, item });
+  }
+
+  async function confirmPending() {
+    if (!pending) return;
+    const { action, item } = pending;
+    const path = `/catalog/${encodeURIComponent(item.code)}`;
+    setPendingBusy(true);
+    setPendingError(null);
+    try {
+      if (action === "delete") {
+        await api(path, { method: "DELETE" });
+        toast(`${item.name} dihapus`);
+      } else {
+        await api(path, { method: "PUT", body: { is_active: !item.is_active } });
+        toast(`${item.name} ${item.is_active ? "dinonaktifkan" : "diaktifkan"}`);
+      }
+      setPending(null);
+      await load();
+    } catch (err) {
+      setPendingError(err instanceof Error ? err.message : "Gagal menyimpan");
+    } finally {
+      setPendingBusy(false);
+    }
+  }
+
   const items = catalog?.filter((c) => c.group === group) ?? null;
 
   return (
     <AppShell roles={ROLES}>
       <PageHeader
         title="Layanan & Harga"
-        description="Harga awal diambil dari price list mitra. Perubahan langsung dipakai kasir untuk pesanan berikutnya."
+        description="Kelola layanan sesuai price list mitra. Perubahan langsung dipakai kasir untuk pesanan berikutnya."
+        actions={
+          <Button onClick={() => setEditor({})}>
+            <IconPlus size={18} />
+            Tambah layanan
+          </Button>
+        }
       />
       <div className="grid grid-cols-1 items-start gap-6 2xl:grid-cols-[minmax(0,1fr)_400px]">
         <Card flush>
@@ -75,29 +133,35 @@ export default function LayananPage() {
             })}
           </div>
           {error && (
-            <div className="p-4">
+            <div className="px-4 pb-3 sm:px-5">
               <ErrorText message={error} />
             </div>
           )}
           {!items ? (
             <Loading rows={5} />
+          ) : items.length === 0 ? (
+            <EmptyState
+              icon={IconTag}
+              title={`Belum ada layanan ${GROUP_LABEL[group].toLowerCase()}`}
+              action={
+                <Button variant="secondary" onClick={() => setEditor({})}>
+                  <IconPlus size={18} />
+                  Tambah layanan
+                </Button>
+              }
+            />
           ) : (
-            <>
-            <div
-              aria-hidden="true"
-              className="hidden px-7 pb-1 sm:px-8 text-xs font-medium text-muted md:grid md:grid-cols-[minmax(0,1fr)_140px_140px_190px] md:gap-4"
-            >
-              <span>Layanan</span>
-              <span>Harga</span>
-              <span>Tambahan</span>
-              <span />
-            </div>
             <ul className={tileListClass}>
               {items.map((c) => (
-                <CatalogRow key={c.code} item={c} onSaved={load} />
+                <CatalogRow
+                  key={c.code}
+                  item={c}
+                  onEdit={() => setEditor({ item: c })}
+                  onToggle={() => ask("toggle", c)}
+                  onDelete={() => ask("delete", c)}
+                />
               ))}
             </ul>
-            </>
           )}
         </Card>
         <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2 2xl:grid-cols-1">
@@ -105,20 +169,302 @@ export default function LayananPage() {
           <PromiseCard />
         </div>
       </div>
+
+      <ServiceDrawer
+        editor={editor}
+        defaultGroup={group}
+        onClose={() => setEditor(null)}
+        onSaved={(saved, created) => {
+          setEditor(null);
+          setGroup(saved.group);
+          toast(created ? `${saved.name} ditambahkan` : "Perubahan disimpan");
+          load();
+        }}
+      />
+
+      <ConfirmDialog
+        open={pending !== null}
+        onClose={() => setPending(null)}
+        onConfirm={confirmPending}
+        busy={pendingBusy}
+        error={pendingError}
+        {...confirmCopy(pending)}
+      />
     </AppShell>
   );
 }
 
-function MoneyInput({
-  value,
-  onChange,
-  label,
+function confirmCopy(pending: Pending) {
+  const name = pending?.item.name ?? "layanan";
+  if (pending?.action === "delete")
+    return {
+      tone: "danger" as const,
+      title: `Hapus ${name}?`,
+      confirmLabel: "Hapus",
+      children:
+        "Layanan hilang dari daftar kasir dan tidak bisa dikembalikan. Layanan yang sudah pernah dipesan tidak bisa dihapus, cukup dinonaktifkan.",
+    };
+  if (pending?.item.is_active)
+    return {
+      tone: "warn" as const,
+      title: `Nonaktifkan ${name}?`,
+      confirmLabel: "Nonaktifkan",
+      children:
+        "Kasir tidak bisa memilih layanan ini untuk pesanan baru. Pesanan dan nota yang sudah ada tidak berubah, dan layanan bisa diaktifkan lagi kapan saja.",
+    };
+  return {
+    tone: "brand" as const,
+    title: `Aktifkan ${name}?`,
+    confirmLabel: "Aktifkan",
+    children: "Layanan akan langsung muncul di daftar kasir dengan harga yang tercantum.",
+  };
+}
+
+/* ---------- Baris katalog ---------- */
+
+function CatalogRow({
+  item,
+  onEdit,
+  onToggle,
+  onDelete,
 }: {
-  value: string;
-  onChange: (v: string) => void;
-  label: string;
+  item: CatalogItem;
+  onEdit: () => void;
+  onToggle: () => void;
+  onDelete: () => void;
 }) {
+  const noPrice = item.price === null;
+
   return (
+    <li className={`${tileClass} flex flex-wrap items-center gap-x-4 gap-y-3 p-4`}>
+      <button type="button" onClick={onEdit} className="min-w-0 flex-1 rounded-lg text-left">
+        <span className="flex flex-wrap items-center gap-2">
+          <span className={`font-medium ${item.is_active ? "text-ink" : "text-faint"}`}>{item.name}</span>
+          {item.express_eligible && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-warn-50 px-2 py-0.5 text-xs font-medium text-warn-700">
+              <IconBolt size={12} />
+              Bisa Express
+            </span>
+          )}
+          {!item.is_active && (
+            <span className="rounded-full bg-canvas px-2 py-0.5 text-xs font-medium text-muted">
+              {noPrice ? "Belum ada harga" : "Nonaktif"}
+            </span>
+          )}
+        </span>
+        <span className="mt-0.5 block text-[13px] text-muted">
+          <span className="font-mono">{item.code}</span> · {PROCESS_LABEL[item.process]} · {priceRule(item)}
+        </span>
+      </button>
+      <p className="tabular text-right text-[15px] font-semibold text-ink">
+        {noPrice ? "–" : formatRupiah(item.price ?? 0)}
+      </p>
+      <div className="flex w-full items-center justify-end gap-1 sm:w-auto">
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={!item.is_active && noPrice}
+          title={!item.is_active && noPrice ? "Isi harga dulu lewat Ubah" : undefined}
+          onClick={onToggle}
+        >
+          {item.is_active ? "Nonaktifkan" : "Aktifkan"}
+        </Button>
+        <Button variant="secondary" size="sm" onClick={onEdit}>
+          Ubah
+        </Button>
+        <IconButton
+          label={`Hapus ${item.name}`}
+          icon={IconTrash}
+          size={18}
+          className="hover:bg-danger-50 hover:text-danger-600"
+          onClick={onDelete}
+        />
+      </div>
+    </li>
+  );
+}
+
+/* ---------- Drawer tambah / ubah ---------- */
+
+type LoadMode = "pcs" | "kg";
+
+interface FormState {
+  code: string;
+  name: string;
+  group: CatalogGroup;
+  process: Process;
+  unit: CatalogUnit;
+  price: string;
+  extra: string;
+  baseKg: string;
+  minQty: string;
+  loadMode: LoadMode;
+  perLoad: string;
+  maxExtra: string;
+  express: boolean;
+  active: boolean;
+}
+
+const FORM_ID = "service-form";
+const str = (v: number | null) => (v === null ? "" : String(v));
+
+function toNumber(v: string): number | null {
+  const n = Number(v.replace(",", "."));
+  return v.trim() === "" || !Number.isFinite(n) ? null : n;
+}
+
+function initialForm(item: CatalogItem | undefined, group: CatalogGroup): FormState {
+  if (item) {
+    return {
+      code: item.code,
+      name: item.name,
+      group: item.group,
+      process: item.process,
+      unit: item.unit,
+      price: str(item.price),
+      extra: str(item.extra_price),
+      baseKg: str(item.base_kg),
+      minQty: str(item.min_qty),
+      loadMode: item.kg_per_load ? "kg" : "pcs",
+      perLoad: str(item.kg_per_load ?? item.pcs_per_load),
+      maxExtra: str(item.max_extra),
+      express: item.express_eligible,
+      active: item.is_active,
+    };
+  }
+  const rules = GROUP_RULES[group];
+  return {
+    code: "",
+    name: "",
+    group,
+    process: rules.processes[0],
+    unit: rules.units[0],
+    price: "",
+    extra: "",
+    baseKg: "7",
+    minQty: "",
+    loadMode: "pcs",
+    perLoad: "",
+    maxExtra: "",
+    express: false,
+    active: true,
+  };
+}
+
+function ServiceDrawer({
+  editor,
+  defaultGroup,
+  onClose,
+  onSaved,
+}: {
+  editor: Editor;
+  defaultGroup: CatalogGroup;
+  onClose: () => void;
+  onSaved: (item: CatalogItem, created: boolean) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const item = editor?.item;
+  // Kunci ulang form setiap kali drawer dibuka untuk item yang berbeda.
+  const formKey = editor ? (item?.code ?? `new-${defaultGroup}`) : "closed";
+
+  return (
+    <Drawer
+      open={editor !== null}
+      onClose={onClose}
+      title={item ? `Ubah ${item.name}` : "Tambah layanan"}
+      description={
+        item
+          ? "Perubahan harga berlaku untuk pesanan berikutnya. Nota lama tidak berubah."
+          : "Isi sesuai price list mitra. Harga boleh dikosongkan bila belum diketahui."
+      }
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
+            Batal
+          </Button>
+          <Button type="submit" form={FORM_ID} loading={busy}>
+            {item ? "Simpan perubahan" : "Tambah layanan"}
+          </Button>
+        </>
+      }
+    >
+      {editor && (
+        <ServiceForm
+          key={formKey}
+          item={item}
+          defaultGroup={defaultGroup}
+          onBusy={setBusy}
+          onSaved={onSaved}
+        />
+      )}
+    </Drawer>
+  );
+}
+
+function ServiceForm({
+  item,
+  defaultGroup,
+  onBusy,
+  onSaved,
+}: {
+  item?: CatalogItem;
+  defaultGroup: CatalogGroup;
+  onBusy: (busy: boolean) => void;
+  onSaved: (item: CatalogItem, created: boolean) => void;
+}) {
+  const editing = item !== undefined;
+  const [form, setForm] = useState<FormState>(() => initialForm(item, defaultGroup));
+  const [codeTouched, setCodeTouched] = useState(editing);
+  const [error, setError] = useState<string | null>(null);
+  const rules = GROUP_RULES[form.group];
+  const noPrice = form.price.trim() === "";
+
+  const set = (patch: Partial<FormState>) => setForm((f) => ({ ...f, ...patch }));
+
+  function changeGroup(group: CatalogGroup) {
+    const r = GROUP_RULES[group];
+    set({
+      group,
+      process: r.processes.includes(form.process) ? form.process : r.processes[0],
+      unit: r.units.includes(form.unit) ? form.unit : r.units[0],
+      express: group === "KILOAN" && form.express,
+    });
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    onBusy(true);
+    const perLoad = form.unit === "LOAD" ? toNumber(form.perLoad) : null;
+    const body = {
+      name: form.name.trim(),
+      group: form.group,
+      process: form.process,
+      unit: form.unit,
+      price: toNumber(form.price),
+      extra_price: ["KILOAN_7KG", "LOAD"].includes(form.unit) ? toNumber(form.extra) : null,
+      base_kg: form.unit === "KILOAN_7KG" ? toNumber(form.baseKg) : null,
+      min_qty: ["KG", "LOAD"].includes(form.unit) ? toNumber(form.minQty) : null,
+      kg_per_load: form.loadMode === "kg" ? perLoad : null,
+      pcs_per_load: form.loadMode === "pcs" ? perLoad : null,
+      max_extra: form.unit === "LOAD" ? toNumber(form.maxExtra) : null,
+      express_eligible: form.unit === "KILOAN_7KG" && form.express,
+      // Layanan tanpa harga tidak bisa dipesan, jadi otomatis nonaktif.
+      is_active: form.active && !noPrice,
+    };
+    try {
+      const saved = editing
+        ? await api<CatalogItem>(`/catalog/${encodeURIComponent(form.code)}`, { method: "PUT", body })
+        : await api<CatalogItem>("/catalog", { method: "POST", body: { ...body, code: form.code } });
+      onSaved(saved, !editing);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal menyimpan");
+    } finally {
+      onBusy(false);
+    }
+  }
+
+  const money = (value: string, onChange: (v: string) => void, label: string) => (
     <div className="relative">
       <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted">Rp</span>
       <input
@@ -130,107 +476,170 @@ function MoneyInput({
       />
     </div>
   );
-}
 
-function CatalogRow({ item, onSaved }: { item: CatalogItem; onSaved: () => void }) {
-  const [form, setForm] = useState({
-    price: String(item.price),
-    extra: item.extra_price === null ? "" : String(item.extra_price),
-    active: item.is_active,
-  });
-  const [status, setStatus] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const dirty =
-    form.price !== String(item.price) ||
-    form.extra !== (item.extra_price === null ? "" : String(item.extra_price)) ||
-    form.active !== item.is_active;
-
-  async function save() {
-    setStatus(null);
-    setBusy(true);
-    try {
-      await api(`/catalog/${encodeURIComponent(item.code)}`, {
-        method: "PUT",
-        body: {
-          price: Number(form.price),
-          ...(item.extra_price !== null && { extra_price: Number(form.extra) }),
-          is_active: form.active,
-        },
-      });
-      setSaved(true);
-      onSaved();
-    } catch (err) {
-      setStatus(err instanceof Error ? err.message : "Gagal menyimpan");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const update = (patch: Partial<typeof form>) => {
-    setSaved(false);
-    setForm((f) => ({ ...f, ...patch }));
-  };
+  const decimal = (value: string, onChange: (v: string) => void, required = false) => (
+    <input
+      className={`${inputClass} tabular`}
+      inputMode="decimal"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      required={required}
+    />
+  );
 
   return (
-    <li className={`${tileClass} grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_140px_140px_190px] md:items-center md:gap-4`}>
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className={`font-medium ${form.active ? "text-ink" : "text-faint line-through"}`}>{item.name}</p>
-          {!item.is_active && (
-            <span className="rounded-full bg-canvas px-2 py-0.5 text-xs font-medium text-muted ring-1 ring-line">
-              Nonaktif
-            </span>
+    <form id={FORM_ID} onSubmit={submit} className="space-y-6">
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold text-ink">Identitas</h3>
+        <Field label="Nama layanan">
+          <input
+            className={inputClass}
+            value={form.name}
+            autoFocus={!editing}
+            required
+            maxLength={100}
+            onChange={(e) =>
+              set({ name: e.target.value, ...(!codeTouched && { code: codeFromName(e.target.value) }) })
+            }
+          />
+        </Field>
+        <Field
+          label="Kode"
+          hint={editing ? "Kode tidak bisa diubah karena dipakai di nota lama." : "Huruf besar, angka, dan garis bawah."}
+        >
+          <input
+            className={`${inputClass} font-mono uppercase`}
+            value={form.code}
+            disabled={editing}
+            required
+            maxLength={40}
+            pattern="[A-Z0-9_]+"
+            onChange={(e) => {
+              setCodeTouched(true);
+              set({ code: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "") });
+            }}
+          />
+        </Field>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Kelompok">
+            <Select value={form.group} onChange={(e) => changeGroup(e.target.value as CatalogGroup)}>
+              {GROUPS.map((g) => (
+                <option key={g} value={g}>
+                  {GROUP_LABEL[g]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Proses">
+            <Select
+              value={form.process}
+              disabled={rules.processes.length === 1}
+              onChange={(e) => set({ process: e.target.value as Process })}
+            >
+              {rules.processes.map((p) => (
+                <option key={p} value={p}>
+                  {PROCESS_LABEL[p]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+      </section>
+
+      <section className="space-y-3 rounded-2xl bg-subtle p-4">
+        <h3 className="text-sm font-semibold text-ink">Harga</h3>
+        <Field label="Satuan harga">
+          <Select
+            value={form.unit}
+            disabled={rules.units.length === 1}
+            onChange={(e) => set({ unit: e.target.value as CatalogUnit })}
+          >
+            {rules.units.map((u) => (
+              <option key={u} value={u}>
+                {UNIT_LABEL[u]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label={PRICE_LABEL[form.unit]} hint="Kosongkan bila belum diketahui.">
+            {money(form.price, (price) => set({ price }), PRICE_LABEL[form.unit])}
+          </Field>
+          {form.unit === "KILOAN_7KG" && (
+            <>
+              <Field label="Berat dasar (kg)" hint="Sudah termasuk harga dasar.">
+                {decimal(form.baseKg, (baseKg) => set({ baseKg }), true)}
+              </Field>
+              <Field label="Tambahan per kg" hint="Setiap kg di atas berat dasar." className="sm:col-span-2">
+                {money(form.extra, (extra) => set({ extra }), "Tambahan per kg")}
+              </Field>
+            </>
+          )}
+          {(form.unit === "KG" || form.unit === "LOAD") && (
+            <Field
+              label={form.unit === "KG" ? "Minimal (kg)" : "Minimal (pcs atau kg)"}
+              hint="Kosongkan bila tanpa minimal."
+            >
+              {decimal(form.minQty, (minQty) => set({ minQty }))}
+            </Field>
           )}
         </div>
-        <p className="mt-0.5 text-[13px] text-muted">
-          {priceRule(item)}
-        </p>
-        {status && <p className="mt-1 text-[13px] text-danger-600">{status}</p>}
-      </div>
-      <div className="grid grid-cols-2 gap-3 md:contents">
-        <Field label="Harga" className="md:[&>span:first-child]:sr-only">
-          <MoneyInput label={`Harga ${item.name}`} value={form.price} onChange={(v) => update({ price: v })} />
-        </Field>
-        {item.extra_price !== null ? (
-          <Field label="Tambahan" className="md:[&>span:first-child]:sr-only">
-            <MoneyInput
-              label={`Harga tambahan ${item.name}`}
-              value={form.extra}
-              onChange={(v) => update({ extra: v })}
-            />
-          </Field>
-        ) : (
-          <span className="hidden text-center text-sm text-faint md:block">–</span>
+        {form.unit === "LOAD" && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Kapasitas satu load" className="sm:col-span-2">
+              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2">
+                <Segmented<LoadMode>
+                  label="Satuan kapasitas"
+                  value={form.loadMode}
+                  onChange={(loadMode) => set({ loadMode })}
+                  options={[
+                    { value: "pcs", label: "Per pcs" },
+                    { value: "kg", label: "Per kg" },
+                  ]}
+                />
+                {decimal(form.perLoad, (perLoad) => set({ perLoad }), true)}
+              </div>
+            </Field>
+            <Field label="Tambahan per pcs">
+              {money(form.extra, (extra) => set({ extra }), "Tambahan per pcs")}
+            </Field>
+            <Field label="Maks tambahan per load (pcs)">
+              {decimal(form.maxExtra, (maxExtra) => set({ maxExtra }))}
+            </Field>
+          </div>
         )}
-      </div>
-      <div className="flex items-center justify-between gap-3 md:justify-end">
-        <label className="flex h-11 cursor-pointer items-center gap-2 text-sm text-ink-2">
-          <input
-            type="checkbox"
-            className="h-5 w-5 rounded accent-brand-600"
-            checked={form.active}
-            onChange={(e) => update({ active: e.target.checked })}
+      </section>
+
+      <section className="space-y-1">
+        <h3 className="mb-2 text-sm font-semibold text-ink">Ketersediaan</h3>
+        {form.unit === "KILOAN_7KG" && (
+          <Switch
+            label="Bisa Express"
+            description="Harga Express = harga Reguler × pengali Express. Menurut mitra hanya CKL dan CKS."
+            checked={form.express}
+            onChange={(express) => set({ express })}
           />
-          Aktif
-        </label>
-        {saved && !dirty ? (
-          <span className="w-24 text-right">
-            <SavedNote show />
-          </span>
-        ) : (
-          <Button variant={dirty ? "primary" : "secondary"} disabled={!dirty} loading={busy} onClick={save} className="w-24">
-            Simpan
-          </Button>
         )}
-      </div>
-    </li>
+        <Switch
+          label="Aktif"
+          description={noPrice ? "Isi harga dulu agar layanan bisa dipesan." : "Tampil di daftar layanan kasir."}
+          checked={form.active && !noPrice}
+          onChange={(active) => set({ active })}
+        />
+      </section>
+
+      <ErrorText message={error} />
+    </form>
   );
 }
 
+/* ---------- Pengaturan ---------- */
+
 function SettingsCard() {
-  const [form, setForm] = useState<{ multiplier: string; promise: string } | null>(null);
-  const [saved, setSaved] = useState(false);
+  const toast = useToast();
+  const [form, setForm] = useState<{ multiplier: string; capacity: string; promise: string } | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -239,6 +648,7 @@ function SettingsCard() {
       .then((s) =>
         setForm({
           multiplier: String(s.express_multiplier),
+          capacity: String(s.machine_capacity_kg),
           promise: String(s.default_promise_hours),
         }),
       )
@@ -247,16 +657,15 @@ function SettingsCard() {
 
   if (!form)
     return (
-      <Card title="Express & janji default">{error ? <ErrorText message={error} /> : <Loading rows={2} />}</Card>
+      <Card title="Express, mesin & janji default">{error ? <ErrorText message={error} /> : <Loading rows={2} />}</Card>
     );
 
   return (
-    <Card icon={IconBolt} tone="warn" title="Express & janji default">
+    <Card icon={IconBolt} tone="warn" title="Express, mesin & janji default">
       <form
         className="space-y-4"
         onSubmit={async (e) => {
           e.preventDefault();
-          setSaved(false);
           setError(null);
           setBusy(true);
           try {
@@ -264,10 +673,11 @@ function SettingsCard() {
               method: "PUT",
               body: {
                 express_multiplier: Number(form.multiplier.replace(",", ".")),
+                machine_capacity_kg: Number(form.capacity.replace(",", ".")),
                 default_promise_hours: Number(form.promise),
               },
             });
-            setSaved(true);
+            toast("Pengaturan disimpan");
           } catch (err) {
             setError(err instanceof Error ? err.message : "Gagal menyimpan");
           } finally {
@@ -275,19 +685,30 @@ function SettingsCard() {
           }
         }}
       >
-        <Field label="Pengali harga Express" hint="Harga Express = harga Reguler × pengali ini.">
+        <Field
+          label="Pengali harga Express"
+          hint="Hanya untuk layanan bertanda Bisa Express. Harga Express = harga Reguler × pengali ini."
+        >
           <div className="relative">
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted">×</span>
             <input
               className={`${inputClass} tabular pl-8`}
               inputMode="decimal"
               value={form.multiplier}
-              onChange={(e) => {
-                setSaved(false);
-                setForm({ ...form, multiplier: e.target.value });
-              }}
+              onChange={(e) => setForm({ ...form, multiplier: e.target.value })}
             />
           </div>
+        </Field>
+        <Field
+          label="Kapasitas mesin cuci (kg)"
+          hint="Dipakai menghitung jumlah load mesin untuk perkiraan waktu, bukan untuk harga."
+        >
+          <input
+            className={`${inputClass} tabular`}
+            inputMode="decimal"
+            value={form.capacity}
+            onChange={(e) => setForm({ ...form, capacity: e.target.value })}
+          />
         </Field>
         <Field label="Janji default (jam)" hint="Dipakai bila layanan belum punya janji waktu sendiri.">
           <input
@@ -295,19 +716,13 @@ function SettingsCard() {
             type="number"
             min={1}
             value={form.promise}
-            onChange={(e) => {
-              setSaved(false);
-              setForm({ ...form, promise: e.target.value });
-            }}
+            onChange={(e) => setForm({ ...form, promise: e.target.value })}
           />
         </Field>
         <ErrorText message={error} />
-        <div className="flex items-center gap-4">
-          <Button type="submit" loading={busy}>
-            Simpan
-          </Button>
-          <SavedNote show={saved} />
-        </div>
+        <Button type="submit" loading={busy}>
+          Simpan pengaturan
+        </Button>
       </form>
     </Card>
   );
@@ -318,9 +733,9 @@ function hoursValue(v: string): number | null {
 }
 
 function PromiseCard() {
+  const toast = useToast();
   const [rows, setRows] = useState<ServicePromise[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -330,7 +745,6 @@ function PromiseCard() {
   }, []);
 
   function update(i: number, patch: Partial<ServicePromise>) {
-    setSaved(false);
     setRows((rs) => rs && rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   }
 
@@ -351,7 +765,6 @@ function PromiseCard() {
           onSubmit={async (e) => {
             e.preventDefault();
             setError(null);
-            setSaved(false);
             setBusy(true);
             try {
               await Promise.all(
@@ -366,7 +779,7 @@ function PromiseCard() {
                   }),
                 ),
               );
-              setSaved(true);
+              toast("Janji waktu disimpan");
             } catch (err) {
               setError(err instanceof Error ? err.message : "Gagal menyimpan");
             } finally {
@@ -406,12 +819,9 @@ function PromiseCard() {
           </ul>
           <div className="mt-4 space-y-3">
             <ErrorText message={error} />
-            <div className="flex items-center gap-4">
-              <Button type="submit" loading={busy}>
-                Simpan janji
-              </Button>
-              <SavedNote show={saved} />
-            </div>
+            <Button type="submit" loading={busy}>
+              Simpan janji
+            </Button>
           </div>
         </form>
       )}

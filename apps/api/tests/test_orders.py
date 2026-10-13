@@ -24,7 +24,10 @@ from tests.conftest import new_order
 def advance(client: TestClient, headers: dict, order_id: int, *statuses: str) -> dict:
     body: dict = {}
     for s in statuses:
-        res = client.post(f"/orders/{order_id}/status", json={"to_status": s}, headers=headers)
+        body_in: dict = {"to_status": s}
+        if s == "PICKED_UP":
+            body_in["payment_method"] = "CASH"  # belum lunas: bayar saat ambil
+        res = client.post(f"/orders/{order_id}/status", json=body_in, headers=headers)
         assert res.status_code == 200, res.text
         body = res.json()
     return body
@@ -38,11 +41,14 @@ def test_create_order_with_items_prices_and_promise(
         {"catalog_code": "KEMEJA_PANJANG", "qty_pcs": 2},
     ]
     order = new_order(client, cashier, items=items, is_express=True)
-    # Express = Reguler x 2 untuk semua item: (55.000 + 34.000) x 2.
-    assert order["price_total"] == 178_000
-    assert [(i["catalog_code"], i["loads"], i["extra_kg"]) for i in order["items"]] == [
-        ("CKS", 1, 1),
-        ("KEMEJA_PANJANG", None, None),
+    # Express hanya untuk CKS: 55.000 x 2 + kemeja tetap Reguler 34.000.
+    assert order["price_total"] == 144_000
+    assert [
+        (i["catalog_code"], i["machine_loads"], i["extra_kg"], i["is_express"])
+        for i in order["items"]
+    ] == [
+        ("CKS", 1, 1, True),
+        ("KEMEJA_PANJANG", None, None, False),
     ]
     assert order["customer"]["phone_wa"] == "6281234567890"
     assert len(order["tracking_code"]) == 10
@@ -63,6 +69,10 @@ def test_quote_endpoint_and_validation(client: TestClient, cashier: dict) -> Non
     res = client.post("/orders/quote", json=body, headers=cashier)
     assert res.status_code == 200, res.text
     assert res.json()["total"] == 25_000  # minimal 5 kg
+
+    express_ck = {"is_express": True, "items": [{"catalog_code": "CK", "weight_kg": 5}]}
+    res = client.post("/orders/quote", json=express_ck, headers=cashier)
+    assert res.status_code == 422 and "Express hanya" in res.json()["detail"]
 
     body["items"] = [{"catalog_code": "CKS"}]
     res = client.post("/orders/quote", json=body, headers=cashier)
@@ -227,6 +237,14 @@ def test_owner_changes_price_and_express_multiplier(
     assert client.post("/orders/quote", json=body, headers=cashier).json()["total"] == 45_000
 
     assert client.put("/catalog/CKL", json={"price": 1}, headers=cashier).status_code == 403
+
+    # Dry clean belum punya harga: tidak bisa diaktifkan sebelum harga diisi.
+    res = client.put("/catalog/DC_SONGKET", json={"is_active": True}, headers=owner)
+    assert res.status_code == 422
+    res = client.put(
+        "/catalog/DC_SONGKET", json={"price": 50_000, "is_active": True}, headers=owner
+    )
+    assert res.status_code == 200 and res.json()["is_active"] is True
     client.put("/catalog/CKL", json={"is_active": False}, headers=owner)
     codes = [c["code"] for c in client.get("/catalog", headers=cashier).json()]
     assert "CKL" not in codes and "CKS" in codes
@@ -251,6 +269,9 @@ def test_daily_operations_capacity_and_promises(client: TestClient, owner: dict)
     assert by_process["CKS"]["regular_hours"] == 96
     assert by_process["CKS"]["min_regular_hours"] == 72
     assert by_process["CK"]["regular_hours"] is None
+    # Express hanya untuk CKL dan CKS.
+    assert {p for p, v in by_process.items() if v["express_hours"] == 24} == {"CKL", "CKS"}
+    assert "DRY_CLEAN" in by_process
 
     res = client.put(
         "/service-promises/CK", json={"regular_hours": 36, "express_hours": 24}, headers=owner

@@ -110,12 +110,13 @@ function TrackingBody({ order, now }: { order: Tracking; now: number }) {
   const reached = new Map(order.history.map((h) => [h.to_status, h.changed_at]));
   const ready = order.status === "READY";
   const done = order.status === "PICKED_UP";
+  const cancelled = order.status === "CANCELLED";
 
   return (
     <>
       <section
         className={`overflow-hidden rounded-2xl p-5 text-white shadow-pop ${
-          ready ? "bg-ok-700" : done ? "bg-ink-2" : "bg-brand-700"
+          ready ? "bg-ok-700" : done || cancelled ? "bg-ink-2" : "bg-brand-700"
         }`}
         aria-live="polite"
       >
@@ -129,7 +130,11 @@ function TrackingBody({ order, now }: { order: Tracking; now: number }) {
         </p>
 
         <div className="mt-4 rounded-xl bg-white/10 p-4">
-          {ready ? (
+          {cancelled ? (
+            <p className="text-[15px]">
+              Pesanan ini sudah dibatalkan. Hubungi Gedklin Laundry bila ada pertanyaan.
+            </p>
+          ) : ready ? (
             <p className="text-[15px]">
               Cucian sudah siap sejak <strong className="font-semibold">{formatDateTime(order.ready_at)}</strong>.
               Silakan datang ke outlet dan tunjukkan kode lacak ini.
@@ -154,6 +159,7 @@ function TrackingBody({ order, now }: { order: Tracking; now: number }) {
         </div>
       </section>
 
+      {!cancelled && (
       <section className="rounded-2xl bg-surface p-5 shadow-card">
         <h2 className="text-base font-semibold text-ink">Perjalanan cucian</h2>
         <ol className="mt-4">
@@ -191,6 +197,7 @@ function TrackingBody({ order, now }: { order: Tracking; now: number }) {
           })}
         </ol>
       </section>
+      )}
 
       <section className="rounded-2xl bg-surface p-5 shadow-card">
         <div className="flex items-center justify-between">

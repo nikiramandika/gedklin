@@ -2,8 +2,10 @@
 
 python -m app.seed
 
-Sumber kebenaran harga: seed/price_catalog.json. Item yang sudah ada tidak
-ditimpa, supaya harga yang sudah diubah pemilik dari dasbor tetap aman.
+seed/price_catalog.json adalah price list awal mitra. Katalog hanya diisi bila
+tabel service_catalog masih kosong; setelah itu layanan dikelola pemilik dari
+dasbor (tambah, ubah, hapus), jadi menjalankan seed ulang tidak memunculkan
+lagi layanan yang sudah dihapus atau menimpa harga yang sudah diubah.
 """
 
 from __future__ import annotations
@@ -28,8 +30,16 @@ from app.models import (
     User,
 )
 from app.security import hash_password
+from gedklin_ml.features import MACHINE_CAPACITY_KG
 
 CATALOG_PATH = Path(__file__).resolve().parents[1] / "seed" / "price_catalog.json"
+# Bagian katalog di price_catalog.json, urut seperti price list.
+SECTIONS = ("kiloan", "khusus", "satuan", "dry_clean")
+SECTION_GROUP = {
+    "khusus": CatalogGroup.KHUSUS,
+    "satuan": CatalogGroup.SATUAN,
+    "dry_clean": CatalogGroup.DRY_CLEAN,
+}
 
 
 def load_catalog_file(path: Path = CATALOG_PATH) -> dict[str, Any]:
@@ -39,18 +49,15 @@ def load_catalog_file(path: Path = CATALOG_PATH) -> dict[str, Any]:
 def catalog_rows(data: dict[str, Any]) -> list[ServiceCatalog]:
     """Ubah price_catalog.json menjadi baris service_catalog."""
     rows: list[ServiceCatalog] = []
-    entries = (
-        [("kiloan", e) for e in data["kiloan"]]
-        + [("khusus", e) for e in data["khusus"]]
-        + [("satuan", e) for e in data["satuan"]]
-    )
+    entries = [(section, e) for section in SECTIONS for e in data.get(section, [])]
     for order, (section, e) in enumerate(entries, start=1):
         process = Process(e.get("process", "SATUAN"))
         unit = CatalogUnit(e.get("unit", "PCS"))
         if section == "kiloan":
             group = CatalogGroup.SETRIKA if process == Process.S else CatalogGroup.KILOAN
         else:
-            group = CatalogGroup.KHUSUS if section == "khusus" else CatalogGroup.SATUAN
+            group = SECTION_GROUP[section]
+        price = e.get("price")
         rows.append(
             ServiceCatalog(
                 code=e["code"],
@@ -58,29 +65,34 @@ def catalog_rows(data: dict[str, Any]) -> list[ServiceCatalog]:
                 group=group,
                 process=process,
                 unit=unit,
-                price=int(e["price"]),
+                price=None if price is None else int(price),
                 extra_price=e.get("extra_price_per_kg", e.get("extra_price_per_pcs")),
+                base_kg=e.get("base_kg"),
                 min_qty=e.get("min_qty"),
-                kg_per_load=7.0 if unit == CatalogUnit.LOAD_7KG else e.get("max_kg_per_load"),
+                kg_per_load=e.get("max_kg_per_load"),
                 # "min 3 pcs/load" (selimut kecil) dan "maks 2 pcs/load" sama-sama
                 # dibaca sebagai isi satu load; menunggu konfirmasi mitra.
                 pcs_per_load=e.get("max_pcs_per_load", e.get("min_pcs_per_load")),
-                max_extra=e.get("max_extra_kg", e.get("max_extra_pcs")),
+                max_extra=e.get("max_extra_pcs"),
+                express_eligible=bool(e.get("express_eligible", False)),
                 sort_order=order,
-                is_active=True,
+                # Item tanpa harga (dry clean) belum bisa dipesan sampai pemilik mengisi harga.
+                is_active=price is not None,
             )
         )
     return rows
 
 
 def promise_rows(data: dict[str, Any]) -> list[ServicePromise]:
+    """Janji Express hanya dipasang pada proses yang boleh Express (CKL dan CKS)."""
     promise = data["promise_hours"]
     minimum = promise.get("regular_min", {})
+    eligible = {e["process"] for e in data["kiloan"] if e.get("express_eligible")}
     return [
         ServicePromise(
             process=Process(process),
             regular_hours=hours,
-            express_hours=promise.get("express"),
+            express_hours=promise.get("express") if process in eligible else None,
             min_regular_hours=minimum.get(process),
         )
         for process, hours in promise["regular"].items()
@@ -88,21 +100,25 @@ def promise_rows(data: dict[str, Any]) -> list[ServicePromise]:
 
 
 def setting_values(data: dict[str, Any]) -> dict[str, str]:
-    return {
+    values = {
         "express_multiplier": f"{data['express_multiplier']:g}",
-        "default_promise_hours": f"{data['promise_hours']['default']:g}",
+        "machine_capacity_kg": f"{data.get('machine_capacity_kg', MACHINE_CAPACITY_KG):g}",
     }
+    if data["promise_hours"].get("default") is not None:
+        values["default_promise_hours"] = f"{data['promise_hours']['default']:g}"
+    return values
 
 
 def seed_reference_data(db: Session, data: dict[str, Any] | None = None) -> list[str]:
-    """Isi katalog, janji waktu, dan pengaturan yang belum ada. Kembalikan log."""
+    """Isi katalog awal (bila kosong), janji waktu, dan pengaturan yang belum ada."""
     data = data or load_catalog_file()
     log: list[str] = []
-    existing = set(db.scalars(select(ServiceCatalog.code)))
-    for row in catalog_rows(data):
-        if row.code not in existing:
+    if db.scalar(select(ServiceCatalog.id).limit(1)) is None:
+        for row in catalog_rows(data):
             db.add(row)
             log.append(f"Katalog {row.code} dibuat")
+    else:
+        log.append("Katalog sudah ada, dikelola dari dasbor (tidak diubah)")
     promised = set(db.scalars(select(ServicePromise.process)))
     for row in promise_rows(data):
         if row.process not in promised:

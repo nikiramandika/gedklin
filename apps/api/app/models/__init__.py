@@ -1,4 +1,5 @@
 from app.models.entities import (
+    ActivityLog,
     AppSetting,
     Customer,
     DailyOperation,
@@ -18,12 +19,14 @@ from app.models.enums import (
     NotificationStatus,
     NotificationType,
     OrderStatus,
+    PaymentMethod,
     Process,
     Role,
 )
 
 __all__ = [
     "ACTIVE_STATUSES",
+    "ActivityLog",
     "AppSetting",
     "CatalogGroup",
     "CatalogUnit",
@@ -36,6 +39,7 @@ __all__ = [
     "OrderItem",
     "OrderStatus",
     "OrderStatusHistory",
+    "PaymentMethod",
     "PredictionLog",
     "Process",
     "Role",

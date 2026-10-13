@@ -1,8 +1,9 @@
 export type Role = "owner" | "admin" | "cashier";
-export type OrderStatus = "RECEIVED" | "PROCESSING" | "READY" | "PICKED_UP";
-export type CatalogGroup = "KILOAN" | "SETRIKA" | "KHUSUS" | "SATUAN";
-export type Process = "C" | "CK" | "CKL" | "CKS" | "S" | "SATUAN";
-export type CatalogUnit = "LOAD_7KG" | "KG" | "PCS" | "LOAD";
+export type OrderStatus = "RECEIVED" | "PROCESSING" | "READY" | "PICKED_UP" | "CANCELLED";
+export type PaymentMethod = "CASH" | "QRIS" | "TRANSFER";
+export type CatalogGroup = "KILOAN" | "SETRIKA" | "KHUSUS" | "SATUAN" | "DRY_CLEAN";
+export type Process = "C" | "CK" | "CKL" | "CKS" | "S" | "SATUAN" | "DRY_CLEAN";
+export type CatalogUnit = "KILOAN_7KG" | "KG" | "PCS" | "LOAD";
 
 export interface User {
   id: number;
@@ -30,18 +31,23 @@ export interface CatalogItem {
   group: CatalogGroup;
   process: Process;
   unit: CatalogUnit;
-  price: number;
+  /** null = harga belum ditetapkan (mis. dry clean). */
+  price: number | null;
   extra_price: number | null;
+  base_kg: number | null;
   min_qty: number | null;
   kg_per_load: number | null;
   pcs_per_load: number | null;
   max_extra: number | null;
+  /** Hanya CKL dan CKS yang boleh Express. */
+  express_eligible: boolean;
   sort_order: number;
   is_active: boolean;
 }
 
 export interface AppSettings {
   express_multiplier: number;
+  machine_capacity_kg: number;
   default_promise_hours: number;
   default_staff_on_duty: number;
   default_washers_available: number;
@@ -70,9 +76,10 @@ export interface OrderItem {
   process: Process;
   weight_kg: number | null;
   qty_pcs: number | null;
-  loads: number | null;
+  machine_loads: number | null;
   extra_kg: number | null;
   extra_pcs: number | null;
+  is_express: boolean;
   subtotal: number;
 }
 
@@ -87,6 +94,8 @@ export interface StatusHistory {
   from_status: OrderStatus | null;
   to_status: OrderStatus;
   changed_at: string;
+  /** Tidak ada di portal lacak publik. */
+  changed_by_name?: string | null;
 }
 
 export interface Order {
@@ -96,6 +105,15 @@ export interface Order {
   is_express: boolean;
   items: OrderItem[];
   price_total: number;
+  /** Kasir yang menerima pesanan. */
+  created_by_name: string | null;
+  notes: string | null;
+  rack_location: string | null;
+  is_paid: boolean;
+  payment_method: PaymentMethod | null;
+  paid_at: string | null;
+  cancelled_at: string | null;
+  cancel_reason: string | null;
   status: OrderStatus;
   received_at: string;
   promised_ready_at: string | null;
@@ -166,4 +184,77 @@ export interface Dashboard {
   model_version: string;
   last_7_days: { date: string; orders: number; revenue: number }[];
   status_counts: Record<string, number>;
+}
+
+export interface OrderNotification {
+  id: number;
+  type: "READY" | "DELAY";
+  status: "PENDING" | "SENT" | "FAILED";
+  sent_at: string | null;
+  error: string | null;
+  created_at: string;
+}
+
+export type ActivityEntity =
+  | "order"
+  | "customer"
+  | "catalog"
+  | "user"
+  | "settings"
+  | "operation"
+  | "auth";
+
+export interface ActivityLog {
+  id: number;
+  user_id: number | null;
+  user_name: string | null;
+  action: string;
+  entity_type: ActivityEntity;
+  entity_id: string | null;
+  summary: string;
+  /** {field: [sebelum, sesudah]} */
+  changes: Record<string, [unknown, unknown]> | null;
+  created_at: string;
+}
+
+export interface CustomerSummary {
+  id: number;
+  name: string;
+  phone_wa: string;
+  created_at: string;
+  order_count: number;
+  total_spent: number;
+  unpaid_total: number;
+  last_order_at: string | null;
+}
+
+export interface CustomerDetail extends CustomerSummary {
+  orders: Order[];
+}
+
+export interface ReportRow {
+  key: string;
+  label: string;
+  orders: number;
+  revenue: number;
+  weight_kg: number;
+  qty_pcs: number;
+}
+
+export interface Report {
+  start: string;
+  end: string;
+  orders: number;
+  revenue: number;
+  weight_kg: number;
+  avg_order_value: number;
+  paid_total: number;
+  unpaid_total: number;
+  unpaid_orders: number;
+  cancelled_orders: number;
+  express_orders: number;
+  by_day: { date: string; orders: number; revenue: number }[];
+  by_service: ReportRow[];
+  by_cashier: ReportRow[];
+  by_payment: ReportRow[];
 }

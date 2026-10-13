@@ -15,6 +15,7 @@ FEATURES = build_features(
         berat_kg=6,
         pcs_khusus=0,
         pcs_satuan=0,
+        pcs_dry_clean=0,
         ada_setrika=True,
     ),
     queue=QueueStats(count=10, express_count=2, loads=12, dry_loads=10, ironing_kg=20),

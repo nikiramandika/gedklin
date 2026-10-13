@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routers import admin, auth, orders, owner, tracking
+from app.routers import activity, admin, auth, customers, orders, owner, reports, tracking
 from app.services.eta import get_predictor
 
 logging.basicConfig(level=logging.INFO)
@@ -24,6 +24,9 @@ app.include_router(orders.router)
 app.include_router(owner.router)
 app.include_router(admin.router)
 app.include_router(tracking.router)
+app.include_router(activity.router)
+app.include_router(customers.router)
+app.include_router(reports.router)
 
 
 @app.get("/health", tags=["health"])

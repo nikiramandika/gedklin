@@ -10,6 +10,7 @@ import {
   EmptyState,
   ErrorText,
   ExpressBadge,
+  PaymentBadge,
   IconButton,
   Loading,
   PageHeader,
@@ -95,6 +96,12 @@ export default function AdminPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold text-ink">{o.customer.name}</p>
                         {o.is_express && <ExpressBadge />}
+                        <PaymentBadge paid={o.is_paid} />
+                        {o.rack_location && (
+                          <span className="rounded-full bg-canvas px-2 py-0.5 font-mono text-xs font-semibold text-ink-2">
+                            Rak {o.rack_location}
+                          </span>
+                        )}
                       </div>
                       <p className="mt-0.5 text-[13px] text-muted">
                         <span className="font-mono font-medium tracking-wider text-ink-2">

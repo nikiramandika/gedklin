@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -22,13 +22,15 @@ from app.models import (
     OrderItem,
     OrderStatus,
     OrderStatusHistory,
+    PaymentMethod,
     PredictionLog,
     User,
 )
 from app.services import pricing
+from app.services.activity import log_activity
 from app.services.app_settings import AppConfig, day_ops_lookup, load_app_config, load_promises
 from app.services.eta import PROMISE_VERSION, get_predictor
-from app.services.notifications import should_send_delay
+from app.services.notifications import describe_item, format_rupiah, should_send_delay
 from app.services.queue import (
     active_orders,
     is_ahead,
@@ -51,6 +53,21 @@ logger = logging.getLogger(__name__)
 
 TRACKING_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 TRACKING_LENGTH = 10
+
+STATUS_LABEL: dict[OrderStatus, str] = {
+    OrderStatus.RECEIVED: "Diterima",
+    OrderStatus.PROCESSING: "Diproses",
+    OrderStatus.READY: "Siap Diambil",
+    OrderStatus.PICKED_UP: "Sudah Diambil",
+    OrderStatus.CANCELLED: "Dibatalkan",
+}
+PAYMENT_LABEL: dict[PaymentMethod, str] = {
+    PaymentMethod.CASH: "Tunai",
+    PaymentMethod.QRIS: "QRIS",
+    PaymentMethod.TRANSFER: "Transfer",
+}
+# Isi pesanan hanya bisa dikoreksi atau dibatalkan sebelum siap diambil.
+EDITABLE_STATUSES = (OrderStatus.RECEIVED, OrderStatus.PROCESSING)
 
 STATUS_FLOW: dict[OrderStatus, OrderStatus] = {
     OrderStatus.RECEIVED: OrderStatus.PROCESSING,
@@ -85,6 +102,34 @@ def next_status(order: Order) -> OrderStatus | None:
     return STATUS_FLOW.get(order.status)
 
 
+def _clean(text: str | None, limit: int) -> str | None:
+    text = (text or "").strip()
+    return text[:limit] or None
+
+
+def _order_items(quote: pricing.Quote) -> list[OrderItem]:
+    return [
+        OrderItem(
+            catalog_code=i.catalog_code,
+            name=i.name,
+            group=i.group,
+            process=i.process,
+            weight_kg=i.weight_kg,
+            qty_pcs=i.qty_pcs,
+            machine_loads=i.machine_loads,
+            extra_kg=i.extra_kg,
+            extra_pcs=i.extra_pcs,
+            is_express=i.is_express,
+            subtotal=i.subtotal,
+        )
+        for i in quote.items
+    ]
+
+
+def _items_text(items: Sequence[OrderItem]) -> str:
+    return ", ".join(describe_item(i) for i in items)
+
+
 # --- Janji & ETA -----------------------------------------------------------
 
 
@@ -103,10 +148,7 @@ class EtaContext:
 
 
 def order_promised_hours(order: Order, ctx: EtaContext) -> float:
-    content = order_content(order)
-    return promised_hours(
-        content.processes, order.is_express, ctx.promises, ctx.config.default_promise_hours
-    )
+    return promised_hours(order_content(order), ctx.promises, ctx.config.default_promise_hours)
 
 
 def promised_ready_at(order: Order, ctx: EtaContext) -> datetime:
@@ -210,12 +252,14 @@ def upsert_customer(db: Session, name: str, phone_raw: str) -> Customer:
 def quote_order(
     db: Session, items: Sequence[pricing.ItemRequest], is_express: bool
 ) -> pricing.Quote:
+    config = load_app_config(db)
     try:
         return pricing.quote(
             db,
             items,
             is_express=is_express,
-            express_multiplier=load_app_config(db).express_multiplier,
+            express_multiplier=config.express_multiplier,
+            machine_capacity_kg=config.machine_capacity_kg,
         )
     except pricing.PricingError as exc:
         raise OrderError(str(exc)) from exc
@@ -229,6 +273,8 @@ def create_order(
     is_express: bool,
     items: Sequence[pricing.ItemRequest],
     user: User | None,
+    notes: str | None = None,
+    payment_method: PaymentMethod | None = None,
     now: datetime | None = None,
 ) -> Order:
     now = now or utcnow()
@@ -245,21 +291,11 @@ def create_order(
         ready_notif_sent=False,
         needs_followup=False,
         created_by=user.id if user else None,
-        items=[
-            OrderItem(
-                catalog_code=i.catalog_code,
-                name=i.name,
-                group=i.group,
-                process=i.process,
-                weight_kg=i.weight_kg,
-                qty_pcs=i.qty_pcs,
-                loads=i.loads,
-                extra_kg=i.extra_kg,
-                extra_pcs=i.extra_pcs,
-                subtotal=i.subtotal,
-            )
-            for i in quote.items
-        ],
+        notes=_clean(notes, 1000),
+        # Bayar di depan: langsung lunas.
+        payment_method=payment_method,
+        paid_at=now if payment_method else None,
+        items=_order_items(quote),
     )
     db.add(order)
     db.flush()
@@ -271,6 +307,15 @@ def create_order(
             changed_at=now,
             changed_by=order.created_by,
         )
+    )
+    log_activity(
+        db,
+        user,
+        "order.create",
+        f"Menerima pesanan {order.tracking_code} dari {customer.name} "
+        f"({format_rupiah(order.price_total)}{', Express' if is_express else ''}"
+        f"{f', lunas {PAYMENT_LABEL[payment_method]}' if payment_method else ''})",
+        entity_id=order.tracking_code,
     )
     ctx = EtaContext.load(db)
     order.promised_ready_at = promised_ready_at(order, ctx)
@@ -288,19 +333,33 @@ def change_status(
     to_status: OrderStatus,
     user: User | None,
     now: datetime | None = None,
+    *,
+    rack_location: str | None = None,
+    payment_method: PaymentMethod | None = None,
 ) -> Order:
     now = now or utcnow()
+    if order.status == OrderStatus.CANCELLED:
+        raise OrderError("Pesanan sudah dibatalkan")
     expected = next_status(order)
     if expected is None:
         raise OrderError("Pesanan sudah selesai diambil")
     if to_status != expected:
         raise OrderError(f"Status berikutnya harus {expected.value}")
+    if to_status == OrderStatus.PICKED_UP and not order.is_paid:
+        if payment_method is None:
+            raise OrderError(
+                f"Pesanan belum lunas ({format_rupiah(order.price_total)}). "
+                "Catat pembayaran dulu sebelum cucian diserahkan."
+            )
+        _mark_paid(db, order, payment_method, user, now)
 
     from_status = order.status
     order.status = to_status
     ready_notif: Notification | None = None
     if to_status == OrderStatus.READY:
         order.ready_at = now
+        if rack := _clean(rack_location, 20):
+            order.rack_location = rack.upper()
         exists = db.scalar(
             select(Notification.id).where(
                 Notification.order_id == order.id, Notification.type == NotificationType.READY
@@ -322,9 +381,207 @@ def change_status(
             changed_by=user.id if user else None,
         )
     )
+    shelved = to_status == OrderStatus.READY and order.rack_location
+    rack_note = f" di rak {order.rack_location}" if shelved else ""
+    log_activity(
+        db,
+        user,
+        "order.status",
+        f"Mengubah status {order.tracking_code} ({order.customer.name}) "
+        f"menjadi {STATUS_LABEL[to_status]}{rack_note}",
+        entity_id=order.tracking_code,
+        changes={"status": [STATUS_LABEL[from_status], STATUS_LABEL[to_status]]},
+    )
     db.commit()
     if ready_notif is not None:
         enqueue_notification(ready_notif.id)
+    recompute_etas(db, now)
+    db.refresh(order)
+    return order
+
+
+# --- Pembayaran, catatan, koreksi, pembatalan ------------------------------
+
+
+def _mark_paid(
+    db: Session, order: Order, method: PaymentMethod, user: User | None, now: datetime
+) -> None:
+    order.payment_method = method
+    order.paid_at = now
+    log_activity(
+        db,
+        user,
+        "order.payment",
+        f"Mencatat pembayaran {order.tracking_code} ({order.customer.name}) "
+        f"{format_rupiah(order.price_total)} via {PAYMENT_LABEL[method]}",
+        entity_id=order.tracking_code,
+        changes={"pembayaran": ["Belum lunas", f"Lunas ({PAYMENT_LABEL[method]})"]},
+    )
+
+
+def record_payment(
+    db: Session,
+    order: Order,
+    method: PaymentMethod,
+    user: User | None,
+    now: datetime | None = None,
+) -> Order:
+    if order.status == OrderStatus.CANCELLED:
+        raise OrderError("Pesanan sudah dibatalkan")
+    if order.is_paid:
+        raise OrderError("Pesanan sudah lunas")
+    _mark_paid(db, order, method, user, now or utcnow())
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def void_payment(db: Session, order: Order, user: User | None) -> Order:
+    """Koreksi pembayaran yang salah dicatat (hanya pemilik)."""
+    if not order.is_paid:
+        raise OrderError("Pesanan belum lunas")
+    method = order.payment_method
+    order.payment_method = None
+    order.paid_at = None
+    log_activity(
+        db,
+        user,
+        "order.payment_void",
+        f"Membatalkan catatan pembayaran {order.tracking_code} ({order.customer.name})",
+        entity_id=order.tracking_code,
+        changes={
+            "pembayaran": [f"Lunas ({PAYMENT_LABEL[method] if method else '-'})", "Belum lunas"]
+        },
+    )
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def update_details(
+    db: Session,
+    order: Order,
+    user: User | None,
+    *,
+    fields: dict[str, str | None],
+) -> Order:
+    """Ubah catatan dan/atau lokasi rak. Hanya field yang dikirim yang diubah."""
+    changes: dict[str, list[str | None]] = {}
+    if "notes" in fields:
+        notes = _clean(fields["notes"], 1000)
+        if notes != order.notes:
+            changes["catatan"] = [order.notes, notes]
+            order.notes = notes
+    if "rack_location" in fields:
+        rack = _clean(fields["rack_location"], 20)
+        rack = rack.upper() if rack else None
+        if rack != order.rack_location:
+            changes["rak"] = [order.rack_location, rack]
+            order.rack_location = rack
+    if changes:
+        log_activity(
+            db,
+            user,
+            "order.update",
+            f"Mengubah {' dan '.join(changes)} pesanan {order.tracking_code} "
+            f"({order.customer.name})",
+            entity_id=order.tracking_code,
+            changes=changes,
+        )
+        db.commit()
+        db.refresh(order)
+    return order
+
+
+def _check_editable(order: Order, action: str) -> None:
+    if order.status not in EDITABLE_STATUSES:
+        raise OrderError(
+            f"Pesanan yang sudah {STATUS_LABEL[order.status].lower()} tidak bisa {action}"
+        )
+    if order.is_paid:
+        raise OrderError(
+            f"Pesanan sudah lunas. Batalkan catatan pembayarannya dulu (pemilik) sebelum {action}."
+        )
+
+
+def update_items(
+    db: Session,
+    order: Order,
+    items: Sequence[pricing.ItemRequest],
+    is_express: bool,
+    user: User | None,
+    now: datetime | None = None,
+) -> Order:
+    """Koreksi isi pesanan (salah input berat/layanan) sebelum siap dan sebelum lunas."""
+    now = now or utcnow()
+    _check_editable(order, "dikoreksi")
+    quote = quote_order(db, items, is_express)
+    before_items, before_total = _items_text(order.items), order.price_total
+    db.execute(delete(OrderItem).where(OrderItem.order_id == order.id))
+    db.expire(order, ["items"])
+    for item in _order_items(quote):
+        item.order_id = order.id
+        db.add(item)
+    order.is_express = is_express
+    order.price_total = quote.total
+    db.flush()
+    db.expire(order, ["items"])
+    changes: dict[str, list[object]] = {"isi": [before_items, _items_text(order.items)]}
+    if before_total != order.price_total:
+        changes["total"] = [before_total, order.price_total]
+    log_activity(
+        db,
+        user,
+        "order.items",
+        f"Mengoreksi isi pesanan {order.tracking_code} ({order.customer.name})",
+        entity_id=order.tracking_code,
+        changes=changes,
+    )
+    ctx = EtaContext.load(db)
+    order.promised_ready_at = promised_ready_at(order, ctx)
+    order.predicted_ready_at = None
+    # Perkiraan baru dikirim ulang lewat nota, jadi tidak memicu WA "perkiraan mundur".
+    order.last_notified_eta = predict_eta(db, order, ctx, active_orders(db), now)
+    db.commit()
+    recompute_etas(db, now)
+    db.refresh(order)
+    return order
+
+
+def cancel_order(
+    db: Session,
+    order: Order,
+    reason: str,
+    user: User | None,
+    now: datetime | None = None,
+) -> Order:
+    now = now or utcnow()
+    _check_editable(order, "dibatalkan")
+    reason_text = _clean(reason, 255)
+    if not reason_text:
+        raise OrderError("Isi alasan pembatalan")
+    from_status = order.status
+    order.status = OrderStatus.CANCELLED
+    order.cancelled_at = now
+    order.cancel_reason = reason_text
+    db.add(
+        OrderStatusHistory(
+            order_id=order.id,
+            from_status=from_status,
+            to_status=OrderStatus.CANCELLED,
+            changed_at=now,
+            changed_by=user.id if user else None,
+        )
+    )
+    log_activity(
+        db,
+        user,
+        "order.cancel",
+        f"Membatalkan pesanan {order.tracking_code} ({order.customer.name}): {reason_text}",
+        entity_id=order.tracking_code,
+        changes={"status": [STATUS_LABEL[from_status], STATUS_LABEL[OrderStatus.CANCELLED]]},
+    )
+    db.commit()
     recompute_etas(db, now)
     db.refresh(order)
     return order

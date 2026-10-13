@@ -14,12 +14,15 @@ from app.models import (
     User,
 )
 from app.schemas import (
+    CancelIn,
     CustomerOut,
     NotificationOut,
     OrderCreate,
     OrderDetailOut,
+    OrderDetailsUpdate,
     OrderItemIn,
     OrderOut,
+    PaymentIn,
     QuoteIn,
     QuoteOut,
     ReceiptOut,
@@ -33,6 +36,7 @@ from app.services.queue import active_orders
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 staff = require_roles(Role.CASHIER, Role.OWNER)
+owner_only = require_roles(Role.OWNER)
 
 
 def to_out(order: Order, position: int | None = None) -> OrderOut:
@@ -75,6 +79,8 @@ def create_order(
             is_express=data.is_express,
             items=to_requests(data.items),
             user=user,
+            notes=data.notes,
+            payment_method=data.payment_method,
         )
     except order_service.OrderError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
@@ -140,7 +146,79 @@ def change_status(
 ) -> OrderOut:
     order = get_order_or_404(db, order_id)
     try:
-        order = order_service.change_status(db, order, data.to_status, user)
+        order = order_service.change_status(
+            db,
+            order,
+            data.to_status,
+            user,
+            rack_location=data.rack_location,
+            payment_method=data.payment_method,
+        )
+    except order_service.OrderError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return to_out(order)
+
+
+@router.patch("/{order_id}", response_model=OrderOut)
+def update_order_details(
+    order_id: int,
+    data: OrderDetailsUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(staff),
+) -> OrderOut:
+    """Ubah catatan pesanan dan/atau lokasi rak."""
+    order = get_order_or_404(db, order_id)
+    fields = data.model_dump(exclude_unset=True)
+    return to_out(order_service.update_details(db, order, user, fields=fields))
+
+
+@router.put("/{order_id}/items", response_model=OrderOut)
+def update_order_items(
+    order_id: int, data: QuoteIn, db: Session = Depends(get_db), user: User = Depends(staff)
+) -> OrderOut:
+    """Koreksi isi pesanan (salah input) sebelum siap diambil dan sebelum lunas."""
+    order = get_order_or_404(db, order_id)
+    try:
+        order = order_service.update_items(
+            db, order, to_requests(data.items), data.is_express, user
+        )
+    except order_service.OrderError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return to_out(order)
+
+
+@router.post("/{order_id}/payment", response_model=OrderOut)
+def record_payment(
+    order_id: int, data: PaymentIn, db: Session = Depends(get_db), user: User = Depends(staff)
+) -> OrderOut:
+    order = get_order_or_404(db, order_id)
+    try:
+        order = order_service.record_payment(db, order, data.method, user)
+    except order_service.OrderError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return to_out(order)
+
+
+@router.delete("/{order_id}/payment", response_model=OrderOut)
+def void_payment(
+    order_id: int, db: Session = Depends(get_db), user: User = Depends(owner_only)
+) -> OrderOut:
+    """Koreksi pembayaran yang salah dicatat. Hanya pemilik."""
+    order = get_order_or_404(db, order_id)
+    try:
+        order = order_service.void_payment(db, order, user)
+    except order_service.OrderError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return to_out(order)
+
+
+@router.post("/{order_id}/cancel", response_model=OrderOut)
+def cancel_order(
+    order_id: int, data: CancelIn, db: Session = Depends(get_db), user: User = Depends(staff)
+) -> OrderOut:
+    order = get_order_or_404(db, order_id)
+    try:
+        order = order_service.cancel_order(db, order, data.reason, user)
     except order_service.OrderError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return to_out(order)
@@ -158,8 +236,10 @@ def receipt(order_id: int, db: Session = Depends(get_db), _: User = Depends(staf
         f"Kode: {order.tracking_code}\n"
         f"Kecepatan: {'Express' if order.is_express else 'Reguler'}\n"
         f"{lines}\n"
-        f"Total: {format_rupiah(order.price_total)}\n"
-        f"Perkiraan siap: {eta}\n"
+        f"Total: {format_rupiah(order.price_total)} "
+        f"({'LUNAS' if order.is_paid else 'belum lunas, bayar saat ambil'})\n"
+        + (f"Catatan: {order.notes}\n" if order.notes else "")
+        + f"Perkiraan siap: {eta}\n"
         f"Lacak: {url}"
     )
     return ReceiptOut(

@@ -5,9 +5,7 @@ import { BrandMark, IconChat, IconClock, IconReceipt } from "./icons";
 import { TrackingForm } from "./TrackingForm";
 
 const STEPS = [
-  { icon: IconReceipt, text: "Kode lacak tertulis di nota atau pesan WhatsApp dari kasir." },
-  { icon: IconClock, text: "Perkiraan waktu siap diperbarui otomatis mengikuti antrean." },
-  { icon: IconChat, text: "Kami kirim WhatsApp saat cucian siap diambil." },
+  { icon: IconReceipt, text: "Kode lacak tertulis di nota atau pesan WhatsApp dari kasir." }
 ];
 
 /** Halaman depan portal pelanggan: dipakai di "/" dan "/lacak". */

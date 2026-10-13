@@ -35,6 +35,7 @@ const STATUS_FILL: Record<OrderStatus, string> = {
   PROCESSING: "bg-brand-500",
   READY: "bg-ok-600",
   PICKED_UP: "bg-line-strong",
+  CANCELLED: "bg-danger-600",
 };
 
 export default function DasborPage() {

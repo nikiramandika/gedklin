@@ -111,7 +111,8 @@ def _migrate_orders_to_items() -> None:
                 'price': kiloan[code]['price'],
                 'extra_price': kiloan[code]['extra_price_per_kg'],
                 'kg_per_load': 7.0,
-                'max_extra': kiloan[code]['max_extra_kg'],
+                # Aturan lama (maks 1 kg tambahan per load); diubah lagi di 0003.
+                'max_extra': kiloan[code].get('max_extra_kg', 1),
                 'sort_order': i,
                 'is_active': True,
             }

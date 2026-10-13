@@ -1,0 +1,463 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+
+import { AppShell } from "@/components/AppShell";
+import { IconChart, IconDownload, IconReceipt, IconTag, IconUsers, IconWallet } from "@/components/icons";
+import { useToast } from "@/components/overlay";
+import {
+  Button,
+  Card,
+  ErrorText,
+  Field,
+  Loading,
+  PageHeader,
+  Segmented,
+  cardClass,
+  inputClass,
+} from "@/components/ui";
+import { api, apiDownload } from "@/lib/api";
+import { formatRupiah } from "@/lib/format";
+import type { Report, ReportRow, Role } from "@/lib/types";
+import { useNow } from "@/lib/useNow";
+
+const ROLES: Role[] = ["owner"];
+const TZ = "Asia/Jakarta";
+
+type Preset = "today" | "7d" | "30d" | "month" | "last-month" | "custom";
+
+function shift(iso: string, days: number): string {
+  const d = new Date(`${iso}T12:00:00+07:00`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function localISO(ms: number): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date(ms));
+}
+
+function presetRange(preset: Exclude<Preset, "custom">, today: string): [string, string] {
+  const monthStart = `${today.slice(0, 8)}01`;
+  switch (preset) {
+    case "today":
+      return [today, today];
+    case "7d":
+      return [shift(today, -6), today];
+    case "30d":
+      return [shift(today, -29), today];
+    case "month":
+      return [monthStart, today];
+    case "last-month": {
+      const lastEnd = shift(monthStart, -1);
+      return [`${lastEnd.slice(0, 8)}01`, lastEnd];
+    }
+  }
+}
+
+function formatDay(iso: string, opts: Intl.DateTimeFormatOptions): string {
+  return new Intl.DateTimeFormat("id-ID", { timeZone: TZ, ...opts }).format(new Date(`${iso}T12:00:00+07:00`));
+}
+
+/** Rupiah ringkas untuk sumbu dan tile: Rp1,2 jt / Rp850 rb. */
+function compactRupiah(v: number): string {
+  if (v >= 1_000_000) return `Rp${(v / 1_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} jt`;
+  if (v >= 1_000) return `Rp${Math.round(v / 1_000).toLocaleString("id-ID")} rb`;
+  return formatRupiah(v);
+}
+
+interface Bucket {
+  key: string;
+  label: string;
+  tooltip: string;
+  orders: number;
+  revenue: number;
+}
+
+/** Periode panjang digabung per minggu/bulan supaya batang tetap terbaca. */
+function buckets(days: Report["by_day"]): { unit: string; items: Bucket[] } {
+  if (days.length <= 62) {
+    return {
+      unit: "hari",
+      items: days.map((d) => ({
+        key: d.date,
+        label: formatDay(d.date, { day: "numeric", month: "short" }),
+        tooltip: formatDay(d.date, { weekday: "long", day: "numeric", month: "long" }),
+        orders: d.orders,
+        revenue: d.revenue,
+      })),
+    };
+  }
+  const byMonth = days.length > 186;
+  const groups = new Map<string, Bucket>();
+  days.forEach((d, i) => {
+    const key = byMonth ? d.date.slice(0, 7) : days[i - (i % 7)].date;
+    const g = groups.get(key) ?? {
+      key,
+      label: byMonth
+        ? formatDay(`${key}-01`, { month: "short", year: "2-digit" })
+        : formatDay(key, { day: "numeric", month: "short" }),
+      tooltip: byMonth
+        ? formatDay(`${key}-01`, { month: "long", year: "numeric" })
+        : `Minggu mulai ${formatDay(key, { day: "numeric", month: "long" })}`,
+      orders: 0,
+      revenue: 0,
+    };
+    g.orders += d.orders;
+    g.revenue += d.revenue;
+    groups.set(key, g);
+  });
+  return { unit: byMonth ? "bulan" : "minggu", items: [...groups.values()] };
+}
+
+export default function LaporanPage() {
+  const toast = useToast();
+  // Tanggal "hari ini" baru diketahui di browser (0 saat prerender di server).
+  const now = useNow();
+  const today = now ? localISO(now) : null;
+  const [preset, setPreset] = useState<Preset>("7d");
+  const [custom, setCustom] = useState<[string, string] | null>(null);
+  const [result, setResult] = useState<{ key: string; report: Report } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+
+  const range: [string, string] | null =
+    preset === "custom" ? custom : today ? presetRange(preset, today) : null;
+  const rangeKey = range ? `${range[0]}_${range[1]}` : "";
+  // Laporan lama tidak ditampilkan saat periode baru sedang dimuat.
+  const report = result?.key === rangeKey ? result.report : null;
+
+  useEffect(() => {
+    if (!rangeKey) return;
+    let cancelled = false;
+    const [start, end] = rangeKey.split("_");
+    api<Report>(`/reports/summary?start=${start}&end=${end}`)
+      .then((r) => {
+        if (cancelled) return;
+        setResult({ key: rangeKey, report: r });
+        setError(null);
+      })
+      .catch((e: Error) => !cancelled && setError(e.message));
+    return () => {
+      cancelled = true;
+    };
+  }, [rangeKey]);
+
+  function choose(p: Preset) {
+    if (p === "custom" && !custom && range) setCustom(range);
+    setPreset(p);
+  }
+
+  async function download() {
+    if (!range) return;
+    const [start, end] = range;
+    setDownloading(true);
+    try {
+      await apiDownload(
+        `/reports/orders.csv?start=${start}&end=${end}`,
+        `pesanan-gedklin-${start}-sd-${end}.csv`,
+      );
+      toast("File CSV diunduh");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Gagal mengunduh", "error");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  const sameDay = range !== null && range[0] === range[1];
+  const periodLabel = !range
+    ? "–"
+    : sameDay
+    ? formatDay(range[0], { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+    : `${formatDay(range[0], { day: "numeric", month: "short", year: "numeric" })} – ${formatDay(range[1], {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })}`;
+
+  return (
+    <AppShell roles={ROLES}>
+      <PageHeader
+        title="Laporan"
+        description="Pendapatan dihitung dari pesanan yang diterima pada periode ini, tanpa pesanan yang dibatalkan."
+        actions={
+          <Button variant="secondary" onClick={download} loading={downloading} disabled={!range}>
+            <IconDownload size={18} />
+            Unduh CSV
+          </Button>
+        }
+      />
+
+      <div className={`${cardClass} mb-6 space-y-3 p-3 sm:p-4`}>
+        <div className="overflow-x-auto">
+          <div className="min-w-[560px]">
+            <Segmented<Preset>
+              label="Periode laporan"
+              value={preset}
+              onChange={choose}
+              options={[
+                { value: "today", label: "Hari ini" },
+                { value: "7d", label: "7 hari" },
+                { value: "30d", label: "30 hari" },
+                { value: "month", label: "Bulan ini" },
+                { value: "last-month", label: "Bulan lalu" },
+                { value: "custom", label: "Pilih tanggal" },
+              ]}
+            />
+          </div>
+        </div>
+        {preset === "custom" && (
+          <form
+            className="flex flex-wrap items-end gap-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const data = new FormData(e.currentTarget);
+              const start = String(data.get("start"));
+              const end = String(data.get("end"));
+              if (start && end) setCustom(start <= end ? [start, end] : [end, start]);
+            }}
+          >
+            <Field label="Dari" className="w-44">
+              <input className={inputClass} type="date" name="start" defaultValue={custom?.[0]} max={today ?? undefined} required />
+            </Field>
+            <Field label="Sampai" className="w-44">
+              <input className={inputClass} type="date" name="end" defaultValue={custom?.[1]} max={today ?? undefined} required />
+            </Field>
+            <Button type="submit">Tampilkan</Button>
+          </form>
+        )}
+        <p className="px-1 text-sm text-muted">
+          Periode: <span className="font-medium text-ink">{periodLabel}</span>
+        </p>
+      </div>
+
+      {error && (
+        <div className="mb-6">
+          <ErrorText message={error} />
+        </div>
+      )}
+
+      {!report ? (
+        !error && (
+          <div className={cardClass}>
+            <Loading rows={6} />
+          </div>
+        )
+      ) : (
+        <ReportBody report={report} />
+      )}
+    </AppShell>
+  );
+}
+
+function ReportBody({ report: r }: { report: Report }) {
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <Kpi
+          label="Pendapatan"
+          value={formatRupiah(r.revenue)}
+          sub={r.orders ? `Rata-rata ${formatRupiah(r.avg_order_value)} per pesanan` : undefined}
+        />
+        <Kpi
+          label="Pesanan"
+          value={r.orders.toLocaleString("id-ID")}
+          sub={[r.express_orders && `${r.express_orders} Express`, r.cancelled_orders && `${r.cancelled_orders} dibatalkan`]
+            .filter(Boolean)
+            .join(" · ") || undefined}
+        />
+        <Kpi label="Berat cucian" value={`${r.weight_kg.toLocaleString("id-ID", { maximumFractionDigits: 1 })} kg`} />
+        <Kpi
+          label="Belum lunas"
+          value={formatRupiah(r.unpaid_total)}
+          sub={r.unpaid_orders ? `${r.unpaid_orders} pesanan, ditagih saat diambil` : "Semua pesanan sudah lunas"}
+          warn={r.unpaid_total > 0}
+        />
+      </div>
+
+      <RevenueChart report={r} />
+
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-3">
+        <BreakdownCard
+          icon={IconTag}
+          title="Per layanan"
+          rows={r.by_service}
+          total={r.revenue}
+          qty={(row) =>
+            [row.weight_kg ? `${row.weight_kg.toLocaleString("id-ID")} kg` : null, row.qty_pcs ? `${row.qty_pcs} pcs` : null]
+              .filter(Boolean)
+              .join(" · ")
+          }
+        />
+        <BreakdownCard icon={IconUsers} title="Per kasir" rows={r.by_cashier} total={r.revenue} />
+        <BreakdownCard icon={IconWallet} title="Per metode bayar" rows={r.by_payment} total={r.revenue} />
+      </div>
+    </div>
+  );
+}
+
+function Kpi({ label, value, sub, warn }: { label: string; value: string; sub?: string; warn?: boolean }) {
+  return (
+    <div className={`${cardClass} p-4 sm:p-5`}>
+      <p className="text-[13px] font-medium text-muted">{label}</p>
+      <p className="tabular mt-1.5 truncate text-xl font-semibold tracking-tight text-ink sm:text-2xl">{value}</p>
+      {sub && <p className={`mt-1 text-xs ${warn ? "font-medium text-warn-700" : "text-muted"}`}>{sub}</p>}
+    </div>
+  );
+}
+
+function RevenueChart({ report }: { report: Report }) {
+  const { unit, items } = useMemo(() => buckets(report.by_day), [report.by_day]);
+  const [hover, setHover] = useState<number | null>(null);
+  const [showTable, setShowTable] = useState(false);
+  const max = Math.max(...items.map((b) => b.revenue), 1);
+  // Label sumbu-x paling banyak ±8 supaya tidak bertumpuk.
+  const every = Math.max(1, Math.ceil(items.length / 8));
+  const active = hover ?? null;
+
+  return (
+    <Card
+      icon={IconChart}
+      title={`Pendapatan per ${unit}`}
+      description={`Total ${formatRupiah(report.revenue)} dari ${report.orders} pesanan`}
+      action={
+        <Button variant="ghost" size="sm" onClick={() => setShowTable((v) => !v)} aria-expanded={showTable}>
+          {showTable ? "Lihat grafik" : "Lihat tabel"}
+        </Button>
+      }
+    >
+      {report.orders === 0 ? (
+        <p className="py-10 text-center text-sm text-muted">Belum ada pesanan pada periode ini.</p>
+      ) : showTable ? (
+        <div className="max-h-80 overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-surface text-left text-xs text-muted">
+              <tr>
+                <th className="py-2 font-medium capitalize">{unit}</th>
+                <th className="py-2 text-right font-medium">Pesanan</th>
+                <th className="py-2 text-right font-medium">Pendapatan</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((b) => (
+                <tr key={b.key} className="border-t border-line">
+                  <td className="py-2 text-ink-2">{b.tooltip}</td>
+                  <td className="tabular py-2 text-right text-ink-2">{b.orders}</td>
+                  <td className="tabular py-2 text-right font-medium text-ink">{formatRupiah(b.revenue)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="flex gap-3">
+          <div className="tabular flex h-56 w-14 shrink-0 flex-col justify-between pt-6 text-right text-[11px] text-muted" aria-hidden="true">
+            <span>{compactRupiah(max)}</span>
+            <span>{compactRupiah(max / 2)}</span>
+            <span>0</span>
+          </div>
+          <div className="relative min-w-0 flex-1">
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-56" aria-hidden="true">
+              <div className="absolute inset-x-0 top-6 border-t border-dashed border-line" />
+              <div className="absolute inset-x-0 top-[124px] border-t border-dashed border-line" />
+              <div className="absolute inset-x-0 bottom-0 border-t border-line-strong" />
+            </div>
+            <ul className="relative flex h-56 items-end gap-0.5 pt-6" aria-label={`Pendapatan per ${unit}`}>
+              {items.map((b, i) => {
+                const pct = (b.revenue / max) * 100;
+                const isActive = active === i;
+                return (
+                  <li
+                    key={b.key}
+                    className="relative flex h-full min-w-0 flex-1 items-end"
+                    onMouseEnter={() => setHover(i)}
+                    onMouseLeave={() => setHover(null)}
+                  >
+                    <button
+                      type="button"
+                      className="flex h-full w-full items-end rounded-sm px-[1px] focus-visible:outline-offset-2"
+                      aria-label={`${b.tooltip}: ${formatRupiah(b.revenue)}, ${b.orders} pesanan`}
+                      onFocus={() => setHover(i)}
+                      onBlur={() => setHover(null)}
+                    >
+                      <span
+                        className={`mx-auto block w-full max-w-12 rounded-t-[4px] transition-[height,background-color] duration-200 ${
+                          isActive ? "bg-brand-700" : "bg-brand-500"
+                        }`}
+                        style={{ height: `${Math.max(pct, b.revenue > 0 ? 1.5 : 0)}%` }}
+                      />
+                    </button>
+                    {isActive && (
+                      <span
+                        className={`pointer-events-none absolute -top-1 z-10 -translate-y-full whitespace-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-xs text-white shadow-pop ${
+                          i < items.length / 2 ? "left-0" : "right-0"
+                        }`}
+                      >
+                        <span className="block text-white/70">{b.tooltip}</span>
+                        <span className="tabular block font-semibold">{formatRupiah(b.revenue)}</span>
+                        <span className="tabular block text-white/70">{b.orders} pesanan</span>
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            <ul className="mt-2 flex gap-0.5" aria-hidden="true">
+              {items.map((b, i) => (
+                <li key={b.key} className="min-w-0 flex-1 overflow-visible text-center text-[11px] text-muted">
+                  <span className={i % every === 0 ? "whitespace-nowrap" : "invisible"}>{b.label}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function BreakdownCard({
+  icon,
+  title,
+  rows,
+  total,
+  qty,
+}: {
+  icon: typeof IconReceipt;
+  title: string;
+  rows: ReportRow[];
+  total: number;
+  qty?: (row: ReportRow) => string;
+}) {
+  return (
+    <Card icon={icon} tone="neutral" title={title}>
+      {rows.length === 0 ? (
+        <p className="text-sm text-muted">Belum ada data.</p>
+      ) : (
+        <ul className="space-y-3">
+          {rows.map((row) => {
+            const share = total ? Math.round((row.revenue / total) * 100) : 0;
+            const detail = qty?.(row);
+            return (
+              <li key={row.key}>
+                <div className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="min-w-0 truncate font-medium text-ink">{row.label}</span>
+                  <span className="tabular shrink-0 font-semibold text-ink">{formatRupiah(row.revenue)}</span>
+                </div>
+                <div className="mt-1 flex items-center gap-3">
+                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-canvas" aria-hidden="true">
+                    <div className="h-full rounded-full bg-brand-500" style={{ width: `${share}%` }} />
+                  </div>
+                  <span className="tabular w-10 shrink-0 text-right text-xs text-muted">{share}%</span>
+                </div>
+                <p className="mt-0.5 text-xs text-muted">
+                  {row.orders} pesanan{detail ? ` · ${detail}` : ""}
+                </p>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Card>
+  );
+}

@@ -25,32 +25,44 @@ LOCAL_TZ = ZoneInfo("Asia/Jakarta")
 
 # --- Proses layanan --------------------------------------------------------
 
-PROCESSES = ("C", "CK", "CKL", "CKS", "S", "SATUAN")
+PROCESSES = ("C", "CK", "CKL", "CKS", "S", "SATUAN", "DRY_CLEAN")
 PROCESS_LEVEL: dict[str, int] = {"C": 1, "CK": 2, "CKL": 3, "CKS": 4}
 MACHINE_PROCESSES = frozenset({"C", "CK", "CKL", "CKS"})
 DRYER_PROCESSES = frozenset({"CK", "CKL", "CKS"})
-# Setrika dikerjakan manual oleh petugas, kemungkinan besar penyebab antrean.
-IRONING_PROCESSES = frozenset({"CKS", "S"})
+# Setrika dan item satuan dikerjakan manual oleh 2 petugas yang sama, tanpa mesin,
+# sehingga kemungkinan besar jadi penyebab antrean.
+IRONING_PROCESSES = frozenset({"CKS", "S", "SATUAN"})
+# Express hanya untuk kiloan CKL dan CKS (di API dibaca dari flag express_eligible katalog).
+EXPRESS_PROCESSES = frozenset({"CKL", "CKS"})
 
 # Kelompok katalog (lihat apps/api/seed/price_catalog.json).
 GROUP_KILOAN = "KILOAN"
 GROUP_SETRIKA = "SETRIKA"
 GROUP_KHUSUS = "KHUSUS"
 GROUP_SATUAN = "SATUAN"
+GROUP_DRY_CLEAN = "DRY_CLEAN"
 
-# Aturan load kiloan default (menunggu konfirmasi mitra). Di API nilainya
-# diambil dari katalog; di data mentah mitra dipakai nilai ini.
-KG_PER_LOAD = 7.0
-MAX_EXTRA_KG_PER_LOAD = 1.0
+# Kapasitas satu mesin cuci. Hanya untuk menghitung load operasional (fitur ML),
+# terpisah dari harga. Di API nilainya dari pengaturan machine_capacity_kg.
+MACHINE_CAPACITY_KG = 8.0
+# Janji bila semua layanan di pesanan belum punya janji standar (sementara).
+DEFAULT_PROMISE_HOURS = 48.0
 
 
 def count_loads(qty: float, per_load: float, max_extra: float = 0.0) -> int:
-    """`max(1, ceil((qty - max_extra) / per_load))`.
+    """`max(1, ceil((qty - max_extra) / per_load))`, untuk item khusus per load.
 
-    Contoh kiloan (7 kg + maks 1 kg tambahan): 5 kg = 1, 8 kg = 1, 9 kg = 2.
+    Contoh selimut besar (2 pcs/load + maks 1 pcs tambahan): 3 pcs = 1, 4 pcs = 2.
     """
     # Dibulatkan dulu supaya galat float (mis. 14.000000001) tidak menambah load.
     return max(1, math.ceil(round((qty - max_extra) / per_load, 9)))
+
+
+def machine_loads(weight_kg: float, capacity_kg: float = MACHINE_CAPACITY_KG) -> int:
+    """Load mesin kiloan: `ceil(kg / kapasitas)`. Contoh 8 kg = 1, 12 kg = 2."""
+    if weight_kg <= 0:
+        return 0
+    return max(1, math.ceil(round(weight_kg / capacity_kg, 9)))
 
 
 # --- Fitur -----------------------------------------------------------------
@@ -58,13 +70,14 @@ def count_loads(qty: float, per_load: float, max_extra: float = 0.0) -> int:
 FEATURE_ORDER: list[str] = [
     # Isi pesanan
     "is_express",
-    "total_loads",
+    "total_machine_loads",
     "total_weight_kg",
     "max_process_level",
     "has_ironing",
     "ironing_kg",
     "n_special_items",
     "n_satuan_items",
+    "n_dry_clean_items",
     # Waktu
     "hour_of_day",
     "day_of_week",
@@ -74,6 +87,7 @@ FEATURE_ORDER: list[str] = [
     "active_express_count",
     "active_loads_total",
     "active_ironing_kg",
+    "active_satuan_items",
     # Janji
     "promised_hours",
     # Operasional
@@ -109,17 +123,20 @@ DayOpsLookup = Callable[[date], DayOps]
 @dataclass(frozen=True)
 class OrderContent:
     is_express: bool
-    total_loads: int
+    total_machine_loads: int
     total_weight_kg: float
     max_process_level: int
     has_ironing: bool
     ironing_kg: float
     n_special_items: int
     n_satuan_items: int
+    n_dry_clean_items: int
     # Load yang butuh mesin pengering (CK, CKL, CKS).
     dry_loads: int
-    # Proses yang ada di pesanan, untuk menentukan janji waktu.
+    # Proses yang ada di pesanan, untuk menentukan janji waktu. Proses item yang
+    # dikerjakan Express (hanya CKL/CKS) dipisah karena janjinya berbeda.
     processes: tuple[str, ...]
+    express_processes: tuple[str, ...] = ()
 
 
 class ItemLike(Protocol):
@@ -127,20 +144,22 @@ class ItemLike(Protocol):
     process: str
     weight_kg: float | None
     qty_pcs: int | None
-    loads: int | None
+    machine_loads: int | None
+    is_express: bool
 
 
 def content_from_items(items: Iterable[ItemLike], is_express: bool) -> OrderContent:
     """Ringkas item pesanan aplikasi menjadi bentuk yang setara dengan form pencatatan."""
-    total_loads = dry_loads = n_special = n_satuan = 0
+    total_loads = dry_loads = n_special = n_satuan = n_dry_clean = 0
     weight = ironing_kg = 0.0
     level = 0
     has_ironing = False
     processes: list[str] = []
+    express_processes: list[str] = []
     for item in items:
         group, process = str(item.group), str(item.process)
         kg = float(item.weight_kg or 0)
-        processes.append(process)
+        (express_processes if item.is_express else processes).append(process)
         level = max(level, PROCESS_LEVEL.get(process, 0))
         if process in IRONING_PROCESSES:
             has_ironing = True
@@ -148,8 +167,10 @@ def content_from_items(items: Iterable[ItemLike], is_express: bool) -> OrderCont
             weight += kg
             if process in IRONING_PROCESSES:
                 ironing_kg += kg
+        # Hanya kiloan yang dihitung load mesinnya, supaya setara dengan form
+        # pencatatan (berat_kg milik layanan_utama). Satuan dan dry clean tanpa mesin.
         if group == GROUP_KILOAN:
-            loads = int(item.loads or 0)
+            loads = int(item.machine_loads or 0)
             total_loads += loads
             if process in DRYER_PROCESSES:
                 dry_loads += loads
@@ -157,17 +178,21 @@ def content_from_items(items: Iterable[ItemLike], is_express: bool) -> OrderCont
             n_special += int(item.qty_pcs or 1)
         elif group == GROUP_SATUAN:
             n_satuan += int(item.qty_pcs or 0)
+        elif group == GROUP_DRY_CLEAN:
+            n_dry_clean += int(item.qty_pcs or 0)
     return OrderContent(
         is_express=bool(is_express),
-        total_loads=total_loads,
+        total_machine_loads=total_loads,
         total_weight_kg=round(weight, 2),
         max_process_level=level,
         has_ironing=has_ironing,
         ironing_kg=round(ironing_kg, 2),
         n_special_items=n_special,
         n_satuan_items=n_satuan,
+        n_dry_clean_items=n_dry_clean,
         dry_loads=dry_loads,
         processes=tuple(dict.fromkeys(processes)),
+        express_processes=tuple(dict.fromkeys(express_processes)),
     )
 
 
@@ -178,29 +203,34 @@ def content_from_form(
     berat_kg: float,
     pcs_khusus: int,
     pcs_satuan: int,
+    pcs_dry_clean: int,
     ada_setrika: bool,
+    machine_capacity_kg: float = MACHINE_CAPACITY_KG,
 ) -> OrderContent:
-    """Ringkas satu baris form pencatatan mitra."""
+    """Ringkas satu baris form pencatatan mitra.
+
+    Express hanya berlaku untuk CKL/CKS; tanda Express pada layanan lain diabaikan.
+    """
     layanan = str(layanan_utama).strip().upper()
     if layanan not in PROCESSES:
         raise ValueError(f"layanan_utama tidak dikenal: {layanan_utama}")
     kg = float(berat_kg or 0)
-    loads = (
-        count_loads(kg, KG_PER_LOAD, MAX_EXTRA_KG_PER_LOAD)
-        if layanan in MACHINE_PROCESSES and kg > 0
-        else 0
-    )
+    is_express = bool(express) and layanan in EXPRESS_PROCESSES
+    loads = machine_loads(kg, machine_capacity_kg) if layanan in MACHINE_PROCESSES else 0
+    n_satuan = int(pcs_satuan or 0)
     return OrderContent(
-        is_express=bool(express),
-        total_loads=loads,
+        is_express=is_express,
+        total_machine_loads=loads,
         total_weight_kg=round(kg, 2),
         max_process_level=PROCESS_LEVEL.get(layanan, 0),
-        has_ironing=bool(ada_setrika) or layanan in IRONING_PROCESSES,
+        has_ironing=bool(ada_setrika) or layanan in IRONING_PROCESSES or n_satuan > 0,
         ironing_kg=round(kg, 2) if layanan in IRONING_PROCESSES else 0.0,
         n_special_items=int(pcs_khusus or 0),
-        n_satuan_items=int(pcs_satuan or 0),
+        n_satuan_items=n_satuan,
+        n_dry_clean_items=int(pcs_dry_clean or 0),
         dry_loads=loads if layanan in DRYER_PROCESSES else 0,
-        processes=(layanan,),
+        processes=() if is_express else (layanan,),
+        express_processes=(layanan,) if is_express else (),
     )
 
 
@@ -281,20 +311,24 @@ class Promise:
 
 
 def promised_hours(
-    processes: Iterable[str],
-    is_express: bool,
+    content: OrderContent,
     promises: Mapping[str, Promise],
     default_hours: float,
 ) -> float:
-    """Janji pesanan = janji terlama di antara proses yang ada di pesanan."""
+    """Janji pesanan = janji terlama di antara item di pesanan.
+
+    Item Express (CKL/CKS) memakai janji Express, item lain janji Reguler, jadi
+    pesanan Express yang juga berisi bed cover tetap menunggu janji bed cover.
+    """
     known = []
-    for process in processes:
-        promise = promises.get(process)
-        if promise is None:
-            continue
-        hours = promise.express_hours if is_express else promise.regular_hours
-        if hours is not None:
-            known.append(float(hours))
+    for processes, express in ((content.processes, False), (content.express_processes, True)):
+        for process in processes:
+            promise = promises.get(process)
+            if promise is None:
+                continue
+            hours = promise.express_hours if express else promise.regular_hours
+            if hours is not None:
+                known.append(float(hours))
     return max(known) if known else float(default_hours)
 
 
@@ -311,6 +345,7 @@ class QueueRecord:
     loads: int
     dry_loads: int
     ironing_kg: float
+    satuan_items: int = 0
 
     @classmethod
     def from_content(
@@ -320,9 +355,10 @@ class QueueRecord:
             received_at=received_at,
             ready_at=ready_at,
             is_express=content.is_express,
-            loads=content.total_loads,
+            loads=content.total_machine_loads,
             dry_loads=content.dry_loads,
             ironing_kg=content.ironing_kg,
+            satuan_items=content.n_satuan_items,
         )
 
 
@@ -333,6 +369,7 @@ class QueueStats:
     loads: int = 0
     dry_loads: int = 0
     ironing_kg: float = 0.0
+    satuan_items: int = 0
 
     def max(self, other: QueueStats) -> QueueStats:
         return QueueStats(
@@ -341,11 +378,12 @@ class QueueStats:
             loads=max(self.loads, other.loads),
             dry_loads=max(self.dry_loads, other.dry_loads),
             ironing_kg=max(self.ironing_kg, other.ironing_kg),
+            satuan_items=max(self.satuan_items, other.satuan_items),
         )
 
 
 def summarize_queue(records: Iterable[QueueRecord]) -> QueueStats:
-    count = express = loads = dry = 0
+    count = express = loads = dry = satuan = 0
     ironing = 0.0
     for r in records:
         count += 1
@@ -353,7 +391,8 @@ def summarize_queue(records: Iterable[QueueRecord]) -> QueueStats:
         loads += r.loads
         dry += r.dry_loads
         ironing += r.ironing_kg
-    return QueueStats(count, express, loads, dry, round(ironing, 2))
+        satuan += r.satuan_items
+    return QueueStats(count, express, loads, dry, round(ironing, 2), satuan)
 
 
 def queue_stats(at: datetime, records: Iterable[QueueRecord]) -> QueueStats:
@@ -380,13 +419,14 @@ def build_features(
     local = to_local(received_at)
     return {
         "is_express": 1.0 if content.is_express else 0.0,
-        "total_loads": float(content.total_loads),
+        "total_machine_loads": float(content.total_machine_loads),
         "total_weight_kg": float(content.total_weight_kg),
         "max_process_level": float(content.max_process_level),
         "has_ironing": 1.0 if content.has_ironing else 0.0,
         "ironing_kg": float(content.ironing_kg),
         "n_special_items": float(content.n_special_items),
         "n_satuan_items": float(content.n_satuan_items),
+        "n_dry_clean_items": float(content.n_dry_clean_items),
         "hour_of_day": float(local.hour),
         "day_of_week": float(local.weekday()),
         "minutes_to_close": minutes_to_close(received_at, day),
@@ -394,6 +434,7 @@ def build_features(
         "active_express_count": float(queue.express_count),
         "active_loads_total": float(queue.loads),
         "active_ironing_kg": float(queue.ironing_kg),
+        "active_satuan_items": float(queue.satuan_items),
         "promised_hours": float(promised_hours),
         "staff_on_duty": float(day.staff_on_duty),
         "washers_available": float(day.washers_available),
@@ -429,6 +470,7 @@ def build_feature_frame(
     daily: pd.DataFrame,
     promises: Mapping[str, Promise],
     default_promise_hours: float,
+    machine_capacity_kg: float = MACHINE_CAPACITY_KG,
 ) -> pd.DataFrame:
     """Bangun tabel fitur + target dari data mentah (bentuk `data.load_orders`)."""
     import pandas as pd
@@ -441,7 +483,9 @@ def build_feature_frame(
             berat_kg=r.berat_kg,
             pcs_khusus=r.pcs_khusus,
             pcs_satuan=r.pcs_satuan,
+            pcs_dry_clean=r.pcs_dry_clean,
             ada_setrika=bool(r.ada_setrika),
+            machine_capacity_kg=machine_capacity_kg,
         )
         for r in orders.itertuples(index=False)
     ]
@@ -459,15 +503,13 @@ def build_feature_frame(
             content=content,
             queue=queue_stats(received, records),
             day=day_ops(local_date(received)),
-            promised_hours=promised_hours(
-                content.processes, content.is_express, promises, default_promise_hours
-            ),
+            promised_hours=promised_hours(content, promises, default_promise_hours),
         )
         rows.append(
             {
                 "order_id": r.order_id,
                 "received_at": r.received_at,
-                "layanan_utama": content.processes[0],
+                "layanan_utama": r.layanan_utama,
                 **feats,
                 TARGET: (ready - received) / timedelta(hours=1),
                 WORK_TARGET: work_hours_between(received, ready, day_ops),

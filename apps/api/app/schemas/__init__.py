@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -10,6 +11,7 @@ from app.models import (
     NotificationStatus,
     NotificationType,
     OrderStatus,
+    PaymentMethod,
     Process,
     Role,
 )
@@ -64,31 +66,60 @@ class CatalogItemOut(ORM):
     group: CatalogGroup
     process: Process
     unit: CatalogUnit
-    price: int
+    price: int | None
     extra_price: int | None
+    base_kg: float | None
     min_qty: float | None
     kg_per_load: float | None
     pcs_per_load: int | None
     max_extra: float | None
+    express_eligible: bool
     sort_order: int
     is_active: bool
 
 
-class CatalogItemUpdate(BaseModel):
-    """Field yang dikirim saja yang diubah; kirim null untuk mengosongkan aturan."""
-
-    name: str | None = Field(default=None, min_length=1, max_length=100)
+class CatalogItemCreate(BaseModel):
+    code: str = Field(min_length=1, max_length=40, pattern=r"^[A-Z0-9_]+$")
+    name: str = Field(min_length=1, max_length=100)
+    group: CatalogGroup
+    process: Process
+    unit: CatalogUnit
+    # null = harga belum diketahui; layanan harus nonaktif.
     price: int | None = Field(default=None, ge=0)
     extra_price: int | None = Field(default=None, ge=0)
+    base_kg: float | None = Field(default=None, gt=0)
     min_qty: float | None = Field(default=None, ge=0)
     kg_per_load: float | None = Field(default=None, gt=0)
     pcs_per_load: int | None = Field(default=None, gt=0)
     max_extra: float | None = Field(default=None, ge=0)
+    express_eligible: bool = False
+    is_active: bool = True
+
+
+class CatalogItemUpdate(BaseModel):
+    """Field yang dikirim saja yang diubah; kirim null untuk mengosongkan aturan.
+
+    Kode tidak bisa diubah karena dirujuk item pesanan lama.
+    """
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    group: CatalogGroup | None = None
+    process: Process | None = None
+    unit: CatalogUnit | None = None
+    price: int | None = Field(default=None, ge=0)
+    extra_price: int | None = Field(default=None, ge=0)
+    base_kg: float | None = Field(default=None, gt=0)
+    min_qty: float | None = Field(default=None, ge=0)
+    kg_per_load: float | None = Field(default=None, gt=0)
+    pcs_per_load: int | None = Field(default=None, gt=0)
+    max_extra: float | None = Field(default=None, ge=0)
+    express_eligible: bool | None = None
     is_active: bool | None = None
 
 
 class AppSettingsOut(BaseModel):
     express_multiplier: float
+    machine_capacity_kg: float
     default_promise_hours: float
     default_staff_on_duty: int
     default_washers_available: int
@@ -99,6 +130,7 @@ class AppSettingsOut(BaseModel):
 
 class AppSettingsIn(BaseModel):
     express_multiplier: float | None = Field(default=None, ge=1, le=10)
+    machine_capacity_kg: float | None = Field(default=None, gt=0, le=50)
     default_promise_hours: float | None = Field(default=None, gt=0, le=24 * 14)
     default_staff_on_duty: int | None = Field(default=None, ge=0, le=50)
     default_washers_available: int | None = Field(default=None, ge=0, le=50)
@@ -165,6 +197,25 @@ class QuoteIn(BaseModel):
 class OrderCreate(QuoteIn):
     customer_name: str = Field(min_length=1, max_length=100)
     customer_phone: str = Field(min_length=8, max_length=20)
+    # Kondisi barang / permintaan khusus.
+    notes: str | None = Field(default=None, max_length=1000)
+    # Diisi bila pelanggan bayar di depan.
+    payment_method: PaymentMethod | None = None
+
+
+class OrderDetailsUpdate(BaseModel):
+    """Field yang dikirim saja yang diubah; kirim null/"" untuk mengosongkan."""
+
+    notes: str | None = Field(default=None, max_length=1000)
+    rack_location: str | None = Field(default=None, max_length=20)
+
+
+class PaymentIn(BaseModel):
+    method: PaymentMethod
+
+
+class CancelIn(BaseModel):
+    reason: str = Field(min_length=3, max_length=255)
 
 
 class OrderItemOut(ORM):
@@ -174,9 +225,10 @@ class OrderItemOut(ORM):
     process: Process
     weight_kg: float | None
     qty_pcs: int | None
-    loads: int | None
+    machine_loads: int | None
     extra_kg: int | None
     extra_pcs: int | None
+    is_express: bool
     subtotal: int
 
 
@@ -189,12 +241,22 @@ class QuoteOut(BaseModel):
 
 class StatusChange(BaseModel):
     to_status: OrderStatus
+    # Saat Tandai Siap: lokasi rak, mis. "B3".
+    rack_location: str | None = Field(default=None, max_length=20)
+    # Saat Tandai Diambil untuk pesanan yang belum lunas.
+    payment_method: PaymentMethod | None = None
 
 
-class StatusHistoryOut(ORM):
+class PublicStatusHistoryOut(ORM):
+    """Riwayat untuk portal publik: tanpa nama petugas."""
+
     from_status: OrderStatus | None
     to_status: OrderStatus
     changed_at: datetime
+
+
+class StatusHistoryOut(PublicStatusHistoryOut):
+    changed_by_name: str | None = None
 
 
 class OrderOut(ORM):
@@ -204,6 +266,15 @@ class OrderOut(ORM):
     is_express: bool
     items: list[OrderItemOut]
     price_total: int
+    # Kasir yang menerima pesanan.
+    created_by_name: str | None = None
+    notes: str | None = None
+    rack_location: str | None = None
+    is_paid: bool = False
+    payment_method: PaymentMethod | None = None
+    paid_at: datetime | None = None
+    cancelled_at: datetime | None = None
+    cancel_reason: str | None = None
     status: OrderStatus
     received_at: datetime
     promised_ready_at: datetime | None
@@ -256,7 +327,89 @@ class TrackingOut(BaseModel):
     predicted_ready_at: datetime | None
     ready_at: datetime | None
     picked_up_at: datetime | None
-    history: list[StatusHistoryOut]
+    history: list[PublicStatusHistoryOut]
+
+
+# --- Pelanggan -------------------------------------------------------------
+
+
+class CustomerSummaryOut(BaseModel):
+    id: int
+    name: str
+    phone_wa: str
+    created_at: datetime
+    order_count: int
+    total_spent: int
+    unpaid_total: int
+    last_order_at: datetime | None
+
+
+class CustomerDetailOut(CustomerSummaryOut):
+    orders: list[OrderOut]
+
+
+class CustomerUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    phone_wa: str | None = Field(default=None, min_length=8, max_length=20)
+
+
+# --- Laporan ---------------------------------------------------------------
+
+
+class ReportDay(BaseModel):
+    date: date
+    orders: int
+    revenue: int
+
+
+class ReportRow(BaseModel):
+    key: str
+    label: str
+    orders: int
+    revenue: int
+    weight_kg: float = 0.0
+    qty_pcs: int = 0
+
+
+class ReportOut(BaseModel):
+    start: date
+    end: date
+    orders: int
+    revenue: int
+    weight_kg: float
+    avg_order_value: int
+    paid_total: int
+    unpaid_total: int
+    unpaid_orders: int
+    cancelled_orders: int
+    express_orders: int
+    by_day: list[ReportDay]
+    by_service: list[ReportRow]
+    by_cashier: list[ReportRow]
+    by_payment: list[ReportRow]
+
+
+# --- Akun sendiri ----------------------------------------------------------
+
+
+class ChangePasswordIn(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8)
+
+
+# --- Log aktivitas ---------------------------------------------------------
+
+
+class ActivityLogOut(ORM):
+    id: int
+    user_id: int | None
+    user_name: str | None
+    action: str
+    entity_type: str
+    entity_id: str | None
+    summary: str
+    changes: dict[str, list[Any]] | None
+    created_at: datetime
 
 
 # --- Dasbor ----------------------------------------------------------------

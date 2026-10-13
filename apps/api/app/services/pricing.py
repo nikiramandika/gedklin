@@ -1,19 +1,20 @@
 """Satu-satunya tempat logika harga. Harga dibaca dari tabel service_catalog.
 
 Aturan per satuan katalog:
-- LOAD_7KG (kiloan): `loads = max(1, ceil((kg - max_extra) / kg_per_load))`,
-  `extra_kg = ceil(kg - kg_per_load * loads)` (maks `max_extra` per pesanan item),
-  `subtotal = loads * price + extra_kg * extra_price`.
-  Contoh 7 kg + maks 1 kg: 5 kg = 1 load, 8 kg = 1 load + 1 kg, 9 kg = 2 load.
+- KILOAN_7KG (sudah dikonfirmasi mitra): `extra_kg = max(0, ceil(kg - base_kg))`,
+  `subtotal = price + extra_kg * extra_price`. Berat di atas 8 kg tidak dihitung
+  load kedua. Contoh CKS: 5 kg = 45.000, 8 kg = 55.000, 12 kg = 95.000.
+  Pembulatan ke atas per kg masih asumsi (menunggu konfirmasi mitra).
+  `machine_loads = ceil(kg / machine_capacity_kg)` hanya untuk fitur ML, bukan harga.
 - KG: `subtotal = max(kg, min_qty) * price` (mis. setrika minimal 5 kg).
 - PCS: `subtotal = qty * price`.
 - LOAD (item khusus):
-  - kapasitas per pcs (`pcs_per_load`): aturan sama dengan kiloan tetapi dalam pcs,
-    tambahan per pcs maks `max_extra`.
+  - kapasitas per pcs (`pcs_per_load`): `loads = max(1, ceil((pcs - max_extra) / pcs_per_load))`,
+    sisa pcs kena tambahan per pcs (maks `max_extra`).
   - kapasitas per kg (`kg_per_load`, mis. sprei kecil maks 5 kg/load):
     `loads = ceil(kg / kg_per_load)`, tambahan pcs diisi kasir, maks `max_extra` per load.
-Express: `subtotal_express = subtotal_reguler * express_multiplier`, untuk semua item.
-Aturan load dan Express untuk item khusus/satuan masih menunggu konfirmasi mitra.
+Express: hanya item dengan `express_eligible` (CKL dan CKS) yang dikali
+`express_multiplier`, termasuk tambahan per kg. Item lain tetap harga Reguler.
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import CatalogGroup, CatalogUnit, Process, ServiceCatalog
-from gedklin_ml.features import count_loads
+from gedklin_ml.features import MACHINE_CAPACITY_KG, count_loads, machine_loads
 
 
 class PricingError(ValueError):
@@ -41,12 +42,14 @@ class CatalogLike(Protocol):
     group: CatalogGroup
     process: Process
     unit: CatalogUnit
-    price: int
+    price: int | None
     extra_price: int | None
+    base_kg: float | None
     min_qty: float | None
     kg_per_load: float | None
     pcs_per_load: int | None
     max_extra: float | None
+    express_eligible: bool
 
 
 @dataclass(frozen=True)
@@ -64,9 +67,10 @@ class PricedItem:
     process: Process
     weight_kg: float | None
     qty_pcs: int | None
-    loads: int | None
+    machine_loads: int | None
     extra_kg: int | None
     extra_pcs: int | None
+    is_express: bool
     subtotal: int
 
 
@@ -96,21 +100,26 @@ def _need_pcs(item: CatalogLike, qty_pcs: int | None) -> int:
 
 
 def price_regular(
-    item: CatalogLike, weight_kg: float | None = None, qty_pcs: int | None = None
+    item: CatalogLike,
+    weight_kg: float | None = None,
+    qty_pcs: int | None = None,
+    *,
+    machine_capacity_kg: float = MACHINE_CAPACITY_KG,
 ) -> PricedItem:
     """Harga Reguler satu item sesuai aturan satuan katalog."""
+    if item.price is None:
+        raise PricingError(f"{item.name}: harga belum ditetapkan")
     loads = extra_kg = extra_pcs = None
     weight: float | None = None
     pcs: int | None = None
     extra_price = item.extra_price or 0
     max_extra = item.max_extra or 0
 
-    if item.unit == CatalogUnit.LOAD_7KG:
+    if item.unit == CatalogUnit.KILOAN_7KG:
         weight = _need_weight(item, weight_kg)
-        per_load = item.kg_per_load or 7
-        loads = count_loads(weight, per_load, max_extra)
-        extra_kg = _ceil(max(0.0, weight - per_load * loads))
-        subtotal = loads * item.price + extra_kg * extra_price
+        extra_kg = _ceil(max(0.0, weight - (item.base_kg or 7)))
+        subtotal = item.price + extra_kg * extra_price
+        loads = machine_loads(weight, machine_capacity_kg)
     elif item.unit == CatalogUnit.KG:
         weight = _need_weight(item, weight_kg)
         subtotal = _ceil(max(weight, item.min_qty or 0) * item.price)
@@ -147,9 +156,10 @@ def price_regular(
         process=item.process,
         weight_kg=weight,
         qty_pcs=pcs,
-        loads=loads,
+        machine_loads=loads,
         extra_kg=extra_kg,
         extra_pcs=extra_pcs,
+        is_express=False,
         subtotal=int(subtotal),
     )
 
@@ -166,11 +176,15 @@ def price_item(
     *,
     is_express: bool,
     express_multiplier: float,
+    machine_capacity_kg: float = MACHINE_CAPACITY_KG,
 ) -> PricedItem:
-    priced = price_regular(item, weight_kg, qty_pcs)
-    if not is_express:
+    """Harga satu item. Pada pesanan Express, hanya item express_eligible yang dikali."""
+    priced = price_regular(item, weight_kg, qty_pcs, machine_capacity_kg=machine_capacity_kg)
+    if not (is_express and item.express_eligible):
         return priced
-    return replace(priced, subtotal=apply_express(priced.subtotal, express_multiplier))
+    return replace(
+        priced, is_express=True, subtotal=apply_express(priced.subtotal, express_multiplier)
+    )
 
 
 def quote(
@@ -179,6 +193,7 @@ def quote(
     *,
     is_express: bool,
     express_multiplier: float,
+    machine_capacity_kg: float = MACHINE_CAPACITY_KG,
 ) -> Quote:
     if not requests:
         raise PricingError("Pesanan harus berisi minimal satu item")
@@ -186,20 +201,32 @@ def quote(
     catalog = {
         c.code: c for c in db.scalars(select(ServiceCatalog).where(ServiceCatalog.code.in_(codes)))
     }
-    items = []
+    entries = []
     for r in requests:
         entry = catalog.get(r.catalog_code)
         if entry is None or not entry.is_active:
             raise PricingError(f"Layanan {r.catalog_code} tidak tersedia")
-        items.append(
-            price_item(
-                entry,
-                r.weight_kg,
-                r.qty_pcs,
-                is_express=is_express,
-                express_multiplier=express_multiplier,
-            )
+        entries.append(entry)
+    if is_express and not any(e.express_eligible for e in entries):
+        eligible = db.scalars(
+            select(ServiceCatalog.name)
+            .where(ServiceCatalog.express_eligible.is_(True), ServiceCatalog.is_active.is_(True))
+            .order_by(ServiceCatalog.sort_order)
         )
+        raise PricingError(
+            "Express hanya bisa dipilih bila pesanan berisi " + " atau ".join(eligible)
+        )
+    items = [
+        price_item(
+            entry,
+            r.weight_kg,
+            r.qty_pcs,
+            is_express=is_express,
+            express_multiplier=express_multiplier,
+            machine_capacity_kg=machine_capacity_kg,
+        )
+        for r, entry in zip(requests, entries, strict=True)
+    ]
     return Quote(
         items=items,
         total=sum(i.subtotal for i in items),

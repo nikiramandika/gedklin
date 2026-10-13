@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
 import { useRequireRole } from "@/lib/auth";
-import { describeItem, formatDateTime, formatRupiah, speedLabel } from "@/lib/format";
+import { describeItem, formatDateTime, formatRupiah, paymentLabel, speedLabel } from "@/lib/format";
 import type { Receipt, Role } from "@/lib/types";
 
 import { IconArrowLeft, IconChat, IconPrinter } from "../icons";
@@ -51,10 +51,14 @@ export function ReceiptView({ id }: { id: string }) {
                 <p className="text-base font-bold tracking-wide">GEDKLIN LAUNDRY</p>
                 <p className="text-xs">Medan</p>
               </div>
+              {receipt.order.status === "CANCELLED" && (
+                <p className="mt-2 border border-black py-1 text-center font-bold">PESANAN DIBATALKAN</p>
+              )}
               <Divider />
               <Row label="Kode" value={receipt.order.tracking_code} bold />
               <Row label="Pelanggan" value={receipt.order.customer.name} />
               <Row label="Masuk" value={formatDateTime(receipt.order.received_at)} />
+              {receipt.order.created_by_name && <Row label="Kasir" value={receipt.order.created_by_name} />}
               <Row label="Kecepatan" value={speedLabel(receipt.order.is_express)} />
               <Divider />
               {receipt.order.items.map((item, i) => (
@@ -62,6 +66,18 @@ export function ReceiptView({ id }: { id: string }) {
               ))}
               <Divider />
               <Row label="TOTAL" value={formatRupiah(receipt.order.price_total)} bold />
+              <Row
+                label="Pembayaran"
+                value={receipt.order.is_paid ? paymentLabel(receipt.order).toUpperCase() : "BELUM LUNAS"}
+                bold
+              />
+              {receipt.order.notes && (
+                <>
+                  <Divider />
+                  <p className="text-xs">Catatan:</p>
+                  <p className="whitespace-pre-line text-xs">{receipt.order.notes}</p>
+                </>
+              )}
               <Divider />
               <p className="text-xs">Perkiraan siap diambil:</p>
               <p className="font-bold">{formatDateTime(receipt.order.predicted_ready_at)}</p>

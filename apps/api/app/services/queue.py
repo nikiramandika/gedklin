@@ -28,12 +28,19 @@ def queue_record(order: Order, ready_at: datetime | None) -> QueueRecord:
     return QueueRecord.from_content(order.received_at, ready_at, order_content(order))
 
 
+def left_queue_at(order: Order) -> datetime | None:
+    """Kapan pesanan keluar dari antrean: saat READY, atau saat dibatalkan."""
+    return order.ready_at or order.cancelled_at
+
+
 def records_active_at(db: Session, at: datetime) -> list[QueueRecord]:
-    """Pesanan yang sudah masuk sebelum `at` dan belum READY pada saat itu."""
+    """Pesanan yang sudah masuk sebelum `at` dan belum READY/batal pada saat itu."""
     stmt = select(Order).where(
-        Order.received_at < at, or_(Order.ready_at.is_(None), Order.ready_at > at)
+        Order.received_at < at,
+        or_(Order.ready_at.is_(None), Order.ready_at > at),
+        or_(Order.cancelled_at.is_(None), Order.cancelled_at > at),
     )
-    return [queue_record(o, o.ready_at) for o in db.scalars(stmt)]
+    return [queue_record(o, left_queue_at(o)) for o in db.scalars(stmt)]
 
 
 def is_ahead(other: Order, order: Order) -> bool:

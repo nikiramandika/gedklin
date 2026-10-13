@@ -25,6 +25,7 @@ from app.models.enums import (
     NotificationStatus,
     NotificationType,
     OrderStatus,
+    PaymentMethod,
     Process,
     Role,
 )
@@ -67,15 +68,22 @@ class ServiceCatalog(Base):
     group: Mapped[CatalogGroup] = mapped_column(_enum(CatalogGroup))
     process: Mapped[Process] = mapped_column(_enum(Process))
     unit: Mapped[CatalogUnit] = mapped_column(_enum(CatalogUnit))
-    # Rupiah. LOAD_7KG/LOAD: per load, KG: per kg, PCS: per potong.
-    price: Mapped[int] = mapped_column(Integer)
-    # Tambahan per kg (LOAD_7KG) atau per pcs (LOAD).
+    # Rupiah. KILOAN_7KG: harga 7 kg pertama, LOAD: per load, KG: per kg, PCS: per potong.
+    # NULL = harga belum diketahui (mis. dry clean); item belum bisa dipesan.
+    price: Mapped[int | None] = mapped_column(Integer)
+    # Tambahan per kg (KILOAN_7KG) atau per pcs (LOAD).
     extra_price: Mapped[int | None] = mapped_column(Integer)
+    # Berat yang sudah termasuk harga dasar kiloan (7 kg).
+    base_kg: Mapped[float | None] = mapped_column(Float)
     # Aturan min/maks.
     min_qty: Mapped[float | None] = mapped_column(Float)
     kg_per_load: Mapped[float | None] = mapped_column(Float)
     pcs_per_load: Mapped[int | None] = mapped_column(Integer)
     max_extra: Mapped[float | None] = mapped_column(Float)
+    # Hanya CKL dan CKS yang boleh Express (harga x express_multiplier).
+    express_eligible: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
@@ -125,15 +133,35 @@ class Order(Base):
     ready_notif_sent: Mapped[bool] = mapped_column(Boolean, default=False)
     needs_followup: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
+    # Catatan kondisi/permintaan, mis. "ada noda di kemeja putih, pisah warna".
+    notes: Mapped[str | None] = mapped_column(Text)
+    # Lokasi rak saat siap diambil, mis. "B3".
+    rack_location: Mapped[str | None] = mapped_column(String(20))
+    # Pembayaran di konter. paid_at NULL = belum lunas.
+    payment_method: Mapped[PaymentMethod | None] = mapped_column(_enum(PaymentMethod))
+    paid_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    cancelled_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    cancel_reason: Mapped[str | None] = mapped_column(String(255))
+
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
 
     customer: Mapped[Customer] = relationship(lazy="joined")
+    creator: Mapped[User | None] = relationship(lazy="joined")
     items: Mapped[list[OrderItem]] = relationship(
         back_populates="order", order_by="OrderItem.id", lazy="selectin"
     )
     history: Mapped[list[OrderStatusHistory]] = relationship(
         back_populates="order", order_by="OrderStatusHistory.changed_at"
     )
+
+    @property
+    def is_paid(self) -> bool:
+        return self.paid_at is not None
+
+    @property
+    def created_by_name(self) -> str | None:
+        """Kasir yang menerima pesanan."""
+        return self.creator.name if self.creator else None
 
 
 class OrderItem(Base):
@@ -150,9 +178,13 @@ class OrderItem(Base):
     process: Mapped[Process] = mapped_column(_enum(Process))
     weight_kg: Mapped[float | None] = mapped_column(Float)
     qty_pcs: Mapped[int | None] = mapped_column(Integer)
-    loads: Mapped[int | None] = mapped_column(Integer)
+    # Kiloan: ceil(kg / kapasitas mesin), untuk fitur ML, terpisah dari harga.
+    # Item khusus per load: jumlah load sesuai price list.
+    machine_loads: Mapped[int | None] = mapped_column(Integer)
     extra_kg: Mapped[int | None] = mapped_column(Integer)
     extra_pcs: Mapped[int | None] = mapped_column(Integer)
+    # True bila item ini dikenai harga dan janji Express (hanya CKL/CKS).
+    is_express: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     subtotal: Mapped[int] = mapped_column(Integer)
 
     order: Mapped[Order] = relationship(back_populates="items")
@@ -169,6 +201,11 @@ class OrderStatusHistory(Base):
     changed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
 
     order: Mapped[Order] = relationship(back_populates="history")
+    changer: Mapped[User | None] = relationship(lazy="joined")
+
+    @property
+    def changed_by_name(self) -> str | None:
+        return self.changer.name if self.changer else None
 
 
 class DailyOperation(Base):
@@ -219,3 +256,29 @@ class PredictionLog(Base):
     predicted_hours: Mapped[float] = mapped_column(Float)
     model_version: Mapped[str] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class ActivityLog(Base):
+    """Jejak aktivitas petugas: siapa melakukan apa, kapan, dan apa yang berubah."""
+
+    __tablename__ = "activity_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # NULL = sistem (mis. tugas terjadwal).
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
+    # mis. "order.create", "order.status", "catalog.update", "user.create", "auth.login".
+    action: Mapped[str] = mapped_column(String(40), index=True)
+    # Kelompok untuk filter: order, catalog, user, settings, operation, auth.
+    entity_type: Mapped[str] = mapped_column(String(20), index=True)
+    entity_id: Mapped[str | None] = mapped_column(String(40))
+    # Kalimat yang dibaca pemilik, mis. "Mengubah harga Cuci + Kering + Setrika".
+    summary: Mapped[str] = mapped_column(String(255))
+    # {field: [sebelum, sesudah]}. Password tidak pernah disimpan di sini.
+    changes: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
+
+    user: Mapped[User | None] = relationship(lazy="joined")
+
+    @property
+    def user_name(self) -> str | None:
+        return self.user.name if self.user else None

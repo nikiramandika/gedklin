@@ -12,16 +12,21 @@ import {
   BrandMark,
   IconAlert,
   IconCalendar,
+  IconChart,
   IconDashboard,
   IconDownload,
+  IconHistory,
+  IconKey,
   IconLogOut,
   IconMenu,
   IconReceipt,
   IconTag,
+  IconUser,
   IconUsers,
   IconWifiOff,
   IconX,
 } from "./icons";
+import { ChangePasswordModal } from "./ChangePasswordModal";
 
 type Icon = ComponentType<SVGProps<SVGSVGElement> & { size?: number }>;
 
@@ -38,7 +43,9 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { href: "/dasbor", label: "Dasbor", icon: IconDashboard, roles: ["owner"] },
       { href: "/kasir", label: "Kasir", icon: IconReceipt, roles: ["owner", "cashier"] },
+      { href: "/pelanggan", label: "Pelanggan", icon: IconUser, roles: ["owner", "cashier"] },
       { href: "/admin", label: "Tindak Lanjut", icon: IconAlert, roles: ["owner", "admin"] },
+      { href: "/dasbor/laporan", label: "Laporan", icon: IconChart, roles: ["owner"] },
     ],
   },
   {
@@ -52,6 +59,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       },
       { href: "/dasbor/layanan", label: "Layanan & Harga", icon: IconTag, roles: ["owner"] },
       { href: "/dasbor/akun", label: "Akun Petugas", icon: IconUsers, roles: ["owner"] },
+      { href: "/dasbor/log", label: "Log Aktivitas", icon: IconHistory, roles: ["owner"] },
     ],
   },
 ];
@@ -270,6 +278,7 @@ function NavList({
 
 function SidebarFooter({ user, expanded = false }: { user: User; expanded?: boolean }) {
   const { logout } = useAuth();
+  const [changingPassword, setChangingPassword] = useState(false);
   const router = useRouter();
   const { canInstall, install } = useInstallPrompt();
   const wide = expanded ? "" : "hidden xl:block";
@@ -305,6 +314,15 @@ function SidebarFooter({ user, expanded = false }: { user: User; expanded?: bool
         </div>
         <button
           type="button"
+          aria-label="Ganti password"
+          title="Ganti password"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-nav-faint hover:bg-nav-2 hover:text-white"
+          onClick={() => setChangingPassword(true)}
+        >
+          <IconKey size={18} />
+        </button>
+        <button
+          type="button"
           aria-label="Keluar"
           title="Keluar"
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-nav-faint hover:bg-nav-2 hover:text-white"
@@ -316,6 +334,7 @@ function SidebarFooter({ user, expanded = false }: { user: User; expanded?: bool
           <IconLogOut size={18} />
         </button>
       </div>
+      <ChangePasswordModal open={changingPassword} onClose={() => setChangingPassword(false)} />
     </div>
   );
 }

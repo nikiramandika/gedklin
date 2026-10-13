@@ -9,13 +9,21 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import AppSetting, DailyOperation, ServicePromise
-from gedklin_ml.features import DEFAULT_DAY_OPS, DayOps, DayOpsLookup, Promise
+from gedklin_ml.features import (
+    DEFAULT_DAY_OPS,
+    DEFAULT_PROMISE_HOURS,
+    MACHINE_CAPACITY_KG,
+    DayOps,
+    DayOpsLookup,
+    Promise,
+)
 
 # Nilai bawaan bila kunci belum ada di tabel app_settings. Seed mengisi
-# express_multiplier dan default_promise_hours dari price_catalog.json.
+# express_multiplier, machine_capacity_kg, dan default_promise_hours dari price_catalog.json.
 DEFAULTS: dict[str, str] = {
     "express_multiplier": "2",
-    "default_promise_hours": "48",
+    "machine_capacity_kg": f"{MACHINE_CAPACITY_KG:g}",
+    "default_promise_hours": f"{DEFAULT_PROMISE_HOURS:g}",
     "default_staff_on_duty": str(DEFAULT_DAY_OPS.staff_on_duty),
     "default_washers_available": str(DEFAULT_DAY_OPS.washers_available),
     "default_dryers_available": str(DEFAULT_DAY_OPS.dryers_available),
@@ -27,6 +35,8 @@ DEFAULTS: dict[str, str] = {
 @dataclass(frozen=True)
 class AppConfig:
     express_multiplier: float
+    # Kapasitas satu mesin cuci (kg), untuk machine_loads kiloan.
+    machine_capacity_kg: float
     # Janji bila semua layanan di pesanan belum punya janji standar.
     default_promise_hours: float
     # Kapasitas normal mitra, dipakai bila daily_operations hari itu belum diisi.
@@ -42,6 +52,7 @@ def load_app_config(db: Session) -> AppConfig:
     v = {**DEFAULTS, **stored}
     return AppConfig(
         express_multiplier=float(v["express_multiplier"]),
+        machine_capacity_kg=float(v["machine_capacity_kg"]),
         default_promise_hours=float(v["default_promise_hours"]),
         default_day=DayOps(
             is_open=True,

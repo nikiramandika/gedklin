@@ -5,6 +5,7 @@ from gedklin_ml.features import (
     DEFAULT_DAY_OPS,
     FEATURE_ORDER,
     DayOps,
+    OrderContent,
     Promise,
     QueueRecord,
     QueueStats,
@@ -12,6 +13,7 @@ from gedklin_ml.features import (
     content_from_form,
     content_from_items,
     count_loads,
+    machine_loads,
     promised_hours,
     queue_stats,
     shift_into_open_hours,
@@ -23,7 +25,7 @@ T0 = datetime(2026, 10, 20, 3, 0, tzinfo=UTC)  # 10:00 WIB, Selasa
 PROMISES = {
     "CKL": Promise(regular_hours=48, express_hours=24),
     "CKS": Promise(regular_hours=96, express_hours=24),
-    "CK": Promise(regular_hours=None, express_hours=24),
+    "CK": Promise(regular_hours=None, express_hours=None),
 }
 
 
@@ -33,7 +35,8 @@ class Item:
     process: str
     weight_kg: float | None = None
     qty_pcs: int | None = None
-    loads: int | None = None
+    machine_loads: int | None = None
+    is_express: bool = False
 
 
 def utc(day: int, hour: int, minute: int = 0) -> datetime:
@@ -45,49 +48,93 @@ def always(ops: DayOps = DEFAULT_DAY_OPS):  # noqa: ANN201
     return lambda d: ops
 
 
-def test_count_loads_rule() -> None:
-    loads = [count_loads(kg, 7, 1) for kg in (1, 5, 7, 8, 8.5, 9, 15, 16)]
-    assert loads == [1, 1, 1, 1, 2, 2, 2, 3]
+def test_count_loads_rule_for_special_items() -> None:
+    # Selimut besar: 2 pcs/load + maks 1 pcs tambahan.
+    assert [count_loads(pcs, 2, 1) for pcs in (1, 2, 3, 4, 6, 7)] == [1, 1, 1, 2, 3, 3]
+
+
+def test_machine_loads_8_kg_per_machine() -> None:
+    loads = [machine_loads(kg) for kg in (0, 1, 7, 8, 8.5, 12, 16, 16.1)]
+    assert loads == [0, 1, 1, 1, 2, 2, 2, 3]
+    assert machine_loads(12, capacity_kg=10) == 2
 
 
 def test_items_and_form_give_same_content() -> None:
     items = [
-        Item("KILOAN", "CKS", weight_kg=6, loads=1),
+        Item("KILOAN", "CKS", weight_kg=12, machine_loads=2),
         Item("KHUSUS", "CKL", qty_pcs=1),
         Item("SATUAN", "SATUAN", qty_pcs=2),
+        Item("DRY_CLEAN", "DRY_CLEAN", qty_pcs=1),
     ]
     from_items = content_from_items(items, is_express=False)
     from_form = content_from_form(
         layanan_utama="cks",
         express=False,
-        berat_kg=6,
+        berat_kg=12,
         pcs_khusus=1,
         pcs_satuan=2,
+        pcs_dry_clean=1,
         ada_setrika=True,
     )
-    assert from_items.processes == ("CKS", "CKL", "SATUAN")
+    assert from_items.processes == ("CKS", "CKL", "SATUAN", "DRY_CLEAN")
     for field in (
-        "total_loads",
+        "total_machine_loads",
         "total_weight_kg",
         "max_process_level",
         "has_ironing",
         "ironing_kg",
         "n_special_items",
         "n_satuan_items",
+        "n_dry_clean_items",
         "dry_loads",
     ):
         assert getattr(from_items, field) == getattr(from_form, field), field
+    assert from_form.total_machine_loads == 2
 
 
 def test_setrika_only_has_ironing_but_no_machine_loads() -> None:
     content = content_from_items([Item("SETRIKA", "S", weight_kg=5)], is_express=False)
     assert content.has_ironing and content.ironing_kg == 5
-    assert content.total_loads == 0 and content.max_process_level == 0
+    assert content.total_machine_loads == 0 and content.max_process_level == 0
+
+
+def test_satuan_is_manual_ironing_without_machine() -> None:
+    content = content_from_items([Item("SATUAN", "SATUAN", qty_pcs=3)], is_express=False)
+    assert content.has_ironing and content.n_satuan_items == 3
+    assert content.total_machine_loads == 0 and content.ironing_kg == 0
+    form = content_from_form(
+        layanan_utama="SATUAN",
+        express=False,
+        berat_kg=0,
+        pcs_khusus=0,
+        pcs_satuan=3,
+        pcs_dry_clean=0,
+        ada_setrika=False,
+    )
+    assert form.has_ironing and form.total_machine_loads == 0
+
+
+def test_form_express_only_for_ckl_and_cks() -> None:
+    def form(layanan: str) -> bool:
+        return content_from_form(
+            layanan_utama=layanan,
+            express=True,
+            berat_kg=5,
+            pcs_khusus=0,
+            pcs_satuan=0,
+            pcs_dry_clean=0,
+            ada_setrika=False,
+        ).is_express
+
+    assert form("CKL") and form("CKS")
+    assert not form("CK") and not form("C")
 
 
 def test_queue_stats_only_counts_orders_active_at_time() -> None:
     def rec(received: datetime, ready: datetime | None, express: bool = False) -> QueueRecord:
-        return QueueRecord(received, ready, express, loads=2, dry_loads=1, ironing_kg=3.0)
+        return QueueRecord(
+            received, ready, express, loads=2, dry_loads=1, ironing_kg=3.0, satuan_items=1
+        )
 
     records = [
         rec(datetime(2026, 10, 20, 1, 0, tzinfo=UTC), None, express=True),
@@ -98,7 +145,7 @@ def test_queue_stats_only_counts_orders_active_at_time() -> None:
         rec(datetime(2026, 10, 20, 5, 0, tzinfo=UTC), None),
     ]
     assert queue_stats(T0, records) == QueueStats(
-        count=2, express_count=1, loads=4, dry_loads=2, ironing_kg=6.0
+        count=2, express_count=1, loads=4, dry_loads=2, ironing_kg=6.0, satuan_items=2
     )
 
 
@@ -109,13 +156,16 @@ def test_build_features_uses_local_time_and_capacity() -> None:
         berat_kg=8,
         pcs_khusus=0,
         pcs_satuan=0,
+        pcs_dry_clean=0,
         ada_setrika=True,
     )
     day = DayOps(washers_available=2, dryers_available=3)
     feats = build_features(
         received_at=T0,
         content=content,
-        queue=QueueStats(count=5, express_count=1, loads=8, dry_loads=6, ironing_kg=12),
+        queue=QueueStats(
+            count=5, express_count=1, loads=8, dry_loads=6, ironing_kg=12, satuan_items=4
+        ),
         day=day,
         promised_hours=24,
     )
@@ -125,12 +175,19 @@ def test_build_features_uses_local_time_and_capacity() -> None:
     assert feats["max_process_level"] == 4 and feats["has_ironing"] == 1.0
     assert feats["loads_per_washer"] == 4.0
     assert feats["dry_loads_per_dryer"] == 2.0
+    assert feats["total_machine_loads"] == 1 and feats["active_satuan_items"] == 4
     assert len(to_vector(feats)) == len(FEATURE_ORDER)
 
 
 def test_minutes_to_close_zero_on_closed_day() -> None:
     content = content_from_form(
-        layanan_utama="CK", express=False, berat_kg=3, pcs_khusus=0, pcs_satuan=0, ada_setrika=False
+        layanan_utama="CK",
+        express=False,
+        berat_kg=3,
+        pcs_khusus=0,
+        pcs_satuan=0,
+        pcs_dry_clean=0,
+        ada_setrika=False,
     )
     feats = build_features(
         received_at=T0,
@@ -143,11 +200,21 @@ def test_minutes_to_close_zero_on_closed_day() -> None:
 
 
 def test_promised_hours_takes_longest_known_promise() -> None:
-    assert promised_hours(["CKL", "CKS"], False, PROMISES, 48) == 96
-    assert promised_hours(["CKL", "CKS"], True, PROMISES, 48) == 24
+    def content(*items: Item) -> OrderContent:
+        return content_from_items(items, is_express=any(i.is_express for i in items))
+
+    ckl = Item("KILOAN", "CKL", weight_kg=5, machine_loads=1)
+    cks = Item("KILOAN", "CKS", weight_kg=5, machine_loads=1)
+    assert promised_hours(content(ckl, cks), PROMISES, 48) == 96
+    express_ckl = Item("KILOAN", "CKL", weight_kg=5, machine_loads=1, is_express=True)
+    express_cks = Item("KILOAN", "CKS", weight_kg=5, machine_loads=1, is_express=True)
+    assert promised_hours(content(express_ckl, express_cks), PROMISES, 48) == 24
+    # Pesanan Express berisi bed cover (CKL Reguler): menunggu janji bed cover.
+    bedcover = Item("KHUSUS", "CKL", qty_pcs=1)
+    assert promised_hours(content(express_cks, bedcover), PROMISES, 48) == 48
     # Janji CK Reguler belum diketahui -> default.
-    assert promised_hours(["CK"], False, PROMISES, 48) == 48
-    assert promised_hours(["SATUAN"], False, PROMISES, 36) == 36
+    assert promised_hours(content(Item("KILOAN", "CK", weight_kg=3)), PROMISES, 48) == 48
+    assert promised_hours(content(Item("SATUAN", "SATUAN", qty_pcs=1)), PROMISES, 36) == 36
 
 
 def test_shift_into_open_hours() -> None:

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Order
-from app.schemas import StatusHistoryOut, TrackingItemOut, TrackingOut
+from app.schemas import PublicStatusHistoryOut, TrackingItemOut, TrackingOut
 
 router = APIRouter(prefix="/public", tags=["public"])
 
@@ -27,5 +27,5 @@ def track(tracking_code: str, db: Session = Depends(get_db)) -> TrackingOut:
         predicted_ready_at=order.predicted_ready_at,
         ready_at=order.ready_at,
         picked_up_at=order.picked_up_at,
-        history=[StatusHistoryOut.model_validate(h) for h in order.history],
+        history=[PublicStatusHistoryOut.model_validate(h) for h in order.history],
     )

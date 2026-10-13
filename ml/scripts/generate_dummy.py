@@ -5,8 +5,11 @@ dilaporkan sebagai hasil.
 
 Pola yang disimulasikan (per menit, hanya selama jam buka 08.00-17.00):
 - Jam ramai pagi dan sore, akhir pekan lebih ramai.
-- 4 mesin cuci dan 3 pengering; sesekali ada mesin rusak atau petugas izin.
-- 2 petugas mengerjakan lipat, setrika, dan kemas. Setrika paling lama.
+- 4 mesin cuci (maks 8 kg per load) dan 3 pengering; sesekali ada mesin rusak
+  atau petugas izin.
+- 2 petugas mengerjakan lipat, setrika, item satuan (cuci-setrika manual), dry
+  clean, dan kemas. Setrika dan item satuan paling lama.
+- Express hanya untuk CKL dan CKS.
 - Petugas mengejar janji mitra: pesanan baru dikerjakan menjelang janjinya
   (Express sekitar 1 hari, CKL sekitar 2 hari, CKS 3-4 hari).
   Urutan antrean: Express dulu, lalu FIFO.
@@ -24,7 +27,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from gedklin_ml.features import DRYER_PROCESSES, MACHINE_PROCESSES, count_loads
+from gedklin_ml.features import (
+    DRYER_PROCESSES,
+    EXPRESS_PROCESSES,
+    MACHINE_CAPACITY_KG,
+    MACHINE_PROCESSES,
+    machine_loads,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 OPEN, CLOSE = time(8, 0), time(17, 0)
@@ -38,7 +47,7 @@ EXPRESS_PROMISE_HOURS = 24
 
 WASH_MIN, DRY_MIN = 50, 60
 FOLD_MIN_PER_LOAD, IRON_MIN_PER_KG, PACK_MIN = 12, 12, 5
-KHUSUS_MIN_PER_PCS, SATUAN_MIN_PER_PCS = 10, 15
+KHUSUS_MIN_PER_PCS, SATUAN_MIN_PER_PCS, DRY_CLEAN_MIN_PER_PCS = 10, 15, 20
 
 
 def daily_schedule(rng: np.random.Generator, start: date, days: int) -> pd.DataFrame:
@@ -80,14 +89,17 @@ def arrivals(rng: np.random.Generator, daily: pd.DataFrame) -> list[dict]:
                 pcs_satuan = int(rng.integers(1, 6))
             else:
                 pcs_satuan = int(rng.integers(1, 4)) if rng.random() < 0.08 else 0
+            pcs_dry_clean = int(rng.integers(1, 3)) if rng.random() < 0.03 else 0
+            express = layanan in EXPRESS_PROCESSES and rng.random() < 0.2
             orders.append(
                 {
                     "received_at": datetime.combine(d, time(int(h), int(rng.integers(0, 60)))),
                     "layanan_utama": layanan,
-                    "express": bool(rng.random() < 0.15),
+                    "express": express,
                     "berat_kg": berat,
                     "pcs_khusus": pcs_khusus,
                     "pcs_satuan": pcs_satuan,
+                    "pcs_dry_clean": pcs_dry_clean,
                     "ada_setrika": layanan in ("CKS", "S") or pcs_satuan > 0,
                 }
             )
@@ -117,9 +129,14 @@ class Job:
 
 def make_job(rng: np.random.Generator, o: dict) -> Job:
     layanan, kg = o["layanan_utama"], o["berat_kg"]
-    loads = count_loads(kg, 7, 1) if layanan in MACHINE_PROCESSES and kg > 0 else 0
+    loads = machine_loads(kg, MACHINE_CAPACITY_KG) if layanan in MACHINE_PROCESSES else 0
     loads += math.ceil(o["pcs_khusus"] / 2)
-    staff = PACK_MIN + KHUSUS_MIN_PER_PCS * o["pcs_khusus"] + SATUAN_MIN_PER_PCS * o["pcs_satuan"]
+    staff = (
+        PACK_MIN
+        + KHUSUS_MIN_PER_PCS * o["pcs_khusus"]
+        + SATUAN_MIN_PER_PCS * o["pcs_satuan"]
+        + DRY_CLEAN_MIN_PER_PCS * o["pcs_dry_clean"]
+    )
     if layanan == "CKL":
         staff += FOLD_MIN_PER_LOAD * loads
     if layanan in ("CKS", "S"):
@@ -219,6 +236,7 @@ def main() -> None:
             "berat_kg",
             "pcs_khusus",
             "pcs_satuan",
+            "pcs_dry_clean",
             "ada_setrika",
         ]
     ]

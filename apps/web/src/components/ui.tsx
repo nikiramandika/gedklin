@@ -30,6 +30,7 @@ const STATUS_STYLE: Record<OrderStatus, { chip: string; dot: string }> = {
   PROCESSING: { chip: "bg-brand-50 text-brand-700 ring-brand-100", dot: "bg-brand-500" },
   READY: { chip: "bg-ok-50 text-ok-700 ring-ok-600/15", dot: "bg-ok-600" },
   PICKED_UP: { chip: "bg-subtle text-faint ring-line", dot: "bg-line-strong" },
+  CANCELLED: { chip: "bg-danger-50 text-danger-700 ring-danger-600/15", dot: "bg-danger-600" },
 };
 
 export function StatusBadge({ status }: { status: OrderStatus }) {
@@ -298,7 +299,7 @@ export function Segmented<T extends string>({
 }: {
   value: T;
   onChange: (value: T) => void;
-  options: { value: T; label: ReactNode; tone?: "brand" | "warn" }[];
+  options: { value: T; label: ReactNode; tone?: "brand" | "warn"; disabled?: boolean }[];
   label: string;
   size?: "md" | "lg";
 }) {
@@ -320,8 +321,9 @@ export function Segmented<T extends string>({
             type="button"
             role="radio"
             aria-checked={active}
+            disabled={o.disabled}
             onClick={() => onChange(o.value)}
-            className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 font-medium transition-[background-color,color,box-shadow] duration-150 ${
+            className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 font-medium transition-[background-color,color,box-shadow] duration-150 disabled:cursor-not-allowed disabled:text-faint disabled:hover:text-faint ${
               size === "lg" ? "h-12 text-[15px]" : "h-10 text-sm"
             } ${active ? tone : "text-muted hover:text-ink"}`}
           >
@@ -495,6 +497,24 @@ export function SavedNote({ show, text = "Tersimpan" }: { show: boolean; text?: 
     <span role="status" className="inline-flex items-center gap-1 text-sm font-medium text-ok-700">
       <IconCheck size={16} />
       {text}
+    </span>
+  );
+}
+
+/** Status bayar: tidak hanya warna, selalu ada teks. */
+export function PaymentBadge({ paid, className = "" }: { paid: boolean; className?: string }) {
+  return paid ? (
+    <span
+      className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-ok-50 px-2 py-0.5 text-xs font-semibold text-ok-700 ring-1 ring-inset ring-ok-600/15 ${className}`}
+    >
+      <IconCheck size={12} />
+      Lunas
+    </span>
+  ) : (
+    <span
+      className={`inline-flex items-center whitespace-nowrap rounded-full bg-warn-50 px-2 py-0.5 text-xs font-semibold text-warn-700 ring-1 ring-inset ring-warn-600/20 ${className}`}
+    >
+      Belum lunas
     </span>
   );
 }

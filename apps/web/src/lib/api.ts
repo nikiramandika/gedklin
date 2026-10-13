@@ -61,3 +61,29 @@ export async function api<T>(
   }
   return body as T;
 }
+
+/** Unduh file dari API (mis. CSV laporan) dengan token login, lalu simpan di perangkat. */
+export async function apiDownload(path: string, filename: string): Promise<void> {
+  const token = getToken();
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+    });
+  } catch {
+    throw new ApiError(0, "Tidak dapat terhubung ke server");
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new ApiError(res.status, errorMessage(body, res.status));
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}

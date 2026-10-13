@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
-import { IconCheck, IconList, IconPackageCheck, IconPlusCircle, IconSearch } from "@/components/icons";
+import { IconList, IconPackageCheck, IconPlusCircle, IconSearch } from "@/components/icons";
 import { NewOrderForm } from "@/components/kasir/NewOrderForm";
 import { OrderBoard, useBoardData, type BoardTab } from "@/components/kasir/OrderBoard";
+import { useToast } from "@/components/overlay";
 import type { Role } from "@/lib/types";
 
 const ROLES: Role[] = ["cashier", "owner"];
-const TOAST_MS = 3500;
 
 type View = "new" | BoardTab;
 
@@ -17,15 +17,9 @@ export default function KasirPage() {
   // Di HP satu tampilan sekaligus (navigasi bawah); di tablet landscape form dan antrean berdampingan.
   const [view, setView] = useState<View>("new");
   const [refreshKey, setRefreshKey] = useState(0);
-  const [toast, setToast] = useState<string | null>(null);
+  const toast = useToast();
   const board = useBoardData(refreshKey);
   const boardTab: BoardTab = view === "new" ? "queue" : view;
-
-  useEffect(() => {
-    if (!toast) return;
-    const id = setTimeout(() => setToast(null), TOAST_MS);
-    return () => clearTimeout(id);
-  }, [toast]);
 
   const items: { key: View; label: string; icon: typeof IconList; count?: number }[] = [
     { key: "new", label: "Baru", icon: IconPlusCircle },
@@ -79,7 +73,7 @@ export default function KasirPage() {
           <NewOrderForm
             onCreated={() => {
               setRefreshKey((k) => k + 1);
-              setToast("Pesanan tersimpan dan masuk antrean");
+              toast("Pesanan tersimpan dan masuk antrean");
             }}
           />
         </div>
@@ -91,21 +85,9 @@ export default function KasirPage() {
             ready={board.ready}
             error={board.error}
             reload={board.reload}
-            onStatusChanged={setToast}
+            onStatusChanged={(message) => toast(message)}
           />
         </div>
-      </div>
-
-      <div
-        aria-live="polite"
-        className="pointer-events-none fixed inset-x-0 bottom-[calc(80px+env(safe-area-inset-bottom))] z-40 flex justify-center px-4 lg:bottom-6"
-      >
-        {toast && (
-          <p className="flex items-center gap-2 rounded-xl bg-ink px-4 py-3 text-sm font-medium text-white shadow-pop animate-[enter-up_200ms_cubic-bezier(0.16,1,0.3,1)]">
-            <IconCheck size={16} className="text-ok-50" />
-            {toast}
-          </p>
-        )}
       </div>
     </AppShell>
   );

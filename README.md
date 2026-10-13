@@ -104,18 +104,29 @@ cd apps/web && npm run lint && npx tsc --noEmit && npm run build
 
 ## Harga & janji waktu
 
-- Price list mitra ada di `apps/api/seed/price_catalog.json` (sumber kebenaran). `python -m app.seed`
-  mengisinya ke tabel `service_catalog`, `service_promise`, dan `app_settings`; item yang sudah ada
-  tidak ditimpa. Pemilik mengubah harga, pengali Express, dan janji waktu di `/dasbor/layanan`.
-- Semua aturan harga (load 7 kg + tambahan per kg, minimal kg, per pcs, per load item khusus,
-  Express = Reguler × `express_multiplier`) ada di `apps/api/app/services/pricing.py`.
+- Price list awal mitra ada di `apps/api/seed/price_catalog.json`. `python -m app.seed` mengisinya ke
+  `service_catalog` **hanya bila katalog masih kosong**, plus `service_promise` dan `app_settings`
+  yang belum ada. Setelah itu pemilik mengelola layanan di `/dasbor/layanan`: tambah, ubah (nama,
+  kelompok, proses, satuan, harga, aturan min/maks, Bisa Express), nonaktifkan, dan hapus. Layanan
+  yang sudah dipakai di pesanan tidak bisa dihapus, cukup dinonaktifkan. Pengali Express, kapasitas
+  mesin, dan janji waktu juga diatur di halaman itu. Item dry clean belum punya harga, jadi
+  nonaktif sampai harganya diisi.
+- Semua aturan harga (kiloan: harga 7 kg pertama + tambahan per kg untuk sisa berat, minimal kg,
+  per pcs, per load item khusus, Express = Reguler × `express_multiplier` hanya untuk item
+  `express_eligible` yaitu CKL dan CKS) ada di `apps/api/app/services/pricing.py`.
   Form kasir memanggil `POST /orders/quote`, jadi aturan harga tidak diduplikasi di frontend.
-- Status pesanan: `RECEIVED → PROCESSING → READY → PICKED_UP`.
+- Load mesin (`machine_loads = ceil(kg / machine_capacity_kg)`, default 8 kg) hanya untuk fitur ML,
+  terpisah dari harga.
+- Status pesanan: `RECEIVED → PROCESSING → READY → PICKED_UP`, plus `CANCELLED` (dengan alasan,
+  sebelum siap dan belum lunas). Tandai Diambil wajib lunas; pembayaran dicatat tunai/QRIS/transfer.
+- Pemilik: `/dasbor/laporan` (per periode, per layanan/kasir/metode bayar, unduh CSV) dan
+  `/dasbor/log`. Kasir dan pemilik: `/pelanggan` (riwayat, tagihan belum lunas, ubah data).
+- Login dikunci 15 menit setelah 5 kali salah per username; petugas bisa ganti password sendiri.
 
 ## Data & model
 
 - Form pencatatan mitra: `ml/data/raw/orders.csv` (`order_id, received_at, ready_at, layanan_utama,
-  express, berat_kg, pcs_khusus, pcs_satuan, ada_setrika`) dan `ml/data/raw/daily.csv` (`date,
+  express, berat_kg, pcs_khusus, pcs_satuan, pcs_dry_clean, ada_setrika`) dan `ml/data/raw/daily.csv` (`date,
   staff_on_duty, washers_available, dryers_available, open_time, close_time`). Tidak di-commit.
   Jika ada, script otomatis memakainya; jika tidak, memakai `*_dummy.csv`.
 - `build_dataset.py` mengubah data mentah menjadi fitur (`ml/data/processed/features.csv`) memakai

@@ -11,7 +11,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from gedklin_ml.features import DEFAULT_DAY_OPS, LOCAL_TZ, Promise
+from gedklin_ml.features import (
+    DEFAULT_DAY_OPS,
+    DEFAULT_PROMISE_HOURS,
+    LOCAL_TZ,
+    MACHINE_CAPACITY_KG,
+    Promise,
+)
 
 ORDER_COLUMNS = [
     "order_id",
@@ -22,6 +28,7 @@ ORDER_COLUMNS = [
     "berat_kg",
     "pcs_khusus",
     "pcs_satuan",
+    "pcs_dry_clean",
     "ada_setrika",
 ]
 DAILY_COLUMNS = [
@@ -62,7 +69,7 @@ def load_orders(path: Path) -> pd.DataFrame:
     df["express"] = _flag(df["express"])
     df["ada_setrika"] = _flag(df["ada_setrika"])
     df["berat_kg"] = pd.to_numeric(df["berat_kg"], errors="coerce").fillna(0.0)
-    for col in ("pcs_khusus", "pcs_satuan"):
+    for col in ("pcs_khusus", "pcs_satuan", "pcs_dry_clean"):
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
     df = df.dropna(subset=["received_at", "ready_at"])
     df = df[df["ready_at"] > df["received_at"]]
@@ -87,15 +94,31 @@ def load_daily(path: Path) -> pd.DataFrame:
     return df
 
 
+def _express_processes(catalog: dict) -> set[str]:
+    return {e["process"] for e in catalog["kiloan"] if e.get("express_eligible")}
+
+
 def load_promises(path: Path = CATALOG_PATH) -> tuple[dict[str, Promise], float]:
-    """Janji waktu standar per proses dari price_catalog.json, plus janji default."""
-    data = json.loads(path.read_text(encoding="utf-8"))["promise_hours"]
+    """Janji waktu standar per proses dari price_catalog.json, plus janji default.
+
+    Janji Express hanya dipasang pada proses yang boleh Express (CKL dan CKS).
+    """
+    catalog = json.loads(path.read_text(encoding="utf-8"))
+    data = catalog["promise_hours"]
     express = data.get("express")
+    eligible = _express_processes(catalog)
     promises = {
-        process: Promise(regular_hours=hours, express_hours=express)
+        process: Promise(
+            regular_hours=hours, express_hours=express if process in eligible else None
+        )
         for process, hours in data["regular"].items()
     }
-    return promises, float(data["default"])
+    return promises, float(data.get("default", DEFAULT_PROMISE_HOURS))
+
+
+def load_machine_capacity(path: Path = CATALOG_PATH) -> float:
+    catalog = json.loads(path.read_text(encoding="utf-8"))
+    return float(catalog.get("machine_capacity_kg", MACHINE_CAPACITY_KG))
 
 
 def prepare_dataset(
@@ -115,7 +138,9 @@ def prepare_dataset(
     orders = load_orders(orders_path)
     daily = load_daily(daily_path)
     promises, default_hours = load_promises(catalog_path)
-    frame = build_feature_frame(orders, daily, promises, default_hours)
+    frame = build_feature_frame(
+        orders, daily, promises, default_hours, load_machine_capacity(catalog_path)
+    )
     if skip_days > 0 and not frame.empty:
         days = frame["received_at"].map(lambda ts: local_date(ts.to_pydatetime()))
         cutoff = sorted(days.unique())[min(skip_days, days.nunique() - 1)]

@@ -24,11 +24,14 @@ import {
   ExpressBadge,
   IconButton,
   Loading,
+  PaymentBadge,
   StatusBadge,
   inputClass,
   tileClass,
   tileListClass,
 } from "../ui";
+import { OrderActionDialog, type OrderDialog } from "./OrderActions";
+import { OrderDetailDrawer } from "./OrderDetailDrawer";
 
 export type BoardTab = "queue" | "ready" | "search";
 
@@ -87,6 +90,9 @@ export function OrderBoard({
   const [searching, setSearching] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [detailId, setDetailId] = useState<number | null>(null);
+  const [detailVersion, setDetailVersion] = useState(0);
+  const [dialog, setDialog] = useState<OrderDialog>(null);
   const lastQuery = useRef("");
 
   const runSearch = useCallback(async (q: string) => {
@@ -113,17 +119,26 @@ export function OrderBoard({
     setRefreshing(false);
   }
 
+  /** Muat ulang daftar, hasil pencarian, dan drawer detail setelah pesanan berubah. */
+  async function afterChange(message: string) {
+    onStatusChanged(message);
+    setDetailVersion((v) => v + 1);
+    await reload();
+    if (tab === "search" && lastQuery.current) await runSearch(lastQuery.current);
+  }
+
+  /** Mulai Proses langsung; Tandai Siap dan Tandai Diambil lewat dialog (rak, pembayaran). */
   async function advance(order: Order) {
-    if (!order.next_status) return;
+    const next = order.next_status;
+    if (!next) return;
+    if (next === "READY" || next === "PICKED_UP") {
+      setDialog({ kind: next === "READY" ? "ready" : "pickup", order });
+      return;
+    }
     setActionError(null);
     try {
-      await api(`/orders/${order.id}/status`, {
-        method: "POST",
-        body: { to_status: order.next_status },
-      });
-      onStatusChanged(`${order.tracking_code} · ${STATUS_DONE[order.next_status]}`);
-      await reload();
-      if (tab === "search" && lastQuery.current) await runSearch(lastQuery.current);
+      await api(`/orders/${order.id}/status`, { method: "POST", body: { to_status: next } });
+      await afterChange(`${order.tracking_code} · ${STATUS_DONE[next]}`);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Gagal mengubah status");
     }
@@ -230,10 +245,33 @@ export function OrderBoard({
       ) : (
         <ul className={tileListClass}>
           {list.map((o) => (
-            <OrderRow key={o.id} order={o} showPosition={tab === "queue"} onAdvance={advance} />
+            <OrderRow
+              key={o.id}
+              order={o}
+              showPosition={tab === "queue"}
+              onAdvance={advance}
+              onOpen={() => setDetailId(o.id)}
+            />
           ))}
         </ul>
       )}
+
+      <OrderDetailDrawer
+        orderId={detailId}
+        version={detailVersion}
+        onClose={() => setDetailId(null)}
+        onAdvance={advance}
+        onPay={(order) => setDialog({ kind: "payment", order })}
+        onChanged={afterChange}
+      />
+      <OrderActionDialog
+        dialog={dialog}
+        onClose={() => setDialog(null)}
+        onDone={(_, message) => {
+          setDialog(null);
+          afterChange(message);
+        }}
+      />
     </section>
   );
 }
@@ -268,14 +306,15 @@ function OrderRow({
   order: o,
   showPosition,
   onAdvance,
+  onOpen,
 }: {
   order: Order;
   showPosition: boolean;
   onAdvance: (o: Order) => Promise<void>;
+  onOpen: () => void;
 }) {
   const now = useNow();
   const [busy, setBusy] = useState(false);
-  const [confirming, setConfirming] = useState(false);
 
   const overdue =
     now > 0 && !o.ready_at && o.predicted_ready_at !== null && new Date(o.predicted_ready_at).getTime() < now;
@@ -285,7 +324,6 @@ function OrderRow({
     setBusy(true);
     await onAdvance(o);
     setBusy(false);
-    setConfirming(false);
   }
 
   return (
@@ -307,8 +345,21 @@ function OrderRow({
         )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <p className="truncate font-semibold text-ink">{o.customer.name}</p>
+            <button
+              type="button"
+              onClick={onOpen}
+              className="truncate rounded text-left font-semibold text-ink underline-offset-4 hover:text-brand-700 hover:underline"
+              title="Lihat detail pesanan"
+            >
+              {o.customer.name}
+            </button>
             {o.is_express && <ExpressBadge />}
+            {o.ready_at && <PaymentBadge paid={o.is_paid} />}
+            {o.rack_location && (
+              <span className="rounded-full bg-canvas px-2 py-0.5 font-mono text-xs font-semibold text-ink-2">
+                Rak {o.rack_location}
+              </span>
+            )}
             <span className="sm:hidden">
               <StatusBadge status={o.status} />
             </span>
@@ -326,7 +377,14 @@ function OrderRow({
             <span aria-hidden="true">·</span>
             <span className="tabular">{formatRupiah(o.price_total)}</span>
           </p>
-          <p className="mt-1 line-clamp-2 text-[13px] text-ink-2">{summarizeItems(o.items)}</p>
+          <button
+            type="button"
+            onClick={onOpen}
+            tabIndex={-1}
+            className="mt-1 line-clamp-2 text-left text-[13px] text-ink-2"
+          >
+            {summarizeItems(o.items)}
+          </button>
           <p
             className={`mt-1.5 flex flex-wrap items-center gap-1.5 text-[13px] ${
               overdue ? "font-medium text-danger-600" : waitingDays >= 3 ? "font-medium text-warn-700" : "text-muted"
@@ -353,32 +411,15 @@ function OrderRow({
         <span className="hidden sm:inline-flex">
           <StatusBadge status={o.status} />
         </span>
-        {o.next_status === "PICKED_UP" ? (
-          confirming ? (
-            <div className="flex w-full gap-2 sm:w-auto" role="group" aria-label="Konfirmasi pengambilan">
-              <Button variant="ghost" className="flex-1 sm:flex-none" onClick={() => setConfirming(false)} disabled={busy}>
-                Batal
-              </Button>
-              <Button variant="dark" className="flex-1 sm:flex-none" loading={busy} onClick={run}>
-                Ya, sudah diambil
-              </Button>
-            </div>
-          ) : (
-            <Button variant="secondary" className="w-full sm:w-40" onClick={() => setConfirming(true)}>
-              {STATUS_ACTION.PICKED_UP}
-            </Button>
-          )
-        ) : (
-          o.next_status && (
-            <Button
-              variant={o.next_status === "READY" ? "primary" : "secondary"}
-              className="w-full sm:w-40"
-              loading={busy}
-              onClick={run}
-            >
-              {STATUS_ACTION[o.next_status]}
-            </Button>
-          )
+        {o.next_status && (
+          <Button
+            variant={o.next_status === "READY" ? "primary" : "secondary"}
+            className="w-full sm:w-40"
+            loading={busy}
+            onClick={run}
+          >
+            {STATUS_ACTION[o.next_status]}
+          </Button>
         )}
       </div>
     </li>

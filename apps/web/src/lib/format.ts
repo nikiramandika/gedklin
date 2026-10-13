@@ -1,4 +1,12 @@
-import type { CatalogGroup, CatalogItem, OrderStatus, Process, TrackingItem } from "./types";
+import type {
+  CatalogGroup,
+  CatalogItem,
+  OrderItem,
+  OrderStatus,
+  PaymentMethod,
+  Process,
+  TrackingItem,
+} from "./types";
 
 const TZ = "Asia/Jakarta";
 
@@ -7,6 +15,7 @@ export const STATUS_LABEL: Record<OrderStatus, string> = {
   PROCESSING: "Diproses",
   READY: "Siap Diambil",
   PICKED_UP: "Sudah Diambil",
+  CANCELLED: "Dibatalkan",
 };
 
 export const STATUS_ACTION: Record<OrderStatus, string> = {
@@ -14,13 +23,27 @@ export const STATUS_ACTION: Record<OrderStatus, string> = {
   PROCESSING: "Mulai Proses",
   READY: "Tandai Siap",
   PICKED_UP: "Tandai Diambil",
+  CANCELLED: "Batalkan",
 };
+
+export const PAYMENT_LABEL: Record<PaymentMethod, string> = {
+  CASH: "Tunai",
+  QRIS: "QRIS",
+  TRANSFER: "Transfer",
+};
+
+/** "Lunas · QRIS" / "Belum lunas" */
+export function paymentLabel(order: { is_paid: boolean; payment_method: PaymentMethod | null }): string {
+  if (!order.is_paid) return "Belum lunas";
+  return order.payment_method ? `Lunas · ${PAYMENT_LABEL[order.payment_method]}` : "Lunas";
+}
 
 export const GROUP_LABEL: Record<CatalogGroup, string> = {
   KILOAN: "Kiloan",
   SETRIKA: "Setrika saja",
   KHUSUS: "Item khusus",
   SATUAN: "Satuan",
+  DRY_CLEAN: "Dry clean",
 };
 
 export const PROCESS_LABEL: Record<Process, string> = {
@@ -29,7 +52,8 @@ export const PROCESS_LABEL: Record<Process, string> = {
   CKL: "Cuci + Kering + Lipat",
   CKS: "Cuci + Kering + Setrika",
   S: "Setrika saja",
-  SATUAN: "Satuan",
+  SATUAN: "Satuan (manual)",
+  DRY_CLEAN: "Dry clean",
 };
 
 export function speedLabel(express: boolean): string {
@@ -48,23 +72,34 @@ export function summarizeItems(items: TrackingItem[]): string {
   return items.map(describeItem).join(", ");
 }
 
+/** "1 load mesin · +1 kg tambahan · Express" / "2 load · +1 pcs" */
+export function lineDetail(item: OrderItem): string {
+  const parts: string[] = [];
+  if (item.machine_loads) {
+    parts.push(`${item.machine_loads} load${item.group === "KILOAN" ? " mesin" : ""}`);
+  }
+  if (item.extra_kg) parts.push(`+${item.extra_kg} kg tambahan`);
+  if (item.extra_pcs) parts.push(`+${item.extra_pcs} pcs`);
+  if (item.is_express) parts.push("Express");
+  return parts.join(" · ");
+}
+
 /** Input yang diminta kasir untuk satu item katalog. */
 export function itemInputs(item: CatalogItem): { weight: boolean; pcs: boolean; pcsLabel: string } {
-  if (item.unit === "LOAD_7KG" || item.unit === "KG") return { weight: true, pcs: false, pcsLabel: "" };
+  if (item.unit === "KILOAN_7KG" || item.unit === "KG") return { weight: true, pcs: false, pcsLabel: "" };
   if (item.unit === "LOAD" && item.kg_per_load)
     return { weight: true, pcs: true, pcsLabel: "Tambahan (pcs)" };
   return { weight: false, pcs: true, pcsLabel: "Jumlah (pcs)" };
 }
 
-/** Ringkasan aturan harga katalog, mis. "Rp45.000/load 7 kg + Rp10.000/kg (maks 1 kg)". */
+/** Ringkasan aturan harga katalog, mis. "Rp45.000 s/d 7 kg + Rp10.000/kg berikutnya". */
 export function priceRule(item: CatalogItem): string {
+  if (item.price === null) return "Harga belum ditetapkan";
   const price = formatRupiah(item.price);
   const extra = item.extra_price ? formatRupiah(item.extra_price) : null;
   switch (item.unit) {
-    case "LOAD_7KG":
-      return `${price}/load ${item.kg_per_load ?? 7} kg${
-        extra ? ` + ${extra}/kg (maks ${item.max_extra ?? 0} kg)` : ""
-      }`;
+    case "KILOAN_7KG":
+      return `${price} s/d ${item.base_kg ?? 7} kg${extra ? ` + ${extra}/kg berikutnya` : ""}`;
     case "KG":
       return `${price}/kg${item.min_qty ? `, min. ${item.min_qty} kg` : ""}`;
     case "PCS":
