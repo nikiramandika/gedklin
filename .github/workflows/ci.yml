@@ -59,6 +59,8 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
       - run: npm ci
       - run: npm run lint
+      # PageProps/LayoutProps/RouteContext dibuat Next.js ke .next/types; checkout CI masih bersih.
+      - run: npx next typegen
       - run: npx tsc --noEmit
       - run: npm run build
         env:
