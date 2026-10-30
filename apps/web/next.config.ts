@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Server mandiri yang ringan untuk image Docker production (node server.js).
+  output: "standalone",
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {

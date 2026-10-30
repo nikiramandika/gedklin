@@ -19,6 +19,7 @@ celerybeat.pid
 .env
 .env.*
 !.env.example
+!.env.prod.example
 
 # Data mentah mitra dan hasil olahan tidak di-commit
 ml/data/raw/*

@@ -1,0 +1,98 @@
+# Production di VM (gedklin.my.id). Dijalankan dari /opt/gedklin dengan:
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d
+# Image dibuild oleh GitHub Actions (workflow Deploy) dan ditarik dari GHCR.
+# Batas memori disetel untuk VM 1 GB RAM + 2 GB swap.
+name: gedklin
+
+x-api-env: &api-env
+  DATABASE_URL: postgresql+psycopg://gedklin:${POSTGRES_PASSWORD}@db:5432/gedklin
+  REDIS_URL: redis://redis:6379/0
+  MODEL_PATH: /srv/ml/models/best_model.joblib
+  CELERY_TASK_ALWAYS_EAGER: "false"
+
+services:
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:-admin@gedklin.my.id}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    mem_limit: 64m
+    depends_on:
+      - web
+      - api
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gedklin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?isi POSTGRES_PASSWORD di .env}
+      POSTGRES_DB: gedklin
+    command: >
+      postgres -c shared_buffers=64MB -c effective_cache_size=192MB
+      -c work_mem=2MB -c maintenance_work_mem=32MB -c max_connections=30
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gedklin"]
+      interval: 10s
+      retries: 10
+    mem_limit: 256m
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no --maxmemory 48mb --maxmemory-policy noeviction
+    mem_limit: 64m
+
+  api:
+    image: ghcr.io/nikiramandika/gedklin-api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    environment: *api-env
+    # Migrasi + seed idempoten (katalog hanya diisi bila kosong, owner hanya dibuat bila belum ada).
+    command: >
+      sh -c "alembic upgrade head && python -m app.seed &&
+      uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+      --proxy-headers --forwarded-allow-ips='*'"
+    volumes:
+      - ./models:/srv/ml/models:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    mem_limit: 400m
+
+  worker:
+    image: ghcr.io/nikiramandika/gedklin-api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    environment: *api-env
+    # Worker + beat dalam satu proses, 1 slot, supaya hemat RAM.
+    command: >
+      celery -A app.workers worker -B --concurrency=1 --loglevel=info
+      -s /tmp/celerybeat-schedule
+    volumes:
+      - ./models:/srv/ml/models:ro
+    depends_on:
+      - api
+    mem_limit: 400m
+
+  web:
+    image: ghcr.io/nikiramandika/gedklin-web:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    mem_limit: 256m
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

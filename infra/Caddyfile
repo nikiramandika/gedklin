@@ -1,0 +1,14 @@
+# HTTPS otomatis (Let's Encrypt). DNS A record @ dan api harus mengarah ke IP VM.
+{
+	email {$ACME_EMAIL:admin@gedklin.my.id}
+}
+
+gedklin.my.id {
+	encode zstd gzip
+	reverse_proxy web:3000
+}
+
+api.gedklin.my.id {
+	encode zstd gzip
+	reverse_proxy api:8000
+}
