@@ -342,7 +342,7 @@ function EditCustomerModal({
       open={open}
       onClose={onClose}
       title="Ubah data pelanggan"
-      description="Nomor WhatsApp dipakai untuk notifikasi siap diambil."
+      description="Nomor WhatsApp dipakai untuk nota dan notifikasi siap diambil."
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={busy}>

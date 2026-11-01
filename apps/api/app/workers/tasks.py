@@ -8,7 +8,12 @@ from sqlalchemy import select
 
 from app.db import SessionLocal, utcnow
 from app.models import Notification, NotificationStatus, NotificationType, Order
-from app.services.notifications import delay_message, get_sender, ready_message
+from app.services.notifications import (
+    delay_message,
+    get_sender,
+    ready_message,
+    receipt_message,
+)
 from app.services.orders import mark_followups
 from app.workers import celery_app
 
@@ -30,7 +35,9 @@ def send_notification(self: Task, notification_id: int) -> str:
         if notif.type == NotificationType.READY and order.ready_notif_sent:
             return "already-sent"
 
-        if notif.type == NotificationType.READY:
+        if notif.type == NotificationType.RECEIPT:
+            message = receipt_message(order)
+        elif notif.type == NotificationType.READY:
             message = ready_message(order)
         else:
             message = delay_message(order, order.last_notified_eta or order.predicted_ready_at)

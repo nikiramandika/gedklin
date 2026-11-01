@@ -188,7 +188,7 @@ export interface Dashboard {
 
 export interface OrderNotification {
   id: number;
-  type: "READY" | "DELAY";
+  type: "RECEIPT" | "READY" | "DELAY";
   status: "PENDING" | "SENT" | "FAILED";
   sent_at: string | null;
   error: string | null;

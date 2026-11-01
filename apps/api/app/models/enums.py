@@ -52,6 +52,7 @@ class PaymentMethod(StrEnum):
 
 
 class NotificationType(StrEnum):
+    RECEIPT = "RECEIPT"  # nota digital saat pesanan dibuat
     READY = "READY"
     DELAY = "DELAY"
 

@@ -109,13 +109,20 @@ def test_flow_and_ready_notification_sent_once(
     assert body["ready_at"] is not None
     assert body["ready_notif_sent"] is True
 
-    notifs = list(db.scalars(select(Notification).where(Notification.order_id == order["id"])))
+    notifs = list(
+        db.scalars(
+            select(Notification)
+            .where(Notification.order_id == order["id"])
+            .order_by(Notification.id)
+        )
+    )
     assert [(n.type, n.status) for n in notifs] == [
-        (NotificationType.READY, NotificationStatus.SENT)
+        (NotificationType.RECEIPT, NotificationStatus.SENT),
+        (NotificationType.READY, NotificationStatus.SENT),
     ]
 
     # Menjalankan ulang task tidak mengirim dua kali.
-    assert send_notification.apply(args=[notifs[0].id]).get() == "already-sent"
+    assert send_notification.apply(args=[notifs[1].id]).get() == "already-sent"
 
     # Unique index mencegah baris READY kedua.
     db.add(Notification(order_id=order["id"], type=NotificationType.READY))
@@ -135,6 +142,24 @@ def test_queue_is_express_first_then_fifo(client: TestClient, cashier: dict) -> 
     queue = client.get("/orders/queue", headers=cashier).json()
     assert [o["id"] for o in queue] == [b["id"], d["id"], a["id"], c["id"]]
     assert [o["queue_position"] for o in queue] == [1, 2, 3, 4]
+
+
+def test_receipt_sent_automatically_once_on_create(
+    client: TestClient, cashier: dict, db: Session
+) -> None:
+    order = new_order(client, cashier)
+
+    notifs = list(db.scalars(select(Notification).where(Notification.order_id == order["id"])))
+    assert [(n.type, n.status) for n in notifs] == [
+        (NotificationType.RECEIPT, NotificationStatus.SENT)
+    ]
+    assert notifs[0].provider_msg_id
+
+    # Unique index mencegah nota otomatis kedua.
+    db.add(Notification(order_id=order["id"], type=NotificationType.RECEIPT))
+    with pytest.raises(IntegrityError):
+        db.commit()
+    db.rollback()
 
 
 def test_delay_notification_regular_only_and_max_two(
@@ -184,8 +209,8 @@ def test_followup_marked_after_three_days_without_whatsapp(
 
     followups = client.get("/admin/followups", headers=admin).json()
     assert [o["id"] for o in followups] == [order["id"]]
-    count = len(list(db.scalars(select(Notification).where(Notification.order_id == order["id"]))))
-    assert count == 1  # hanya notifikasi READY
+    types = set(db.scalars(select(Notification.type).where(Notification.order_id == order["id"])))
+    assert types == {NotificationType.RECEIPT, NotificationType.READY}  # tanpa WA follow-up
 
     advance(client, cashier, order["id"], "PICKED_UP")
     assert client.get("/admin/followups", headers=admin).json() == []

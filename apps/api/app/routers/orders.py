@@ -30,7 +30,7 @@ from app.schemas import (
 )
 from app.security import require_roles
 from app.services import orders as order_service
-from app.services.notifications import describe_item, format_local, format_rupiah, tracking_url
+from app.services.notifications import receipt_message, tracking_url
 from app.services.pricing import ItemRequest
 from app.services.queue import active_orders
 
@@ -226,25 +226,13 @@ def cancel_order(
 
 @router.get("/{order_id}/receipt", response_model=ReceiptOut)
 def receipt(order_id: int, db: Session = Depends(get_db), _: User = Depends(staff)) -> ReceiptOut:
-    """Nota digital. Link WA dibuka manual oleh kasir, bukan lewat gateway."""
+    """Nota digital. Nota sudah dikirim otomatis lewat gateway saat pesanan dibuat;
+    link WA di sini untuk kirim ulang manual oleh kasir."""
     order = get_order_or_404(db, order_id)
-    url = tracking_url(order)
-    eta = format_local(order.predicted_ready_at) if order.predicted_ready_at else "-"
-    lines = "\n".join(f"- {describe_item(i)}: {format_rupiah(i.subtotal)}" for i in order.items)
-    message = (
-        f"Nota Gedklin Laundry\n"
-        f"Kode: {order.tracking_code}\n"
-        f"Kecepatan: {'Express' if order.is_express else 'Reguler'}\n"
-        f"{lines}\n"
-        f"Total: {format_rupiah(order.price_total)} "
-        f"({'LUNAS' if order.is_paid else 'belum lunas, bayar saat ambil'})\n"
-        + (f"Catatan: {order.notes}\n" if order.notes else "")
-        + f"Perkiraan siap: {eta}\n"
-        f"Lacak: {url}"
-    )
+    message = receipt_message(order)
     return ReceiptOut(
         order=to_out(order),
-        tracking_url=url,
+        tracking_url=tracking_url(order),
         whatsapp_link=f"https://wa.me/{order.customer.phone_wa}?text={quote(message)}",
         message=message,
     )

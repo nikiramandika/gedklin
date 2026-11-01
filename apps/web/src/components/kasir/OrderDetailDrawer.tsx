@@ -36,6 +36,7 @@ import {
 import { ItemLines, SpeedField, useItemEditor } from "./ItemEditor";
 
 const NOTIF_LABEL: Record<OrderNotification["type"], string> = {
+  RECEIPT: "Nota pesanan",
   READY: "Siap diambil",
   DELAY: "Perkiraan mundur",
 };
@@ -223,7 +224,7 @@ function OrderDetailPanel({
                   aria-disabled={!receipt}
                 >
                   <IconChat size={18} />
-                  Kirim WA
+                  Kirim ulang WA
                 </ButtonLink>
                 <ButtonLink variant="secondary" href={`/nota/${order.id}`} target="_blank" rel="noopener">
                   <IconPrinter size={18} />

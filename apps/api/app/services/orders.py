@@ -321,7 +321,10 @@ def create_order(
     order.promised_ready_at = promised_ready_at(order, ctx)
     # ETA awal dicantumkan di nota, jadi dianggap sudah diberitahukan.
     order.last_notified_eta = predict_eta(db, order, ctx)
+    receipt_notif = Notification(order_id=order.id, type=NotificationType.RECEIPT)
+    db.add(receipt_notif)
     db.commit()
+    enqueue_notification(receipt_notif.id)
     recompute_etas(db, now)
     db.refresh(order)
     return order

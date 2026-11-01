@@ -179,8 +179,8 @@ RECEIVED → PROCESSING → READY → PICKED_UP
   - Satu pesanan bisa berisi beberapa item, misalnya 6 kg CKS + 1 bed cover + 2 kemeja.
 - `order_status_history` (order_id, from_status, to_status, changed_at, changed_by)
 - `daily_operations` (date, is_open, staff_on_duty (default 2), washers_available (default 4), dryers_available (default 3), open_time (default 08:00), close_time (default 17:00), machine_issue_note)
-- `notifications` (order_id, type: READY/DELAY, sent_at, status, provider_msg_id)
-  - Unique constraint untuk (order_id, type='READY') supaya notifikasi siap diambil tidak dobel.
+- `notifications` (order_id, type: RECEIPT/READY/DELAY, sent_at, status, provider_msg_id)
+  - Unique constraint untuk (order_id, type='READY') dan (order_id, type='RECEIPT') supaya nota dan notifikasi siap diambil tidak dobel.
 - `prediction_logs` (order_id, features_json, predicted_hours, model_version, created_at)
 - `activity_logs` (user_id, action, entity_type, entity_id, summary, changes, created_at): siapa melakukan apa dan kapan, termasuk sebelum → sesudah untuk perubahan layanan, harga, akun, pengaturan, dan operasional. Password tidak pernah dicatat. Hanya pemilik yang bisa melihat (`/dasbor/log`).
 
@@ -208,6 +208,7 @@ Simpan waktu dalam UTC di database, tampilkan dalam **Asia/Jakarta**.
 
 | Kejadian | Aturan |
 |---|---|
+| Pesanan dibuat | Kirim **1 kali** nota digital (isi, total, status bayar, perkiraan siap, link lacak) lewat gateway. Idempoten. Tombol WA di kasir tetap ada untuk kirim ulang manual. |
 | Pesanan berubah ke `READY` | Kirim **1 kali** notifikasi siap diambil. Idempoten. |
 | ETA mundur karena overload | Hanya pesanan **Reguler**. Kirim jika ETA baru > `last_notified_eta` + `DELAY_THRESHOLD_HOURS` (default 6 jam, menunggu kesepakatan mitra). **Maksimal 2 kali** per pesanan. |
 | Belum diambil > 3 hari setelah `ready_at` | **Tidak** kirim WA otomatis. Celery beat harian set `needs_followup = true`, muncul di halaman admin, admin menghubungi manual. |

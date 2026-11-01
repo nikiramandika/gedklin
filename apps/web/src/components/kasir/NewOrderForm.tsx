@@ -123,10 +123,13 @@ export function NewOrderForm({ onCreated }: { onCreated: () => void }) {
               <span className="block text-xs text-muted">{relativeEta(o.predicted_ready_at, now)}</span>
             </dd>
           </dl>
+          <p className="text-center text-xs text-muted">
+            Nota dikirim otomatis ke WhatsApp pelanggan. Status pengiriman ada di detail pesanan.
+          </p>
           <div className="grid grid-cols-2 gap-2">
             <ButtonLink variant="whatsapp" size="lg" href={receipt.whatsapp_link} target="_blank" rel="noopener noreferrer">
               <IconChat size={18} />
-              Kirim WA
+              Kirim ulang WA
             </ButtonLink>
             <ButtonLink variant="secondary" size="lg" href={`/nota/${o.id}`} target="_blank" rel="noopener">
               <IconPrinter size={18} />

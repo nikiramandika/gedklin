@@ -113,6 +113,23 @@ def tracking_url(order: Order, settings: Settings | None = None) -> str:
     return f"{settings.public_tracking_url.rstrip('/')}/{order.tracking_code}"
 
 
+def receipt_message(order: Order) -> str:
+    """Nota digital: dikirim otomatis saat pesanan dibuat, juga dipakai tombol WA manual."""
+    eta = format_local(order.predicted_ready_at) if order.predicted_ready_at else "-"
+    lines = "\n".join(f"- {describe_item(i)}: {format_rupiah(i.subtotal)}" for i in order.items)
+    return (
+        f"Nota Gedklin Laundry\n"
+        f"Kode: {order.tracking_code}\n"
+        f"Kecepatan: {'Express' if order.is_express else 'Reguler'}\n"
+        f"{lines}\n"
+        f"Total: {format_rupiah(order.price_total)} "
+        f"({'LUNAS' if order.is_paid else 'belum lunas, bayar saat ambil'})\n"
+        + (f"Catatan: {order.notes}\n" if order.notes else "")
+        + f"Perkiraan siap: {eta}\n"
+        f"Lacak: {tracking_url(order)}"
+    )
+
+
 def ready_message(order: Order) -> str:
     return (
         f"Halo Kak {order.customer.name}, cucian Anda di Gedklin Laundry sudah SIAP DIAMBIL.\n"

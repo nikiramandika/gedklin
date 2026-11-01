@@ -233,6 +233,14 @@ class Notification(Base):
             postgresql_where=text("type = 'READY'"),
             sqlite_where=text("type = 'READY'"),
         ),
+        # Nota digital otomatis juga hanya sekali per pesanan.
+        Index(
+            "uq_notifications_receipt_once",
+            "order_id",
+            unique=True,
+            postgresql_where=text("type = 'RECEIPT'"),
+            sqlite_where=text("type = 'RECEIPT'"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
