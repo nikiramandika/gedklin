@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import re
+import urllib.error
+import urllib.parse
+import urllib.request
 import uuid
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
@@ -29,12 +34,48 @@ class ConsoleSender(NotificationSender):
         return msg_id
 
 
+class FonnteSender(NotificationSender):
+    """WhatsApp lewat Fonnte (https://docs.fonnte.com/api-send-message/).
+
+    Nomor 08xx diubah Fonnte menjadi 628xx (countryCode 62). Device harus terhubung:
+    bila tidak, Fonnte menolak (connectOnly) dan task Celery mencoba ulang.
+    """
+
+    URL = "https://api.fonnte.com/send"
+
+    def __init__(self, token: str, timeout: float = 15) -> None:
+        if not token:
+            raise ValueError("WA_API_KEY (token Fonnte) belum diisi")
+        self.token = token
+        self.timeout = timeout
+
+    def send(self, phone_wa: str, message: str) -> str:
+        target = re.sub(r"\D", "", phone_wa)
+        body = urllib.parse.urlencode(
+            {"target": target, "message": message, "countryCode": "62"}
+        ).encode()
+        request = urllib.request.Request(
+            self.URL, data=body, method="POST", headers={"Authorization": self.token}
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as resp:
+                data = json.loads(resp.read().decode())
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(f"Fonnte HTTP {exc.code}") from exc
+        # Beberapa respons gagal memakai kunci "Status" (huruf besar).
+        if not (data.get("status") or data.get("Status")):
+            raise RuntimeError(f"Fonnte menolak: {data.get('reason', data)}")
+        ids = data.get("id") or []
+        return f"fonnte-{ids[0]}" if ids else f"fonnte-req-{data.get('requestid', '')}"
+
+
 def get_sender(settings: Settings | None = None) -> NotificationSender:
     settings = settings or get_settings()
     provider = settings.wa_provider.lower()
     if provider == "console":
         return ConsoleSender()
-    # Provider WhatsApp gateway belum dipilih. Tambahkan adapter baru di sini.
+    if provider == "fonnte":
+        return FonnteSender(settings.wa_api_key)
     raise NotImplementedError(f"Adapter WA untuk provider '{provider}' belum dibuat")
 
 
