@@ -24,14 +24,15 @@ docker compose -f infra/docker-compose.yml up -d
 
 # 2. Python env (dipakai API dan ML)
 python3.11 -m venv .venv && source .venv/bin/activate
-pip install -r apps/api/requirements-dev.txt
+# requirements memuat `-e ../../ml` (relatif ke folder kerja), jadi install dari apps/api
+(cd apps/api && pip install -r requirements-dev.txt)
 
 # 3. Model (pakai data dummy sampai data mitra terkumpul)
 cd ml && python scripts/generate_dummy.py && python scripts/build_dataset.py && python scripts/train_compare.py && cd ..
 
 # 4. API
 cd apps/api
-cp .env.example .env            # isi SEED_OWNER_PASSWORD dan JWT_SECRET
+cp .env.example .env            # isi SEED_OWNER_PASSWORD dan JWT_SECRET (lihat di bawah)
 alembic upgrade head
 python -m app.seed              # katalog harga, janji waktu, pengaturan + akun owner
 uvicorn app.main:app --reload   # http://localhost:8000/docs
@@ -56,7 +57,8 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 # Jika muncul error "running scripts is disabled", jalankan sekali:
 #   Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-pip install -r apps/api/requirements-dev.txt
+# requirements memuat `-e ../../ml` (relatif ke folder kerja), jadi install dari apps/api
+cd apps/api; pip install -r requirements-dev.txt; cd ../..
 
 # 3. Model (pakai data dummy sampai data mitra terkumpul)
 cd ml
@@ -67,7 +69,7 @@ cd ..
 
 # 4. API
 cd apps/api
-Copy-Item .env.example .env     # isi SEED_OWNER_PASSWORD dan JWT_SECRET
+Copy-Item .env.example .env     # isi SEED_OWNER_PASSWORD dan JWT_SECRET (lihat di bawah)
 alembic upgrade head
 python -m app.seed              # katalog harga, janji waktu, pengaturan + akun owner
 uvicorn app.main:app --reload   # http://localhost:8000/docs
@@ -93,6 +95,20 @@ menjalankan `uvicorn` atau `celery`. Kalau pakai Command Prompt (cmd), aktivasin
 
 Halaman: `/login`, `/kasir`, `/dasbor` (+ `/operasional`, `/layanan`, `/akun`), `/admin`,
 `/lacak` dan `/lacak/<kode>` (publik).
+
+### Isi `apps/api/.env` untuk lokal
+
+Setiap anggota tim punya `.env` sendiri (tidak di-commit) dan database lokal sendiri.
+
+| Variabel | Isi untuk lokal |
+|---|---|
+| `JWT_SECRET` | String acak untuk menandatangani token login. Buat dengan `python -c "import secrets; print(secrets.token_hex(32))"`. Kalau diganti, semua sesi login lama keluar. |
+| `SEED_OWNER_USERNAME` / `SEED_OWNER_PASSWORD` | Akun owner pertama yang dibuat `python -m app.seed`. Bebas, misalnya `owner` / `owner123`. |
+| `WA_PROVIDER` | Biarkan `console`: pesan WA hanya ditulis ke log worker, tidak terkirim. Jangan pakai token Fonnte production di lokal. |
+| `CELERY_TASK_ALWAYS_EAGER` | `true` kalau tidak mau menjalankan worker/Redis; notifikasi diproses langsung. |
+| Lainnya | Nilai bawaan sudah cocok dengan `infra/docker-compose.yml`. |
+
+Production memakai `.env` terpisah di server (`/opt/gedklin/.env`), jadi nilai lokal tidak memengaruhi gedklin.my.id.
 
 ## Test & lint
 
