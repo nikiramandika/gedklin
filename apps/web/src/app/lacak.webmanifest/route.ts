@@ -1,5 +1,3 @@
-// Manifest portal pelanggan: dipasang terpisah dari aplikasi staf dan terbuka langsung di /lacak.
-
 export function GET() {
   return Response.json(
     {

@@ -1,9 +1,3 @@
-"""Log aktivitas: siapa melakukan apa, kapan, dan apa yang berubah.
-
-Dipanggil di tempat aksi terjadi, sebelum `db.commit()`, supaya log dan
-perubahannya tersimpan dalam satu transaksi.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
@@ -15,12 +9,10 @@ from sqlalchemy.orm import Session
 
 from app.models import ActivityLog, User
 
-# Field yang tidak pernah boleh masuk log.
 SECRET_FIELDS = frozenset({"password", "password_hash"})
 
 
 def _plain(value: Any) -> Any:
-    """Ubah nilai menjadi bentuk yang aman untuk JSON."""
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, datetime | date | time):
@@ -33,7 +25,6 @@ def snapshot(obj: object, fields: Iterable[str]) -> dict[str, Any]:
 
 
 def diff(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[str, list[Any]]:
-    """{field: [sebelum, sesudah]} untuk field yang berubah saja."""
     return {
         k: [_plain(before.get(k)), _plain(after.get(k))]
         for k in after

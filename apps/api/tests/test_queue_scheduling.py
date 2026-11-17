@@ -66,14 +66,12 @@ def test_processing_order_is_not_overtaken_by_express(db: Session) -> None:
 
 def test_express_first_then_regular_near_promise_then_fifo(db: Session) -> None:
     now = utcnow()
-    # Reguler lama dengan janji masih jauh (CKS 4 hari).
     _order(
         db,
         "REGJAUH",
         received_at=now - timedelta(hours=10),
         promised_ready_at=now + timedelta(hours=60),
     )
-    # Reguler yang masuk belakangan tapi janjinya tinggal 6 jam.
     near = _order(
         db,
         "REGDEKAT",
@@ -88,7 +86,6 @@ def test_express_first_then_regular_near_promise_then_fifo(db: Session) -> None:
         promised_ready_at=now + timedelta(hours=23),
     )
     assert is_escalated(near, now)
-    # Express tetap paling dulu; Reguler yang mendekati janji menyalip Reguler lain.
     assert _codes(db, now) == ["EXP", "REGDEKAT", "REGJAUH"]
 
 

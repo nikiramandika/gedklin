@@ -12,7 +12,6 @@ RAW = ROOT / "data" / "raw"
 
 
 def resolve_inputs(orders: Path | None, daily: Path | None) -> tuple[Path, Path, str]:
-    """Pakai data mitra jika ada, jika tidak jatuh ke data dummy."""
     if orders and daily:
         return orders, daily, "dummy" if "dummy" in orders.name else "custom"
     if (RAW / "orders.csv").exists() and (RAW / "daily.csv").exists():

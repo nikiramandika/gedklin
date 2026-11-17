@@ -14,10 +14,8 @@ class Settings(BaseSettings):
     delay_threshold_hours: float = 6
     max_delay_notifications: int = 2
     followup_after_days: int = 3
-    # Batas error yang dianggap "tepat" untuk metrik akurasi ETA.
     eta_tolerance_hours: float = 6
-    # Reguler yang janjinya tinggal <= N jam didahulukan dari Reguler lain (menunggu
-    # kesepakatan mitra).
+    # Menunggu kesepakatan mitra.
     regular_escalation_hours: float = 8
 
     wa_provider: str = "console"

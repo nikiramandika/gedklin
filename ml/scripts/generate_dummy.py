@@ -1,20 +1,4 @@
-"""Generate data dummy dengan kolom yang sama persis dengan form pencatatan mitra.
-
-HANYA untuk menguji pipeline dan aplikasi. Metrik dari data ini tidak boleh
-dilaporkan sebagai hasil.
-
-Pola yang disimulasikan (per menit, hanya selama jam buka 08.00-17.00):
-- Jam ramai pagi dan sore, akhir pekan lebih ramai.
-- 4 mesin cuci (maks 8 kg per load) dan 3 pengering; sesekali ada mesin rusak
-  atau petugas izin.
-- 2 petugas mengerjakan lipat, setrika, item satuan (cuci-setrika manual), dry
-  clean, dan kemas. Setrika dan item satuan paling lama.
-- Express hanya untuk CKL dan CKS.
-- Petugas mengejar janji mitra: pesanan baru dikerjakan menjelang janjinya
-  (Express sekitar 1 hari, CKL sekitar 2 hari, CKS 3-4 hari).
-  Urutan antrean: Express dulu, lalu FIFO.
-- Antrean panjang dan setrika memperlama; lewat jam tutup lanjut besok.
-"""
+"""Generate data dummy dengan kolom yang sama persis dengan form pencatatan mitra."""
 
 from __future__ import annotations
 
@@ -40,8 +24,7 @@ OPEN, CLOSE = time(8, 0), time(17, 0)
 WASHERS, DRYERS, STAFF = 4, 3, 2
 HOURLY_WEIGHT = {8: 3, 9: 4, 10: 3, 11: 2, 12: 1.5, 13: 1.5, 14: 1.5, 15: 2, 16: 3}
 LAYANAN_P = {"C": 0.05, "CK": 0.12, "CKL": 0.38, "CKS": 0.35, "S": 0.05, "SATUAN": 0.05}
-# Janji yang dikejar petugas di simulasi. Untuk C, CK, S, dan SATUAN janji mitra
-# belum diketahui; nilai ini hanya asumsi untuk data dummy.
+# Asumsi untuk dummy: janji mitra untuk C, CK, S, dan SATUAN belum diketahui.
 SIM_PROMISE_HOURS = {"C": 24, "CK": 36, "CKL": 48, "CKS": 96, "S": 48, "SATUAN": 48}
 EXPRESS_PROMISE_HOURS = 24
 
@@ -142,7 +125,6 @@ def make_job(rng: np.random.Generator, o: dict) -> Job:
     if layanan in ("CKS", "S"):
         staff += IRON_MIN_PER_KG * kg
     promise = EXPRESS_PROMISE_HOURS if o["express"] else SIM_PROMISE_HOURS[layanan]
-    # Pesanan baru dikerjakan menjelang janjinya (Express hampir langsung).
     lead = max(0.0, promise - float(rng.uniform(16, 30)))
     return Job(
         order=o,

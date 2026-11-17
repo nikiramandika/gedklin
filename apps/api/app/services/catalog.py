@@ -1,9 +1,3 @@
-"""Aturan katalog layanan yang dikelola pemilik dari dasbor (tambah, ubah, hapus).
-
-Kombinasi kelompok, proses, dan satuan dibatasi supaya setiap item tetap bisa
-dihitung oleh `services/pricing.py` dan dipetakan ke fitur ML.
-"""
-
 from __future__ import annotations
 
 from sqlalchemy import func, select
@@ -29,7 +23,6 @@ class CatalogError(ValueError):
 
 
 def normalize(item: ServiceCatalog) -> None:
-    """Validasi item dan kosongkan aturan yang tidak dipakai satuannya."""
     processes, units = GROUP_RULES[item.group]
     if item.process not in processes:
         raise CatalogError("Proses tidak cocok dengan kelompok layanan")
@@ -48,7 +41,7 @@ def normalize(item: ServiceCatalog) -> None:
         if bool(item.kg_per_load) == bool(item.pcs_per_load):
             raise CatalogError("Isi kapasitas per load: per pcs atau per kg (salah satu)")
         item.base_kg = None
-    else:  # KG, PCS
+    else:
         item.base_kg = item.kg_per_load = item.pcs_per_load = item.max_extra = None
         item.extra_price = None
     if item.unit == CatalogUnit.PCS:

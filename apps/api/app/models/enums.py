@@ -22,16 +22,16 @@ class Process(StrEnum):
     CK = "CK"
     CKL = "CKL"
     CKS = "CKS"
-    S = "S"  # setrika saja
-    SATUAN = "SATUAN"  # cuci-setrika manual tanpa mesin
+    S = "S"
+    SATUAN = "SATUAN"
     DRY_CLEAN = "DRY_CLEAN"
 
 
 class CatalogUnit(StrEnum):
-    KILOAN_7KG = "KILOAN_7KG"  # harga 7 kg pertama + tambahan per kg untuk sisa berat
-    KG = "KG"  # per kg, bisa ada minimal
-    PCS = "PCS"  # per potong
-    LOAD = "LOAD"  # per load item khusus + tambahan per pcs
+    KILOAN_7KG = "KILOAN_7KG"
+    KG = "KG"
+    PCS = "PCS"
+    LOAD = "LOAD"
 
 
 class OrderStatus(StrEnum):
@@ -39,7 +39,6 @@ class OrderStatus(StrEnum):
     PROCESSING = "PROCESSING"
     READY = "READY"
     PICKED_UP = "PICKED_UP"
-    # Di luar alur utama: hanya dari RECEIVED/PROCESSING, dengan alasan.
     CANCELLED = "CANCELLED"
 
 
@@ -52,7 +51,7 @@ class PaymentMethod(StrEnum):
 
 
 class NotificationType(StrEnum):
-    RECEIPT = "RECEIPT"  # nota digital saat pesanan dibuat
+    RECEIPT = "RECEIPT"
     READY = "READY"
     DELAY = "DELAY"
 

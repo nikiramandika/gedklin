@@ -1,5 +1,3 @@
-"""Portal tracking publik. Hanya menerima tracking_code, tanpa data pribadi."""
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session

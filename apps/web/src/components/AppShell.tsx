@@ -82,7 +82,6 @@ export function AppShell({
 }: {
   roles: Role[];
   children: ReactNode;
-  /** Navigasi bawah khusus halaman, hanya tampil di layar kecil. */
   bottomBar?: ReactNode;
 }) {
   const user = useRequireRole(roles);
@@ -107,7 +106,6 @@ export function AppShell({
 
   return (
     <div className="flex min-h-dvh bg-canvas">
-      {/* Sidebar: rail ikon di tablet landscape, penuh di layar lebar. */}
       <aside className="sticky top-0 hidden h-dvh shrink-0 flex-col bg-nav text-nav-ink print:hidden lg:flex lg:w-[76px] xl:w-[248px]">
         <div className="flex h-16 items-center gap-2.5 px-5 lg:justify-center xl:justify-start">
           <BrandMark size={32} />
@@ -121,7 +119,6 @@ export function AppShell({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Top bar untuk HP dan tablet portrait. */}
         <header className="pt-safe sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur print:hidden lg:hidden">
           <div className="flex h-14 items-center gap-2 px-2 sm:px-4">
             <button

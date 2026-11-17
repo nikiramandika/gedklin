@@ -32,7 +32,6 @@ const EDIT_FORM = "customer-edit-form";
 
 type Filter = "all" | "unpaid";
 
-/** 6281234567890 -> 0812-3456-7890 */
 function displayPhone(phone: string): string {
   const local = phone.startsWith("62") ? `0${phone.slice(2)}` : phone;
   return local.replace(/^(\d{4})(\d{4})(\d+)$/, "$1-$2-$3");
@@ -59,7 +58,6 @@ export default function PelangganPage() {
     [q, filter],
   );
 
-  // Cari otomatis setelah berhenti mengetik sebentar.
   useEffect(() => {
     const id = setTimeout(() => setQ(query.trim()), SEARCH_DELAY_MS);
     return () => clearTimeout(id);

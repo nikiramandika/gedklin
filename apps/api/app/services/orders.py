@@ -1,5 +1,3 @@
-"""Logika pesanan: pembuatan, perubahan status, janji waktu, ETA, dan aturan notifikasi."""
-
 from __future__ import annotations
 
 import logging
@@ -67,7 +65,6 @@ PAYMENT_LABEL: dict[PaymentMethod, str] = {
     PaymentMethod.QRIS: "QRIS",
     PaymentMethod.TRANSFER: "Transfer",
 }
-# Isi pesanan hanya bisa dikoreksi atau dibatalkan sebelum siap diambil.
 EDITABLE_STATUSES = (OrderStatus.RECEIVED, OrderStatus.PROCESSING)
 
 STATUS_FLOW: dict[OrderStatus, OrderStatus] = {
@@ -131,13 +128,8 @@ def _items_text(items: Sequence[OrderItem]) -> str:
     return ", ".join(describe_item(i) for i in items)
 
 
-# --- Janji & ETA -----------------------------------------------------------
-
-
 @dataclass
 class EtaContext:
-    """Pengaturan yang dibaca sekali per perhitungan ulang ETA."""
-
     config: AppConfig
     promises: dict[str, Promise]
     day_ops: DayOpsLookup
@@ -153,7 +145,6 @@ def order_promised_hours(order: Order, ctx: EtaContext) -> float:
 
 
 def promised_ready_at(order: Order, ctx: EtaContext) -> datetime:
-    """Janji standar mitra; bila jatuh di luar jam buka, geser ke jam buka berikutnya."""
     hours = order_promised_hours(order, ctx)
     return shift_into_open_hours(order.received_at + timedelta(hours=hours), ctx.day_ops)
 
@@ -165,13 +156,6 @@ def compute_features(
     active: list[Order] | None = None,
     now: datetime | None = None,
 ) -> dict[str, float]:
-    """Fitur pesanan memakai feature builder yang sama dengan training.
-
-    Kondisi antrean dihitung pada saat pesanan masuk. Saat ETA dihitung ulang
-    (`active` diisi), dipakai nilai terbesar antara antrean saat masuk dan
-    pesanan yang kini berada di depannya, supaya Express yang menyela dan
-    antrean yang tidak berkurang ikut tercermin.
-    """
     queue = queue_stats(order.received_at, records_active_at(db, order.received_at))
     if active is not None:
         now = now or utcnow()
@@ -193,16 +177,9 @@ def predict_eta(
     active: list[Order] | None = None,
     now: datetime | None = None,
 ) -> datetime:
-    """Perkiraan siap dari model (jam kerja sejak masuk), atau janji mitra bila model tidak ada.
-
-    ETA hanya berubah bila masukannya berubah (antrean di depannya, isi pesanan,
-    operasional harian). ETA yang sudah lewat tidak digeser: keterlambatan diukur
-    terhadap `promised_ready_at` dan ditampilkan di UI, bukan ditutupi jam baru.
-    """
     features = compute_features(db, order, ctx, active, now)
     hours, version = get_predictor().predict_work_hours(features)
     if hours is None:
-        # Model tidak tersedia: fallback ke janji standar mitra.
         eta = order.promised_ready_at or promised_ready_at(order, ctx)
         version = PROMISE_VERSION
     else:
@@ -232,7 +209,6 @@ def latest_model_version(db: Session, order_id: int) -> str | None:
 
 
 def recompute_etas(db: Session, now: datetime | None = None) -> list[int]:
-    """Hitung ulang ETA pesanan aktif dan antrekan notifikasi keterlambatan."""
     now = now or utcnow()
     ctx = EtaContext.load(db)
     active = active_orders(db, now)
@@ -243,8 +219,7 @@ def recompute_etas(db: Session, now: datetime | None = None) -> list[int]:
         db.flush()  # session tanpa autoflush: log prediksi baru harus terbaca
         after = latest_model_version(db, order.id)
         if before is not None and before != after:
-            # Model diganti (mis. deploy model baru): ETA bergeser bukan karena antrean,
-            # jadi tidak dikirimi WA "antrean ramai". ETA baru jadi patokan berikutnya.
+            # Model diganti: ETA bergeser bukan karena antrean, jadi tanpa WA.
             order.last_notified_eta = eta
             continue
         if should_send_delay(order, eta):
@@ -257,9 +232,6 @@ def recompute_etas(db: Session, now: datetime | None = None) -> list[int]:
     for notif in delay_notifications:
         enqueue_notification(notif.id)
     return [n.order_id for n in delay_notifications]
-
-
-# --- Pesanan ---------------------------------------------------------------
 
 
 def upsert_customer(db: Session, name: str, phone_raw: str) -> Customer:
@@ -317,7 +289,6 @@ def create_order(
         needs_followup=False,
         created_by=user.id if user else None,
         notes=_clean(notes, 1000),
-        # Bayar di depan: langsung lunas.
         payment_method=payment_method,
         paid_at=now if payment_method else None,
         items=_order_items(quote),
@@ -344,8 +315,7 @@ def create_order(
     )
     ctx = EtaContext.load(db)
     order.promised_ready_at = promised_ready_at(order, ctx)
-    # ETA awal dicantumkan di nota, jadi dianggap sudah diberitahukan. Disimpan juga
-    # sebagai prediksi awal untuk mengukur akurasi model.
+    # ETA awal sudah tertulis di nota, jadi dianggap sudah diberitahukan.
     order.last_notified_eta = predict_eta(db, order, ctx)
     order.initial_predicted_ready_at = order.last_notified_eta
     receipt_notif = Notification(order_id=order.id, type=NotificationType.RECEIPT)
@@ -430,9 +400,6 @@ def change_status(
     return order
 
 
-# --- Pembayaran, catatan, koreksi, pembatalan ------------------------------
-
-
 def _mark_paid(
     db: Session, order: Order, method: PaymentMethod, user: User | None, now: datetime
 ) -> None:
@@ -467,7 +434,6 @@ def record_payment(
 
 
 def void_payment(db: Session, order: Order, user: User | None) -> Order:
-    """Koreksi pembayaran yang salah dicatat (hanya pemilik)."""
     if not order.is_paid:
         raise OrderError("Pesanan belum lunas")
     method = order.payment_method
@@ -495,7 +461,6 @@ def update_details(
     *,
     fields: dict[str, str | None],
 ) -> Order:
-    """Ubah catatan dan/atau lokasi rak. Hanya field yang dikirim yang diubah."""
     changes: dict[str, list[str | None]] = {}
     if "notes" in fields:
         notes = _clean(fields["notes"], 1000)
@@ -542,7 +507,6 @@ def update_items(
     user: User | None,
     now: datetime | None = None,
 ) -> Order:
-    """Koreksi isi pesanan (salah input berat/layanan) sebelum siap dan sebelum lunas."""
     now = now or utcnow()
     _check_editable(order, "dikoreksi")
     quote = quote_order(db, items, is_express)
@@ -570,7 +534,7 @@ def update_items(
     ctx = EtaContext.load(db)
     order.promised_ready_at = promised_ready_at(order, ctx)
     order.predicted_ready_at = None
-    # Perkiraan baru dikirim ulang lewat nota, jadi tidak memicu WA "perkiraan mundur".
+    # Perkiraan baru dikirim ulang lewat nota, jadi tidak memicu WA.
     order.last_notified_eta = predict_eta(db, order, ctx, active_orders(db, now), now)
     order.initial_predicted_ready_at = order.last_notified_eta
     db.commit()
@@ -619,7 +583,6 @@ def cancel_order(
 
 
 def mark_followups(db: Session, now: datetime | None = None) -> int:
-    """Tandai pesanan READY yang belum diambil lebih dari N hari. Tanpa WA otomatis."""
     now = now or utcnow()
     cutoff = now - timedelta(days=get_settings().followup_after_days)
     result = db.execute(

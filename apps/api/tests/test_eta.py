@@ -48,7 +48,6 @@ def test_corrupt_model_falls_back_to_promise(tmp_path: Path) -> None:
 
 
 def test_model_with_old_unit_is_not_used(tmp_path: Path) -> None:
-    # Model lama memprediksi jam kalender; dipakai apa adanya ETA-nya akan salah.
     model = tmp_path / "best_model.joblib"
     model.write_bytes(b"x")
     (tmp_path / "metadata.json").write_text(

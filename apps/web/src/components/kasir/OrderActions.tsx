@@ -9,13 +9,6 @@ import type { Order, PaymentMethod } from "@/lib/types";
 import { Modal } from "../overlay";
 import { Button, ErrorText, Field, PaymentBadge, Segmented, inputClass } from "../ui";
 
-/*
- * Dialog untuk aksi pesanan yang butuh satu keputusan tambahan:
- * - Tandai Siap: lokasi rak (opsional) supaya cucian mudah dicari saat diambil.
- * - Serahkan: wajib lunas; bila belum, pembayaran dicatat sekaligus.
- * - Terima pembayaran: bayar di tengah proses.
- */
-
 export type OrderDialog = { kind: "ready" | "pickup" | "payment"; order: Order } | null;
 
 const METHODS: PaymentMethod[] = ["CASH", "QRIS", "TRANSFER"];
@@ -57,7 +50,6 @@ export function OrderActionDialog({
 }: {
   dialog: OrderDialog;
   onClose: () => void;
-  /** Dipanggil setelah berhasil, dengan pesan untuk toast. */
   onDone: (order: Order, message: string) => void;
 }) {
   // Dipasang ulang per pesanan/aksi supaya isian sebelumnya tidak terbawa.

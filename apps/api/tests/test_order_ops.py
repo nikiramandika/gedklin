@@ -12,9 +12,6 @@ def status(client: TestClient, headers: dict, order_id: int, to: str, **extra: o
     )
 
 
-# --- Pembayaran -------------------------------------------------------------
-
-
 def test_pay_upfront_with_notes_shows_on_receipt(client: TestClient, cashier: dict) -> None:
     order = new_order(client, cashier, notes="  Ada noda di kemeja putih ", payment_method="QRIS")
     assert order["notes"] == "Ada noda di kemeja putih"
@@ -46,13 +43,9 @@ def test_record_and_void_payment(client: TestClient, cashier: dict, owner: dict)
     assert client.post(path, json={"method": "TRANSFER"}, headers=cashier).json()["is_paid"]
     assert client.post(path, json={"method": "CASH"}, headers=cashier).status_code == 409
 
-    # Hanya pemilik yang boleh membatalkan catatan pembayaran.
     assert client.delete(path, headers=cashier).status_code == 403
     res = client.delete(path, headers=owner)
     assert res.status_code == 200 and not res.json()["is_paid"]
-
-
-# --- Catatan, rak, koreksi --------------------------------------------------
 
 
 def test_update_notes_and_rack(client: TestClient, cashier: dict, owner: dict) -> None:
@@ -85,20 +78,15 @@ def test_correct_items_before_ready_and_unpaid(
     ).json()[0]
     assert entry["action"] == "order.items" and entry["changes"]["total"] == [25_000, 39_000]
 
-    # Sudah lunas: tidak bisa dikoreksi.
     client.post(f"/orders/{order['id']}/payment", json={"method": "CASH"}, headers=cashier)
     res = client.put(path, json=body, headers=cashier)
     assert res.status_code == 409 and "lunas" in res.json()["detail"]
 
-    # Sudah siap: tidak bisa dikoreksi.
     other = new_order(client, cashier, customer_phone="082222222222")
     status(client, cashier, other["id"], "PROCESSING")
     status(client, cashier, other["id"], "READY")
     res = client.put(f"/orders/{other['id']}/items", json=body, headers=cashier)
     assert res.status_code == 409
-
-
-# --- Pembatalan -------------------------------------------------------------
 
 
 def test_cancel_order(client: TestClient, cashier: dict, owner: dict) -> None:
@@ -116,10 +104,8 @@ def test_cancel_order(client: TestClient, cashier: dict, owner: dict) -> None:
     assert status(client, cashier, order["id"], "PROCESSING").status_code == 409
     assert client.post(path, json={"reason": "lagi"}, headers=cashier).status_code == 409
 
-    # Tidak dihitung sebagai pendapatan.
     assert client.get("/dashboard/summary", headers=owner).json()["today_revenue"] == 0
 
-    # Portal publik menunjukkan batal tanpa alasan internal.
     public = client.get(f"/public/track/{order['tracking_code']}")
     assert public.json()["status"] == "CANCELLED" and "titip" not in public.text
 
@@ -128,9 +114,6 @@ def test_paid_order_cannot_be_cancelled(client: TestClient, cashier: dict) -> No
     order = new_order(client, cashier, payment_method="CASH")
     res = client.post(f"/orders/{order['id']}/cancel", json={"reason": "salah"}, headers=cashier)
     assert res.status_code == 409
-
-
-# --- Pelanggan --------------------------------------------------------------
 
 
 def test_customers_list_detail_and_update(client: TestClient, cashier: dict, owner: dict) -> None:
@@ -164,9 +147,6 @@ def test_customers_list_detail_and_update(client: TestClient, cashier: dict, own
     assert (res.json()["name"], res.json()["phone_wa"]) == ("Siti Aminah", "6281333333333")
     logs = client.get("/activity-logs", params={"entity_type": "customer"}, headers=owner).json()
     assert logs[0]["changes"]["no_wa"] == ["6281111111111", "6281333333333"]
-
-
-# --- Laporan ----------------------------------------------------------------
 
 
 def test_report_summary_and_csv(client: TestClient, cashier: dict, owner: dict) -> None:
@@ -212,18 +192,13 @@ def test_report_summary_and_csv(client: TestClient, cashier: dict, owner: dict) 
     assert bad.status_code == 422
 
 
-# --- Keamanan login ---------------------------------------------------------
-
-
 def test_login_lockout_after_five_failures(client: TestClient) -> None:
     def attempt(password: str) -> int:
         body = {"username": "cashier", "password": password}
         return client.post("/auth/login", json=body).status_code
 
     assert [attempt("salah") for _ in range(5)] == [401] * 5
-    # Password benar pun ditolak sampai jendela 15 menit lewat.
     assert attempt(PASSWORD) == 429
-    # Username lain tidak terpengaruh.
     assert (
         client.post("/auth/login", json={"username": "admin", "password": PASSWORD}).status_code
         == 200

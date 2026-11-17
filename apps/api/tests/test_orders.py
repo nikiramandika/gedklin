@@ -26,7 +26,7 @@ def advance(client: TestClient, headers: dict, order_id: int, *statuses: str) ->
     for s in statuses:
         body_in: dict = {"to_status": s}
         if s == "PICKED_UP":
-            body_in["payment_method"] = "CASH"  # belum lunas: bayar saat ambil
+            body_in["payment_method"] = "CASH"
         res = client.post(f"/orders/{order_id}/status", json=body_in, headers=headers)
         assert res.status_code == 200, res.text
         body = res.json()
@@ -53,7 +53,6 @@ def test_create_order_with_items_prices_and_promise(
     assert order["customer"]["phone_wa"] == "6281234567890"
     assert len(order["tracking_code"]) == 10
     assert order["next_status"] == "PROCESSING"
-    # Tanpa model: ETA = janji standar mitra.
     assert order["promised_ready_at"] is not None
     assert order["predicted_ready_at"] == order["promised_ready_at"]
 
@@ -82,8 +81,7 @@ def test_quote_endpoint_and_validation(client: TestClient, cashier: dict) -> Non
 
 
 def test_promise_after_closing_moves_to_next_opening(db: Session) -> None:
-    # Diterima Selasa 20/10 18.00 WIB, CKL Reguler janji 2 hari -> Kamis 18.00,
-    # lewat jam tutup 17.00 -> Jumat 08.00 WIB.
+    # Selasa 18.00 WIB + CKL 2 hari = Kamis 18.00, lewat jam tutup -> Jumat 08.00 WIB.
     order = create_order(
         db,
         customer_name="Budi",
@@ -121,10 +119,8 @@ def test_flow_and_ready_notification_sent_once(
         (NotificationType.READY, NotificationStatus.SENT),
     ]
 
-    # Menjalankan ulang task tidak mengirim dua kali.
     assert send_notification.apply(args=[notifs[1].id]).get() == "already-sent"
 
-    # Unique index mencegah baris READY kedua.
     db.add(Notification(order_id=order["id"], type=NotificationType.READY))
     with pytest.raises(IntegrityError):
         db.commit()
@@ -155,7 +151,6 @@ def test_receipt_sent_automatically_once_on_create(
     ]
     assert notifs[0].provider_msg_id
 
-    # Unique index mencegah nota otomatis kedua.
     db.add(Notification(order_id=order["id"], type=NotificationType.RECEIPT))
     with pytest.raises(IntegrityError):
         db.commit()
@@ -163,8 +158,6 @@ def test_receipt_sent_automatically_once_on_create(
 
 
 class QueueAwarePredictor:
-    """Model tiruan: tiap pesanan di depan menambah 10 jam kerja."""
-
     model_version = "uji-antrean"
 
     def predict_work_hours(self, features: dict[str, float]) -> tuple[float, str]:
@@ -193,7 +186,6 @@ def test_delay_notification_when_express_cuts_in_regular_only_and_max_two(
     monkeypatch.setattr("app.services.orders.get_predictor", lambda: QueueAwarePredictor())
     regular = _create(db, "081111111111", MORNING)
     first_eta = regular.predicted_ready_at
-    # Tiap Express yang masuk belakangan dikerjakan lebih dulu -> ETA Reguler mundur.
     for i in range(3):
         _create(db, f"08222222222{i}", MORNING + timedelta(minutes=10 * (i + 1)), express=True)
 
@@ -212,10 +204,8 @@ def test_delay_notification_when_express_cuts_in_regular_only_and_max_two(
 def test_model_switch_does_not_send_delay_whatsapp(
     db: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Deploy model baru menggeser ETA, tapi itu bukan antrean ramai: jangan kirim WA."""
     from app.services.orders import recompute_etas
 
-    # Dibuat saat model belum ada (janji mitra: CKL 2 hari).
     regular = _create(db, "081111111111", MORNING)
     _create(db, "082222222222", MORNING + timedelta(minutes=5))
 
@@ -239,7 +229,6 @@ def test_model_switch_does_not_send_delay_whatsapp(
 
 
 def test_overdue_eta_is_not_moved_by_clicks(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
-    """ETA yang sudah lewat tidak digeser ke "jam klik + 1 jam"."""
     from app.services.orders import change_status
 
     monkeypatch.setattr("app.services.orders.get_predictor", lambda: QueueAwarePredictor())
@@ -247,7 +236,6 @@ def test_overdue_eta_is_not_moved_by_clicks(db: Session, monkeypatch: pytest.Mon
     eta = late.predicted_ready_at
     later = MORNING + timedelta(days=3)
 
-    # Pesanan baru (di belakangnya) dan "mulai proses" pesanan itu sendiri.
     _create(db, "082222222222", later)
     change_status(db, late, OrderStatus.PROCESSING, None, later + timedelta(minutes=5))
 
@@ -261,7 +249,6 @@ def test_overdue_eta_is_not_moved_by_clicks(db: Session, monkeypatch: pytest.Mon
 def test_started_order_goes_ahead_and_pushes_waiting_eta(
     db: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Pesanan yang sudah diproses dikerjakan lebih dulu, jadi ETA yang menunggu mundur."""
     from app.services.orders import change_status
 
     monkeypatch.setattr("app.services.orders.get_predictor", lambda: QueueAwarePredictor())
@@ -303,7 +290,7 @@ def test_followup_marked_after_three_days_without_whatsapp(
     followups = client.get("/admin/followups", headers=admin).json()
     assert [o["id"] for o in followups] == [order["id"]]
     types = set(db.scalars(select(Notification.type).where(Notification.order_id == order["id"])))
-    assert types == {NotificationType.RECEIPT, NotificationType.READY}  # tanpa WA follow-up
+    assert types == {NotificationType.RECEIPT, NotificationType.READY}
 
     advance(client, cashier, order["id"], "PICKED_UP")
     assert client.get("/admin/followups", headers=admin).json() == []
@@ -356,7 +343,6 @@ def test_owner_changes_price_and_express_multiplier(
 
     assert client.put("/catalog/CKL", json={"price": 1}, headers=cashier).status_code == 403
 
-    # Dry clean belum punya harga: tidak bisa diaktifkan sebelum harga diisi.
     res = client.put("/catalog/DC_SONGKET", json={"is_active": True}, headers=owner)
     assert res.status_code == 422
     res = client.put(
@@ -387,7 +373,6 @@ def test_daily_operations_capacity_and_promises(client: TestClient, owner: dict)
     assert by_process["CKS"]["regular_hours"] == 96
     assert by_process["CKS"]["min_regular_hours"] == 72
     assert by_process["CK"]["regular_hours"] is None
-    # Express hanya untuk CKL dan CKS.
     assert {p for p, v in by_process.items() if v["express_hours"] == 24} == {"CKL", "CKS"}
     assert "DRY_CLEAN" in by_process
 

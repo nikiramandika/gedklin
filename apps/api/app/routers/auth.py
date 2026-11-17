@@ -12,7 +12,6 @@ from app.services.activity import log_activity
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# Setelah 5 kali salah dalam 15 menit, username itu dikunci sampai jendela lewat.
 MAX_FAILED_LOGINS = 5
 LOCKOUT_WINDOW = timedelta(minutes=15)
 

@@ -38,7 +38,6 @@ export type BoardTab = "queue" | "ready" | "search";
 const REFRESH_MS = 30_000;
 const DAY_MS = 86_400_000;
 
-/** Data antrean dan siap diambil, dimuat bersama supaya jumlah di tab selalu terisi. */
 export function useBoardData(refreshKey: number) {
   const [queue, setQueue] = useState<Order[] | null>(null);
   const [ready, setReady] = useState<Order[] | null>(null);
@@ -119,7 +118,6 @@ export function OrderBoard({
     setRefreshing(false);
   }
 
-  /** Muat ulang daftar, hasil pencarian, dan drawer detail setelah pesanan berubah. */
   async function afterChange(message: string) {
     onStatusChanged(message);
     setDetailVersion((v) => v + 1);
@@ -127,7 +125,6 @@ export function OrderBoard({
     if (tab === "search" && lastQuery.current) await runSearch(lastQuery.current);
   }
 
-  /** Mulai Proses langsung; Tandai Siap dan Tandai Diambil lewat dialog (rak, pembayaran). */
   async function advance(order: Order) {
     const next = order.next_status;
     if (!next) return;

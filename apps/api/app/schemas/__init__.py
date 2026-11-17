@@ -21,9 +21,6 @@ class ORM(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-# --- Auth & user -----------------------------------------------------------
-
-
 class LoginIn(BaseModel):
     username: str
     password: str
@@ -55,9 +52,6 @@ class UserUpdate(BaseModel):
     role: Role | None = None
     is_active: bool | None = None
     password: str | None = Field(default=None, min_length=8)
-
-
-# --- Katalog, pengaturan, operasional --------------------------------------
 
 
 class CatalogItemOut(ORM):
@@ -173,9 +167,6 @@ class DailyOperationOut(ORM):
     machine_issue_note: str | None
 
 
-# --- Pesanan ---------------------------------------------------------------
-
-
 class CustomerOut(ORM):
     id: int
     name: str
@@ -197,9 +188,7 @@ class QuoteIn(BaseModel):
 class OrderCreate(QuoteIn):
     customer_name: str = Field(min_length=1, max_length=100)
     customer_phone: str = Field(min_length=8, max_length=20)
-    # Kondisi barang / permintaan khusus.
     notes: str | None = Field(default=None, max_length=1000)
-    # Diisi bila pelanggan bayar di depan.
     payment_method: PaymentMethod | None = None
 
 
@@ -241,9 +230,7 @@ class QuoteOut(BaseModel):
 
 class StatusChange(BaseModel):
     to_status: OrderStatus
-    # Saat Tandai Siap: lokasi rak, mis. "B3".
     rack_location: str | None = Field(default=None, max_length=20)
-    # Saat Tandai Diambil untuk pesanan yang belum lunas.
     payment_method: PaymentMethod | None = None
 
 
@@ -266,7 +253,6 @@ class OrderOut(ORM):
     is_express: bool
     items: list[OrderItemOut]
     price_total: int
-    # Kasir yang menerima pesanan.
     created_by_name: str | None = None
     notes: str | None = None
     rack_location: str | None = None
@@ -308,9 +294,6 @@ class NotificationOut(ORM):
     created_at: datetime
 
 
-# --- Publik (tanpa data pribadi) -------------------------------------------
-
-
 class TrackingItemOut(ORM):
     name: str
     weight_kg: float | None
@@ -328,9 +311,6 @@ class TrackingOut(BaseModel):
     ready_at: datetime | None
     picked_up_at: datetime | None
     history: list[PublicStatusHistoryOut]
-
-
-# --- Pelanggan -------------------------------------------------------------
 
 
 class CustomerSummaryOut(BaseModel):
@@ -351,9 +331,6 @@ class CustomerDetailOut(CustomerSummaryOut):
 class CustomerUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     phone_wa: str | None = Field(default=None, min_length=8, max_length=20)
-
-
-# --- Laporan ---------------------------------------------------------------
 
 
 class ReportDay(BaseModel):
@@ -389,15 +366,9 @@ class ReportOut(BaseModel):
     by_payment: list[ReportRow]
 
 
-# --- Akun sendiri ----------------------------------------------------------
-
-
 class ChangePasswordIn(BaseModel):
     current_password: str
     new_password: str = Field(min_length=8)
-
-
-# --- Log aktivitas ---------------------------------------------------------
 
 
 class ActivityLogOut(ORM):
@@ -410,9 +381,6 @@ class ActivityLogOut(ORM):
     summary: str
     changes: dict[str, list[Any]] | None
     created_at: datetime
-
-
-# --- Dasbor ----------------------------------------------------------------
 
 
 class DailyCount(BaseModel):
@@ -429,13 +397,10 @@ class DashboardOut(BaseModel):
     active_loads: int
     ready_not_picked: int
     needs_followup: int
-    # Akurasi 7 hari terakhir pada pesanan yang sudah READY, dalam jam.
     eta_mae_hours_7d: float | None
     eta_within_tolerance_pct_7d: float | None
     promise_mae_hours_7d: float | None
-    # Pesanan READY 7 hari terakhir yang siap setelah janji standar.
     late_vs_promise_7d: int = 0
-    # Pesanan aktif yang sudah melewati janji standar.
     overdue_active: int = 0
     eta_samples_7d: int
     eta_tolerance_hours: float

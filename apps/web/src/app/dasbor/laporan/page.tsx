@@ -58,7 +58,6 @@ function formatDay(iso: string, opts: Intl.DateTimeFormatOptions): string {
   return new Intl.DateTimeFormat("id-ID", { timeZone: TZ, ...opts }).format(new Date(`${iso}T12:00:00+07:00`));
 }
 
-/** Rupiah ringkas untuk sumbu dan tile: Rp1,2 jt / Rp850 rb. */
 function compactRupiah(v: number): string {
   if (v >= 1_000_000) return `Rp${(v / 1_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} jt`;
   if (v >= 1_000) return `Rp${Math.round(v / 1_000).toLocaleString("id-ID")} rb`;
@@ -73,7 +72,6 @@ interface Bucket {
   revenue: number;
 }
 
-/** Periode panjang digabung per minggu/bulan supaya batang tetap terbaca. */
 function buckets(days: Report["by_day"]): { unit: string; items: Bucket[] } {
   if (days.length <= 62) {
     return {
@@ -123,7 +121,6 @@ export default function LaporanPage() {
   const range: [string, string] | null =
     preset === "custom" ? custom : today ? presetRange(preset, today) : null;
   const rangeKey = range ? `${range[0]}_${range[1]}` : "";
-  // Laporan lama tidak ditampilkan saat periode baru sedang dimuat.
   const report = result?.key === rangeKey ? result.report : null;
 
   useEffect(() => {

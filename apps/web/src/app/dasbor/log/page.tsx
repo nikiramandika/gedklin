@@ -155,7 +155,6 @@ export default function LogPage() {
   );
 }
 
-/** Pencarian disimpan di URL (?q=KODE) supaya bisa dibuka dari detail pesanan dan dibagikan. */
 function SearchBox({ initial, onSearch }: { initial: string; onSearch: (q: string) => void }) {
   const [draft, setDraft] = useState(initial);
   return (
@@ -233,7 +232,6 @@ function LogContent() {
     api<User[]>("/users")
       .then(setUsers)
       .catch(() => {
-        /* filter petugas opsional */
       });
   }, []);
 
@@ -266,7 +264,6 @@ function LogContent() {
     }
   }
 
-  // Hasil pencarian yang sudah termuat semua dibaca berurutan dari awal, seperti alur prosesnya.
   const chronological = q !== "" && !hasMore;
   const shown = chronological ? [...(entries ?? [])].reverse() : (entries ?? []);
   const groups: { key: string; items: ActivityLog[] }[] = [];

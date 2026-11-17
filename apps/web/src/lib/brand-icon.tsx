@@ -1,4 +1,3 @@
-/** Tanda Gedklin yang sama dengan BrandMark, digambar ulang untuk satori. */
 export function Mark({ size, maskable }: { size: number; maskable: boolean }) {
   // Maskable: latar penuh tanpa sudut, isi di zona aman 80%.
   const scale = maskable ? 0.72 : 1;

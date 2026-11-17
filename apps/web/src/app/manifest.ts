@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-// Aplikasi staf (kasir, admin, pemilik). Portal pelanggan punya manifest sendiri: /lacak.webmanifest.
+// Aplikasi staf; portal pelanggan punya manifest sendiri di /lacak.webmanifest.
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/?app=staf",

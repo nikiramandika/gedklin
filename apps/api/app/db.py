@@ -10,8 +10,6 @@ from app.config import get_settings
 
 
 class UTCDateTime(TypeDecorator[datetime]):
-    """Simpan selalu dalam UTC dan kembalikan datetime yang tz-aware."""
-
     impl = DateTime(timezone=True)
     cache_ok = True
 

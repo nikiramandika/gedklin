@@ -195,7 +195,6 @@ export const IconChart = make(
   "IconChart",
 );
 
-/** Tanda Gedklin: pintu mesin cuci dengan riak air. Tanda sementara sampai ada logo resmi. */
 export function BrandMark({ size = 32, className = "" }: { size?: number; className?: string }) {
   return (
     <svg

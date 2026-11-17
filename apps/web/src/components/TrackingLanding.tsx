@@ -8,7 +8,6 @@ const STEPS = [
   { icon: IconReceipt, text: "Kode lacak tertulis di nota atau pesan WhatsApp dari kasir." }
 ];
 
-/** Halaman depan portal pelanggan: dipakai di "/" dan "/lacak". */
 export function TrackingLanding({ footer }: { footer?: ReactNode }) {
   return (
     <main className="flex min-h-dvh flex-1 flex-col bg-canvas">

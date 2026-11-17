@@ -32,7 +32,6 @@ export const PAYMENT_LABEL: Record<PaymentMethod, string> = {
   TRANSFER: "Transfer",
 };
 
-/** "Lunas · QRIS" / "Belum lunas" */
 export function paymentLabel(order: { is_paid: boolean; payment_method: PaymentMethod | null }): string {
   if (!order.is_paid) return "Belum lunas";
   return order.payment_method ? `Lunas · ${PAYMENT_LABEL[order.payment_method]}` : "Lunas";
@@ -60,7 +59,6 @@ export function speedLabel(express: boolean): string {
   return express ? "Express" : "Reguler";
 }
 
-/** "Cuci + Kering + Setrika 8 kg" / "Kemeja Lengan Panjang 2 pcs" / "Sprei Kecil 4 kg +1 pcs" */
 export function describeItem(item: TrackingItem): string {
   const parts = [item.name];
   if (item.weight_kg !== null) parts.push(`${item.weight_kg} kg`);
@@ -68,7 +66,6 @@ export function describeItem(item: TrackingItem): string {
   return parts.join(" ");
 }
 
-/** Dua huruf awal nama untuk avatar, mis. "Budi Santoso" -> "BS". */
 export function initials(name: string): string {
   return name
     .split(/\s+/)
@@ -82,7 +79,6 @@ export function summarizeItems(items: TrackingItem[]): string {
   return items.map(describeItem).join(", ");
 }
 
-/** "1 load mesin · +1 kg tambahan · Express" / "2 load · +1 pcs" */
 export function lineDetail(item: OrderItem): string {
   const parts: string[] = [];
   if (item.machine_loads) {
@@ -94,7 +90,6 @@ export function lineDetail(item: OrderItem): string {
   return parts.join(" · ");
 }
 
-/** Input yang diminta kasir untuk satu item katalog. */
 export function itemInputs(item: CatalogItem): { weight: boolean; pcs: boolean; pcsLabel: string } {
   if (item.unit === "KILOAN_7KG" || item.unit === "KG") return { weight: true, pcs: false, pcsLabel: "" };
   if (item.unit === "LOAD" && item.kg_per_load)
@@ -102,7 +97,6 @@ export function itemInputs(item: CatalogItem): { weight: boolean; pcs: boolean; 
   return { weight: false, pcs: true, pcsLabel: "Jumlah (pcs)" };
 }
 
-/** Ringkasan aturan harga katalog, mis. "Rp45.000 s/d 7 kg + Rp10.000/kg berikutnya". */
 export function priceRule(item: CatalogItem): string {
   if (item.price === null) return "Harga belum ditetapkan";
   const price = formatRupiah(item.price);
@@ -154,7 +148,6 @@ export function todayLocalISO(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date());
 }
 
-/** "1 hari 3 jam lagi" / "2 jam 15 menit lagi" / "lewat 30 menit" */
 export function relativeEta(iso: string | null, now: number): string {
   if (!iso || !now) return "";
   const diff = Math.round((new Date(iso).getTime() - now) / 60000);
@@ -167,13 +160,7 @@ export function relativeEta(iso: string | null, now: number): string {
   return diff >= 0 ? `${text} lagi` : `lewat ${text}`;
 }
 
-/**
- * Posisi pesanan aktif terhadap waktunya:
- * - "late": sudah lewat janji standar (tolok ukur terlambat, tidak pernah bergeser)
- * - "due": perkiraan sudah lewat tapi janji belum, cucian sedang diselesaikan
- * - "on_track": belum lewat perkiraan
- * null bila pesanan sudah siap.
- */
+// "late" diukur dari janji standar, bukan dari perkiraan.
 export type EtaState = "late" | "due" | "on_track";
 
 export function etaState(

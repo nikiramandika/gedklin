@@ -1,14 +1,3 @@
-"""Feature builder bersama untuk training (ml/scripts) dan inferensi (apps/api).
-
-Semua fitur dihitung pada saat pesanan masuk (`received_at`) dan tidak boleh
-memakai informasi masa depan. Jangan duplikasi logika ini di tempat lain.
-
-Isi pesanan bisa datang dari dua sumber dengan bentuk berbeda:
-- form pencatatan mitra (satu baris per pesanan) -> `content_from_form`
-- item pesanan di aplikasi (`order_items`) -> `content_from_items`
-Keduanya dirangkum menjadi `OrderContent` supaya fitur yang dihasilkan sama.
-"""
-
 from __future__ import annotations
 
 import math
@@ -23,52 +12,38 @@ if TYPE_CHECKING:
 
 LOCAL_TZ = ZoneInfo("Asia/Jakarta")
 
-# --- Proses layanan --------------------------------------------------------
 
 PROCESSES = ("C", "CK", "CKL", "CKS", "S", "SATUAN", "DRY_CLEAN")
 PROCESS_LEVEL: dict[str, int] = {"C": 1, "CK": 2, "CKL": 3, "CKS": 4}
 MACHINE_PROCESSES = frozenset({"C", "CK", "CKL", "CKS"})
 DRYER_PROCESSES = frozenset({"CK", "CKL", "CKS"})
-# Setrika dan item satuan dikerjakan manual oleh 2 petugas yang sama, tanpa mesin,
-# sehingga kemungkinan besar jadi penyebab antrean.
+# Dikerjakan manual oleh 2 petugas tanpa mesin, kemungkinan besar penyebab antrean.
 IRONING_PROCESSES = frozenset({"CKS", "S", "SATUAN"})
-# Express hanya untuk kiloan CKL dan CKS (di API dibaca dari flag express_eligible katalog).
 EXPRESS_PROCESSES = frozenset({"CKL", "CKS"})
 
-# Kelompok katalog (lihat apps/api/seed/price_catalog.json).
 GROUP_KILOAN = "KILOAN"
 GROUP_SETRIKA = "SETRIKA"
 GROUP_KHUSUS = "KHUSUS"
 GROUP_SATUAN = "SATUAN"
 GROUP_DRY_CLEAN = "DRY_CLEAN"
 
-# Kapasitas satu mesin cuci. Hanya untuk menghitung load operasional (fitur ML),
-# terpisah dari harga. Di API nilainya dari pengaturan machine_capacity_kg.
+# Hanya untuk load fitur ML, terpisah dari harga.
 MACHINE_CAPACITY_KG = 8.0
-# Janji bila semua layanan di pesanan belum punya janji standar (sementara).
 DEFAULT_PROMISE_HOURS = 48.0
 
 
 def count_loads(qty: float, per_load: float, max_extra: float = 0.0) -> int:
-    """`max(1, ceil((qty - max_extra) / per_load))`, untuk item khusus per load.
-
-    Contoh selimut besar (2 pcs/load + maks 1 pcs tambahan): 3 pcs = 1, 4 pcs = 2.
-    """
     # Dibulatkan dulu supaya galat float (mis. 14.000000001) tidak menambah load.
     return max(1, math.ceil(round((qty - max_extra) / per_load, 9)))
 
 
 def machine_loads(weight_kg: float, capacity_kg: float = MACHINE_CAPACITY_KG) -> int:
-    """Load mesin kiloan: `ceil(kg / kapasitas)`. Contoh 8 kg = 1, 12 kg = 2."""
     if weight_kg <= 0:
         return 0
     return max(1, math.ceil(round(weight_kg / capacity_kg, 9)))
 
 
-# --- Fitur -----------------------------------------------------------------
-
 FEATURE_ORDER: list[str] = [
-    # Isi pesanan
     "is_express",
     "total_machine_loads",
     "total_weight_kg",
@@ -78,41 +53,29 @@ FEATURE_ORDER: list[str] = [
     "n_special_items",
     "n_satuan_items",
     "n_dry_clean_items",
-    # Waktu
     "hour_of_day",
     "day_of_week",
     "minutes_to_close",
-    # Antrean
     "active_orders_count",
     "active_express_count",
     "active_loads_total",
     "active_ironing_kg",
     "active_satuan_items",
-    # Janji
     "promised_hours",
-    # Operasional
     "staff_on_duty",
     "washers_available",
     "dryers_available",
-    # Rasio beban
     "loads_per_washer",
     "dry_loads_per_dryer",
 ]
-# Durasi jam kalender ready_at - received_at (yang dilihat pelanggan). Error model
-# selalu dilaporkan dalam satuan ini.
 TARGET = "duration_hours"
-# Target yang dipelajari model: durasi dalam jam operasional hari buka. Cucian tidak
-# dikerjakan saat toko tutup, jadi prediksi jam kerja dikonversi kembali ke waktu
-# kalender dengan `add_work_hours` dan otomatis jatuh di jam buka, tersebar sepanjang
-# hari (bukan menumpuk di jam buka seperti saat jam kalender dipotong ke jam buka).
+# Cucian tidak dikerjakan saat toko tutup, jadi model belajar dalam jam operasional.
 WORK_TARGET = "duration_work_hours"
 MODEL_UNIT = "work_hours"
 
 
 @dataclass(frozen=True)
 class DayOps:
-    """Kondisi operasional satu hari. Default = kapasitas normal mitra."""
-
     is_open: bool = True
     staff_on_duty: int = 2
     washers_available: int = 4
@@ -136,10 +99,8 @@ class OrderContent:
     n_special_items: int
     n_satuan_items: int
     n_dry_clean_items: int
-    # Load yang butuh mesin pengering (CK, CKL, CKS).
     dry_loads: int
-    # Proses yang ada di pesanan, untuk menentukan janji waktu. Proses item yang
-    # dikerjakan Express (hanya CKL/CKS) dipisah karena janjinya berbeda.
+    # Proses Express dipisah karena janjinya berbeda.
     processes: tuple[str, ...]
     express_processes: tuple[str, ...] = ()
 
@@ -154,7 +115,6 @@ class ItemLike(Protocol):
 
 
 def content_from_items(items: Iterable[ItemLike], is_express: bool) -> OrderContent:
-    """Ringkas item pesanan aplikasi menjadi bentuk yang setara dengan form pencatatan."""
     total_loads = dry_loads = n_special = n_satuan = n_dry_clean = 0
     weight = ironing_kg = 0.0
     level = 0
@@ -172,8 +132,7 @@ def content_from_items(items: Iterable[ItemLike], is_express: bool) -> OrderCont
             weight += kg
             if process in IRONING_PROCESSES:
                 ironing_kg += kg
-        # Hanya kiloan yang dihitung load mesinnya, supaya setara dengan form
-        # pencatatan (berat_kg milik layanan_utama). Satuan dan dry clean tanpa mesin.
+        # Hanya kiloan yang punya load mesin, setara dengan form pencatatan mitra.
         if group == GROUP_KILOAN:
             loads = int(item.machine_loads or 0)
             total_loads += loads
@@ -212,10 +171,6 @@ def content_from_form(
     ada_setrika: bool,
     machine_capacity_kg: float = MACHINE_CAPACITY_KG,
 ) -> OrderContent:
-    """Ringkas satu baris form pencatatan mitra.
-
-    Express hanya berlaku untuk CKL/CKS; tanda Express pada layanan lain diabaikan.
-    """
     layanan = str(layanan_utama).strip().upper()
     if layanan not in PROCESSES:
         raise ValueError(f"layanan_utama tidak dikenal: {layanan_utama}")
@@ -237,9 +192,6 @@ def content_from_form(
         processes=() if is_express else (layanan,),
         express_processes=(layanan,) if is_express else (),
     )
-
-
-# --- Waktu -----------------------------------------------------------------
 
 
 def _as_utc(dt: datetime) -> datetime:
@@ -272,7 +224,6 @@ def minutes_to_close(received_at: datetime, day: DayOps) -> float:
 
 
 def shift_into_open_hours(dt: datetime, day_ops: DayOpsLookup, max_days: int = 14) -> datetime:
-    """Geser waktu yang jatuh di luar jam buka ke jam buka berikutnya (hari tutup dilewati)."""
     local = to_local(dt)
     for _ in range(max_days):
         ops = day_ops(local.date())
@@ -287,7 +238,6 @@ def shift_into_open_hours(dt: datetime, day_ops: DayOpsLookup, max_days: int = 1
 
 
 def work_hours_between(start: datetime, end: datetime, day_ops: DayOpsLookup) -> float:
-    """Durasi yang hanya dihitung dalam jam operasional pada hari buka."""
     start_l, end_l = to_local(start), to_local(end)
     if end_l <= start_l:
         return 0.0
@@ -307,11 +257,6 @@ def work_hours_between(start: datetime, end: datetime, day_ops: DayOpsLookup) ->
 def add_work_hours(
     start: datetime, hours: float, day_ops: DayOpsLookup, max_days: int = 60
 ) -> datetime:
-    """Kebalikan `work_hours_between`: maju `hours` jam operasional dari `start`.
-
-    Jam tutup dan hari libur dilewati, jadi hasilnya selalu jatuh di dalam jam buka.
-    Contoh buka 08-17: Senin 16.00 + 3 jam kerja = Selasa 10.00.
-    """
     local = to_local(start)
     remaining = timedelta(hours=max(float(hours), 0.0))
     for _ in range(max_days):
@@ -327,13 +272,8 @@ def add_work_hours(
     return (local + remaining).astimezone(UTC)
 
 
-# --- Janji waktu -----------------------------------------------------------
-
-
 @dataclass(frozen=True)
 class Promise:
-    """Janji waktu standar mitra per proses (jam kalender). None = belum diketahui."""
-
     regular_hours: float | None
     express_hours: float | None
 
@@ -343,11 +283,6 @@ def promised_hours(
     promises: Mapping[str, Promise],
     default_hours: float,
 ) -> float:
-    """Janji pesanan = janji terlama di antara item di pesanan.
-
-    Item Express (CKL/CKS) memakai janji Express, item lain janji Reguler, jadi
-    pesanan Express yang juga berisi bed cover tetap menunggu janji bed cover.
-    """
     known = []
     for processes, express in ((content.processes, False), (content.express_processes, True)):
         for process in processes:
@@ -360,13 +295,8 @@ def promised_hours(
     return max(known) if known else float(default_hours)
 
 
-# --- Antrean ---------------------------------------------------------------
-
-
 @dataclass(frozen=True)
 class QueueRecord:
-    """Satu pesanan lain, cukup untuk menghitung kondisi antrean."""
-
     received_at: datetime
     ready_at: datetime | None
     is_express: bool
@@ -424,16 +354,12 @@ def summarize_queue(records: Iterable[QueueRecord]) -> QueueStats:
 
 
 def queue_stats(at: datetime, records: Iterable[QueueRecord]) -> QueueStats:
-    """Pesanan aktif pada waktu `at`: sudah masuk sebelum `at` dan belum READY."""
     at = _as_utc(at)
     return summarize_queue(
         r
         for r in records
         if _as_utc(r.received_at) < at and (r.ready_at is None or _as_utc(r.ready_at) > at)
     )
-
-
-# --- Builder ---------------------------------------------------------------
 
 
 def build_features(
@@ -478,7 +404,6 @@ def to_vector(features: dict[str, float]) -> list[float]:
 
 
 def daily_lookup(daily: pd.DataFrame) -> DayOpsLookup:
-    """Buat lookup DayOps dari tabel harian (kolom seperti `data.load_daily`)."""
     table = {
         row.date: DayOps(
             is_open=bool(getattr(row, "is_open", True)),
@@ -500,7 +425,6 @@ def build_feature_frame(
     default_promise_hours: float,
     machine_capacity_kg: float = MACHINE_CAPACITY_KG,
 ) -> pd.DataFrame:
-    """Bangun tabel fitur + target dari data mentah (bentuk `data.load_orders`)."""
     import pandas as pd
 
     day_ops = daily_lookup(daily)

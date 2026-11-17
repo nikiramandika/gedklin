@@ -66,7 +66,6 @@ def test_express_doubles_base_and_extra(db: Session) -> None:
 def test_express_only_for_ckl_and_cks(db: Session) -> None:
     eligible = {c.code for c in db.scalars(select(ServiceCatalog)) if c.express_eligible}
     assert eligible == {"CKL", "CKS"}
-    # Item lain di pesanan Express tetap harga Reguler.
     for code, kwargs in (("CK", {"weight_kg": 5}), ("BEDCOVER_K", {"qty_pcs": 1})):
         regular = price_regular(item(db, code), **kwargs)
         express = price_item(

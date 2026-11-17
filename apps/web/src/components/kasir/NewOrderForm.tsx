@@ -25,7 +25,6 @@ import { ItemLines, SpeedField, useItemEditor } from "./ItemEditor";
 type PayTiming = "later" | "now";
 
 const METHODS: PaymentMethod[] = ["CASH", "QRIS", "TRANSFER"];
-// Catatan yang paling sering, supaya kasir cukup mengetuk.
 const QUICK_NOTES = ["Ada noda", "Mudah luntur", "Pisah warna", "Ada yang robek", "Tanpa pewangi"];
 
 export function NewOrderForm({ onCreated }: { onCreated: () => void }) {
@@ -50,7 +49,6 @@ export function NewOrderForm({ onCreated }: { onCreated: () => void }) {
       setKnownCustomer(c !== null);
       if (c && !name) setName(c.name);
     } catch {
-      /* pencarian pelanggan opsional */
     }
   }
 

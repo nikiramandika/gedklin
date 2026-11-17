@@ -37,9 +37,7 @@ import type {
 const ROLES: Role[] = ["owner"];
 const GROUPS: CatalogGroup[] = ["KILOAN", "SETRIKA", "KHUSUS", "SATUAN", "DRY_CLEAN"];
 
-/** Drawer tertutup = null; terbuka untuk layanan baru = {}; untuk mengubah = { item }. */
 type Editor = { item?: CatalogItem } | null;
-/** Aksi yang menunggu konfirmasi: hapus, atau aktif/nonaktifkan. */
 type Pending = { action: "delete" | "toggle"; item: CatalogItem } | null;
 
 export default function LayananPage() {
@@ -220,8 +218,6 @@ function confirmCopy(pending: Pending) {
   };
 }
 
-/* ---------- Baris katalog ---------- */
-
 function CatalogRow({
   item,
   onEdit,
@@ -283,8 +279,6 @@ function CatalogRow({
     </li>
   );
 }
-
-/* ---------- Drawer tambah / ubah ---------- */
 
 type LoadMode = "pcs" | "kg";
 
@@ -449,7 +443,6 @@ function ServiceForm({
       pcs_per_load: form.loadMode === "pcs" ? perLoad : null,
       max_extra: form.unit === "LOAD" ? toNumber(form.maxExtra) : null,
       express_eligible: form.unit === "KILOAN_7KG" && form.express,
-      // Layanan tanpa harga tidak bisa dipesan, jadi otomatis nonaktif.
       is_active: form.active && !noPrice,
     };
     try {
@@ -632,8 +625,6 @@ function ServiceForm({
     </form>
   );
 }
-
-/* ---------- Pengaturan ---------- */
 
 function SettingsCard() {
   const toast = useToast();

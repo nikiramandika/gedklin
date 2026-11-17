@@ -1,13 +1,3 @@
-"""Isi data awal: katalog harga mitra, janji waktu, pengaturan, dan akun owner.
-
-python -m app.seed
-
-seed/price_catalog.json adalah price list awal mitra. Katalog hanya diisi bila
-tabel service_catalog masih kosong; setelah itu layanan dikelola pemilik dari
-dasbor (tambah, ubah, hapus), jadi menjalankan seed ulang tidak memunculkan
-lagi layanan yang sudah dihapus atau menimpa harga yang sudah diubah.
-"""
-
 from __future__ import annotations
 
 import json
@@ -33,7 +23,6 @@ from app.security import hash_password
 from gedklin_ml.features import MACHINE_CAPACITY_KG
 
 CATALOG_PATH = Path(__file__).resolve().parents[1] / "seed" / "price_catalog.json"
-# Bagian katalog di price_catalog.json, urut seperti price list.
 SECTIONS = ("kiloan", "khusus", "satuan", "dry_clean")
 SECTION_GROUP = {
     "khusus": CatalogGroup.KHUSUS,
@@ -47,7 +36,6 @@ def load_catalog_file(path: Path = CATALOG_PATH) -> dict[str, Any]:
 
 
 def catalog_rows(data: dict[str, Any]) -> list[ServiceCatalog]:
-    """Ubah price_catalog.json menjadi baris service_catalog."""
     rows: list[ServiceCatalog] = []
     entries = [(section, e) for section in SECTIONS for e in data.get(section, [])]
     for order, (section, e) in enumerate(entries, start=1):
@@ -70,13 +58,11 @@ def catalog_rows(data: dict[str, Any]) -> list[ServiceCatalog]:
                 base_kg=e.get("base_kg"),
                 min_qty=e.get("min_qty"),
                 kg_per_load=e.get("max_kg_per_load"),
-                # "min 3 pcs/load" (selimut kecil) dan "maks 2 pcs/load" sama-sama
-                # dibaca sebagai isi satu load; menunggu konfirmasi mitra.
+                # min/maks pcs per load dibaca sebagai isi satu load (menunggu konfirmasi mitra).
                 pcs_per_load=e.get("max_pcs_per_load", e.get("min_pcs_per_load")),
                 max_extra=e.get("max_extra_pcs"),
                 express_eligible=bool(e.get("express_eligible", False)),
                 sort_order=order,
-                # Item tanpa harga (dry clean) belum bisa dipesan sampai pemilik mengisi harga.
                 is_active=price is not None,
             )
         )
@@ -84,7 +70,6 @@ def catalog_rows(data: dict[str, Any]) -> list[ServiceCatalog]:
 
 
 def promise_rows(data: dict[str, Any]) -> list[ServicePromise]:
-    """Janji Express hanya dipasang pada proses yang boleh Express (CKL dan CKS)."""
     promise = data["promise_hours"]
     minimum = promise.get("regular_min", {})
     eligible = {e["process"] for e in data["kiloan"] if e.get("express_eligible")}
@@ -110,7 +95,6 @@ def setting_values(data: dict[str, Any]) -> dict[str, str]:
 
 
 def seed_reference_data(db: Session, data: dict[str, Any] | None = None) -> list[str]:
-    """Isi katalog awal (bila kosong), janji waktu, dan pengaturan yang belum ada."""
     data = data or load_catalog_file()
     log: list[str] = []
     if db.scalar(select(ServiceCatalog.id).limit(1)) is None:

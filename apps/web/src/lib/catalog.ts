@@ -2,7 +2,7 @@ import type { CatalogGroup, CatalogUnit, Process } from "./types";
 
 const KILOAN_PROCESSES: Process[] = ["C", "CK", "CKL", "CKS"];
 
-/** Kombinasi yang diizinkan per kelompok. Sama dengan app/services/catalog.py (divalidasi ulang di server). */
+// Sama dengan app/services/catalog.py (divalidasi ulang di server).
 export const GROUP_RULES: Record<CatalogGroup, { processes: Process[]; units: CatalogUnit[] }> = {
   KILOAN: { processes: KILOAN_PROCESSES, units: ["KILOAN_7KG"] },
   SETRIKA: { processes: ["S"], units: ["KG"] },
@@ -25,7 +25,6 @@ export const PRICE_LABEL: Record<CatalogUnit, string> = {
   LOAD: "Harga per load",
 };
 
-/** "Cuci Kering Premium" -> "CUCI_KERING_PREMIUM" */
 export function codeFromName(name: string): string {
   return name
     .toUpperCase()

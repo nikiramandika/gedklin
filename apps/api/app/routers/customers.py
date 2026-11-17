@@ -1,5 +1,3 @@
-"""Data pelanggan: daftar, riwayat pesanan, dan koreksi nama/nomor WA."""
-
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status

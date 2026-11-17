@@ -1,14 +1,3 @@
-"""Antrean berbasis aturan.
-
-Urutan pengerjaan:
-1. Pesanan yang sudah PROCESSING (sudah di mesin/setrika) tidak disela.
-2. Express dulu.
-3. Reguler yang janjinya tinggal <= REGULAR_ESCALATION_HOURS (atau sudah lewat)
-   didahulukan dari Reguler lain, supaya janji Reguler tetap terkejar walau
-   pesanan yang masuk belakangan punya janji lebih pendek.
-4. FIFO berdasarkan waktu masuk.
-"""
-
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -23,7 +12,6 @@ from gedklin_ml.features import OrderContent, QueueRecord, content_from_items
 
 
 def is_escalated(order: Order, now: datetime, threshold_hours: float | None = None) -> bool:
-    """True jika pesanan Reguler sudah dekat (atau lewat) janji standarnya."""
     if order.is_express or order.promised_ready_at is None:
         return False
     if threshold_hours is None:
@@ -34,7 +22,6 @@ def is_escalated(order: Order, now: datetime, threshold_hours: float | None = No
 def queue_rank(
     order: Order, now: datetime, threshold_hours: float | None = None
 ) -> tuple[int, int, datetime, int]:
-    """Kunci urutan antrean; makin kecil makin dulu dikerjakan."""
     started = 0 if order.status == OrderStatus.PROCESSING else 1
     if order.is_express:
         tier = 0
@@ -61,12 +48,10 @@ def queue_record(order: Order, ready_at: datetime | None) -> QueueRecord:
 
 
 def left_queue_at(order: Order) -> datetime | None:
-    """Kapan pesanan keluar dari antrean: saat READY, atau saat dibatalkan."""
     return order.ready_at or order.cancelled_at
 
 
 def records_active_at(db: Session, at: datetime) -> list[QueueRecord]:
-    """Pesanan yang sudah masuk sebelum `at` dan belum READY/batal pada saat itu."""
     stmt = select(Order).where(
         Order.received_at < at,
         or_(Order.ready_at.is_(None), Order.ready_at > at),
@@ -76,7 +61,6 @@ def records_active_at(db: Session, at: datetime) -> list[QueueRecord]:
 
 
 def is_ahead(other: Order, order: Order, now: datetime) -> bool:
-    """True jika `other` dikerjakan lebih dulu dari `order` menurut aturan antrean."""
     if other.id == order.id:
         return False
     return queue_rank(other, now) < queue_rank(order, now)

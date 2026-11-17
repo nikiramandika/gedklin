@@ -23,8 +23,6 @@ import {
 
 type Icon = ComponentType<SVGProps<SVGSVGElement> & { size?: number }>;
 
-/* ---------- Status ---------- */
-
 const STATUS_STYLE: Record<OrderStatus, { chip: string; dot: string }> = {
   RECEIVED: { chip: "bg-slate-100 text-slate-700 ring-slate-200", dot: "bg-slate-400" },
   PROCESSING: { chip: "bg-brand-50 text-brand-700 ring-brand-100", dot: "bg-brand-500" },
@@ -56,8 +54,6 @@ export function ExpressBadge({ className = "" }: { className?: string }) {
   );
 }
 
-/* ---------- Layout ---------- */
-
 export function PageHeader({
   title,
   description,
@@ -80,7 +76,6 @@ export function PageHeader({
   );
 }
 
-/** Wadah kartu: permukaan putih terangkat di atas kanvas, tanpa garis keras. */
 export const cardClass = "rounded-2xl bg-surface shadow-card";
 
 const CARD_ICON_TONE = {
@@ -142,7 +137,6 @@ export function Card({
   tone?: CardTone;
   children: ReactNode;
   className?: string;
-  /** Tanpa padding isi, untuk daftar yang menempel ke tepi. */
   flush?: boolean;
 }) {
   return (
@@ -155,12 +149,9 @@ export function Card({
   );
 }
 
-/** Daftar baris sebagai ubin terpisah di atas latar lembut, bukan dipisah garis. */
 export const tileListClass = "space-y-2 px-3 pb-3 pt-1 sm:px-4 sm:pb-4";
 export const tileClass =
   "rounded-xl bg-surface shadow-tile transition-shadow duration-150 hover:shadow-card";
-
-/* ---------- Buttons ---------- */
 
 type Variant = "primary" | "secondary" | "danger" | "ghost" | "whatsapp" | "dark";
 type Size = "sm" | "md" | "lg";
@@ -214,7 +205,6 @@ export function Button({
   );
 }
 
-/** Tautan yang tampil sebagai tombol (tidak menumpuk <button> di dalam <a>). */
 export function ButtonLink({
   variant = "primary",
   size = "md",
@@ -243,8 +233,6 @@ export function IconButton({
     </button>
   );
 }
-
-/* ---------- Form ---------- */
 
 // 16px supaya Safari iOS tidak memperbesar layar saat input difokuskan.
 export const inputClass =
@@ -412,8 +400,6 @@ export function Switch({
   );
 }
 
-/* ---------- Feedback ---------- */
-
 const ALERT: Record<"danger" | "info" | "success" | "warn", { box: string; icon: Icon }> = {
   danger: { box: "bg-danger-50 text-danger-700 ring-danger-600/15", icon: IconAlert },
   warn: { box: "bg-warn-50 text-warn-700 ring-warn-600/20", icon: IconAlert },
@@ -501,7 +487,6 @@ export function SavedNote({ show, text = "Tersimpan" }: { show: boolean; text?: 
   );
 }
 
-/** Status bayar: tidak hanya warna, selalu ada teks. */
 export function PaymentBadge({ paid, className = "" }: { paid: boolean; className?: string }) {
   return paid ? (
     <span

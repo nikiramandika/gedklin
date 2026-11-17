@@ -1,9 +1,3 @@
-"""Memuat data mentah dari form pencatatan mitra.
-
-Waktu di CSV ditulis dalam waktu lokal (Asia/Jakarta) tanpa zona waktu,
-lalu dikonversi ke UTC di sini.
-"""
-
 from __future__ import annotations
 
 import json
@@ -39,7 +33,6 @@ DAILY_COLUMNS = [
     "open_time",
     "close_time",
 ]
-# Sumber kebenaran harga dan janji waktu mitra.
 CATALOG_PATH = Path(__file__).resolve().parents[2] / "apps" / "api" / "seed" / "price_catalog.json"
 
 _TRUE = ["1", "true", "ya", "y"]
@@ -79,7 +72,6 @@ def load_orders(path: Path) -> pd.DataFrame:
 def load_daily(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path)
     _require(df, ["date", "staff_on_duty", "open_time", "close_time"], path)
-    # Kolom mesin boleh kosong: isi dengan kapasitas normal mitra.
     df["washers_available"] = df.get("washers_available", DEFAULT_DAY_OPS.washers_available)
     df["dryers_available"] = df.get("dryers_available", DEFAULT_DAY_OPS.dryers_available)
     df["washers_available"] = df["washers_available"].fillna(DEFAULT_DAY_OPS.washers_available)
@@ -99,10 +91,6 @@ def _express_processes(catalog: dict) -> set[str]:
 
 
 def load_promises(path: Path = CATALOG_PATH) -> tuple[dict[str, Promise], float]:
-    """Janji waktu standar per proses dari price_catalog.json, plus janji default.
-
-    Janji Express hanya dipasang pada proses yang boleh Express (CKL dan CKS).
-    """
     catalog = json.loads(path.read_text(encoding="utf-8"))
     data = catalog["promise_hours"]
     express = data.get("express")
@@ -127,12 +115,6 @@ def prepare_dataset(
     skip_days: int = 2,
     catalog_path: Path = CATALOG_PATH,
 ) -> pd.DataFrame:
-    """Muat data mentah, bangun fitur, lalu buang `skip_days` hari pertama.
-
-    Hari-hari awal dibuang setelah fitur dihitung, karena stok cucian awal
-    sering tidak tercatat sehingga fitur antrean di hari itu terlalu rendah.
-    Pesanan hari-hari awal tetap dipakai untuk menghitung antrean hari berikutnya.
-    """
     from gedklin_ml.features import build_feature_frame, local_date
 
     orders = load_orders(orders_path)

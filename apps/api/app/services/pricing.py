@@ -1,22 +1,3 @@
-"""Satu-satunya tempat logika harga. Harga dibaca dari tabel service_catalog.
-
-Aturan per satuan katalog:
-- KILOAN_7KG (sudah dikonfirmasi mitra): `extra_kg = max(0, ceil(kg - base_kg))`,
-  `subtotal = price + extra_kg * extra_price`. Berat di atas 8 kg tidak dihitung
-  load kedua. Contoh CKS: 5 kg = 45.000, 8 kg = 55.000, 12 kg = 95.000.
-  Pembulatan ke atas per kg masih asumsi (menunggu konfirmasi mitra).
-  `machine_loads = ceil(kg / machine_capacity_kg)` hanya untuk fitur ML, bukan harga.
-- KG: `subtotal = max(kg, min_qty) * price` (mis. setrika minimal 5 kg).
-- PCS: `subtotal = qty * price`.
-- LOAD (item khusus):
-  - kapasitas per pcs (`pcs_per_load`): `loads = max(1, ceil((pcs - max_extra) / pcs_per_load))`,
-    sisa pcs kena tambahan per pcs (maks `max_extra`).
-  - kapasitas per kg (`kg_per_load`, mis. sprei kecil maks 5 kg/load):
-    `loads = ceil(kg / kg_per_load)`, tambahan pcs diisi kasir, maks `max_extra` per load.
-Express: hanya item dengan `express_eligible` (CKL dan CKS) yang dikali
-`express_multiplier`, termasuk tambahan per kg. Item lain tetap harga Reguler.
-"""
-
 from __future__ import annotations
 
 import math
@@ -106,7 +87,6 @@ def price_regular(
     *,
     machine_capacity_kg: float = MACHINE_CAPACITY_KG,
 ) -> PricedItem:
-    """Harga Reguler satu item sesuai aturan satuan katalog."""
     if item.price is None:
         raise PricingError(f"{item.name}: harga belum ditetapkan")
     loads = extra_kg = extra_pcs = None
@@ -126,7 +106,7 @@ def price_regular(
     elif item.unit == CatalogUnit.PCS:
         pcs = _need_pcs(item, qty_pcs)
         subtotal = pcs * item.price
-    elif item.kg_per_load:  # LOAD, kapasitas per kg
+    elif item.kg_per_load:
         weight = _need_weight(item, weight_kg)
         loads = count_loads(weight, item.kg_per_load)
         pcs = int(qty_pcs or 0)
@@ -136,7 +116,7 @@ def price_regular(
             )
         extra_pcs = pcs
         subtotal = loads * item.price + extra_pcs * extra_price
-    elif item.pcs_per_load:  # LOAD, kapasitas per pcs
+    elif item.pcs_per_load:
         pcs = _need_pcs(item, qty_pcs)
         loads = count_loads(pcs, item.pcs_per_load, max_extra)
         extra_pcs = max(0, pcs - item.pcs_per_load * loads)
@@ -178,7 +158,6 @@ def price_item(
     express_multiplier: float,
     machine_capacity_kg: float = MACHINE_CAPACITY_KG,
 ) -> PricedItem:
-    """Harga satu item. Pada pesanan Express, hanya item express_eligible yang dikali."""
     priced = price_regular(item, weight_kg, qty_pcs, machine_capacity_kg=machine_capacity_kg)
     if not (is_express and item.express_eligible):
         return priced

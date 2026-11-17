@@ -60,7 +60,6 @@ function OperasionalContent() {
 
   useEffect(() => {
     load();
-    // Isi awal form dari kapasitas normal mitra di pengaturan.
     api<AppSettings>("/settings")
       .then((s) => {
         setDefaults(s);

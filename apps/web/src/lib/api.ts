@@ -29,6 +29,14 @@ function errorMessage(body: unknown, status: number): string {
   return `Terjadi kesalahan (${status})`;
 }
 
+async function request(path: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(`${API_URL}${path}`, { ...init, cache: "no-store" });
+  } catch {
+    throw new ApiError(0, "Tidak dapat terhubung ke server");
+  }
+}
+
 export async function api<T>(
   path: string,
   options: { method?: string; body?: unknown; auth?: boolean } = {},
@@ -40,17 +48,11 @@ export async function api<T>(
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
-  let res: Response;
-  try {
-    res = await fetch(`${API_URL}${path}`, {
-      method: options.method ?? "GET",
-      headers,
-      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-      cache: "no-store",
-    });
-  } catch {
-    throw new ApiError(0, "Tidak dapat terhubung ke server");
-  }
+  const res = await request(path, {
+    method: options.method ?? "GET",
+    headers,
+    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+  });
 
   const body = res.status === 204 ? null : await res.json().catch(() => null);
   if (!res.ok) {
@@ -62,18 +64,9 @@ export async function api<T>(
   return body as T;
 }
 
-/** Unduh file dari API (mis. CSV laporan) dengan token login, lalu simpan di perangkat. */
 export async function apiDownload(path: string, filename: string): Promise<void> {
   const token = getToken();
-  let res: Response;
-  try {
-    res = await fetch(`${API_URL}${path}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      cache: "no-store",
-    });
-  } catch {
-    throw new ApiError(0, "Tidak dapat terhubung ke server");
-  }
+  const res = await request(path, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     throw new ApiError(res.status, errorMessage(body, res.status));

@@ -32,7 +32,6 @@ def test_owner_creates_service_used_by_cashier(
     res = client.post("/catalog", json=KILOAN, headers=owner)
     assert res.status_code == 201, res.text
     body = res.json()
-    # Berat dasar default 7 kg, aturan load yang tidak dipakai kiloan dikosongkan.
     assert body["base_kg"] == 7 and body["kg_per_load"] is None
     assert body["sort_order"] > 0
 
@@ -96,8 +95,7 @@ def test_owner_edits_all_fields(client: TestClient, owner: dict, cashier: dict) 
     assert quote(client, cashier, [{"catalog_code": "BEDCOVER_K", "qty_pcs": 5}]) == 28_000 + 12_000
 
     res = client.put("/catalog/BEDCOVER_K", json={"group": "SATUAN"}, headers=owner)
-    assert res.status_code == 422  # proses CKL tidak cocok dengan kelompok satuan
-    # Kode tidak bisa diubah karena dirujuk item pesanan lama.
+    assert res.status_code == 422
     assert (
         client.put("/catalog/BEDCOVER_K", json={"code": "LAIN"}, headers=owner).status_code == 200
     )
@@ -112,11 +110,10 @@ def test_delete_only_unused_services(
     assert client.delete("/catalog/KHIMAR_XL", headers=owner).status_code == 204
     assert client.delete("/catalog/KHIMAR_XL", headers=owner).status_code == 404
 
-    new_order(client, cashier)  # memakai CKL
+    new_order(client, cashier)
     res = client.delete("/catalog/CKL", headers=owner)
     assert res.status_code == 409 and "Nonaktifkan" in res.json()["detail"]
 
-    # Seed ulang tidak memunculkan lagi layanan yang sudah dihapus pemilik.
     seed_reference_data(db)
     db.commit()
     assert db.scalar(select(ServiceCatalog).where(ServiceCatalog.code == "KHIMAR_XL")) is None

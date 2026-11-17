@@ -51,14 +51,11 @@ const DETAILS_FORM = "order-details-form";
 
 interface Props {
   onClose: () => void;
-  /** Aksi status berikutnya (Tandai Siap/Diambil membuka dialog di papan). */
   onAdvance: (order: Order) => Promise<void>;
   onPay: (order: Order) => void;
-  /** Setelah koreksi, catatan, batal, atau batal bayar: muat ulang papan + toast. */
   onChanged: (message: string) => Promise<void>;
 }
 
-/** Detail satu pesanan: isi, pembayaran, perkiraan, riwayat, notifikasi, dan aksi. */
 export function OrderDetailDrawer({
   orderId,
   version,

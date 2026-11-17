@@ -2,8 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 
-// Satu jam bersama untuk semua komponen. Bernilai 0 saat prerender di server,
-// sehingga teks relatif ("2 jam lagi") baru muncul setelah hidrasi.
+// 0 saat prerender di server, supaya teks relatif baru muncul setelah hidrasi.
 const TICK_MS = 30_000;
 let current = 0;
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -31,7 +30,6 @@ function getSnapshot(): number {
   return current;
 }
 
-/** Waktu sekarang (ms), diperbarui tiap 30 detik. 0 saat render di server. */
 export function useNow(): number {
   return useSyncExternalStore(subscribe, getSnapshot, () => 0);
 }

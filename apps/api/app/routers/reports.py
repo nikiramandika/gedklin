@@ -1,9 +1,3 @@
-"""Laporan pemilik per periode dan ekspor CSV.
-
-Pendapatan dihitung dari pesanan yang diterima pada periode itu (tanggal masuk,
-Asia/Jakarta), tanpa pesanan yang dibatalkan.
-"""
-
 import csv
 import io
 from collections import defaultdict

@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=60)
 def send_notification(self: Task, notification_id: int) -> str:
-    """Kirim satu baris notifikasi. Idempoten: baris yang sudah SENT dilewati."""
     with SessionLocal() as db:
         notif = db.get(Notification, notification_id, with_for_update=True)
         if notif is None:
@@ -63,7 +62,6 @@ def send_notification(self: Task, notification_id: int) -> str:
 
 @celery_app.task
 def resend_pending_notifications() -> int:
-    """Antrekan ulang notifikasi PENDING yang tertinggal (mis. broker sempat mati)."""
     cutoff = utcnow() - timedelta(minutes=10)
     with SessionLocal() as db:
         ids = list(

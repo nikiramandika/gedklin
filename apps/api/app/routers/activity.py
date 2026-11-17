@@ -1,5 +1,3 @@
-"""Log aktivitas petugas, hanya untuk pemilik."""
-
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session

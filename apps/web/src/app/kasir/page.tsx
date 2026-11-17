@@ -14,7 +14,6 @@ const ROLES: Role[] = ["cashier", "owner"];
 type View = "new" | BoardTab;
 
 export default function KasirPage() {
-  // Di HP satu tampilan sekaligus (navigasi bawah); di tablet landscape form dan antrean berdampingan.
   const [view, setView] = useState<View>("new");
   const [refreshKey, setRefreshKey] = useState(0);
   const toast = useToast();

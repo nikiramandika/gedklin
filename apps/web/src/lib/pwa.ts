@@ -7,7 +7,6 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
-/** Tombol "Pasang aplikasi": hanya muncul bila browser menawarkan pemasangan PWA. */
 export function useInstallPrompt(): { canInstall: boolean; install: () => Promise<void> } {
   const [event, setEvent] = useState<BeforeInstallPromptEvent | null>(null);
 
@@ -45,7 +44,6 @@ function subscribeOnline(cb: () => void): () => void {
   };
 }
 
-/** Status koneksi perangkat. Dianggap online saat render di server. */
 export function useOnline(): boolean {
   return useSyncExternalStore(
     subscribeOnline,

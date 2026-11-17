@@ -43,7 +43,6 @@ class Item:
 
 
 def utc(day: int, hour: int, minute: int = 0) -> datetime:
-    """Jam WIB pada Oktober 2026 -> UTC."""
     return datetime(2026, 10, day, hour, minute, tzinfo=UTC) - timedelta(hours=7)
 
 
@@ -142,9 +141,7 @@ def test_queue_stats_only_counts_orders_active_at_time() -> None:
     records = [
         rec(datetime(2026, 10, 20, 1, 0, tzinfo=UTC), None, express=True),
         rec(datetime(2026, 10, 20, 1, 0, tzinfo=UTC), datetime(2026, 10, 20, 4, 0, tzinfo=UTC)),
-        # Sudah READY sebelum T0: tidak dihitung.
         rec(datetime(2026, 10, 19, 1, 0, tzinfo=UTC), datetime(2026, 10, 20, 2, 0, tzinfo=UTC)),
-        # Masuk setelah T0 (informasi masa depan): tidak dihitung.
         rec(datetime(2026, 10, 20, 5, 0, tzinfo=UTC), None),
     ]
     assert queue_stats(T0, records) == QueueStats(
@@ -212,20 +209,15 @@ def test_promised_hours_takes_longest_known_promise() -> None:
     express_ckl = Item("KILOAN", "CKL", weight_kg=5, machine_loads=1, is_express=True)
     express_cks = Item("KILOAN", "CKS", weight_kg=5, machine_loads=1, is_express=True)
     assert promised_hours(content(express_ckl, express_cks), PROMISES, 48) == 24
-    # Pesanan Express berisi bed cover (CKL Reguler): menunggu janji bed cover.
     bedcover = Item("KHUSUS", "CKL", qty_pcs=1)
     assert promised_hours(content(express_cks, bedcover), PROMISES, 48) == 48
-    # Janji CK Reguler belum diketahui -> default.
     assert promised_hours(content(Item("KILOAN", "CK", weight_kg=3)), PROMISES, 48) == 48
     assert promised_hours(content(Item("SATUAN", "SATUAN", qty_pcs=1)), PROMISES, 36) == 36
 
 
 def test_shift_into_open_hours() -> None:
-    # Dalam jam buka: tetap.
     assert shift_into_open_hours(utc(20, 10), always()) == utc(20, 10)
-    # Lewat jam tutup: geser ke jam buka besok.
     assert shift_into_open_hours(utc(20, 18, 30), always()) == utc(21, 8)
-    # Sebelum jam buka: geser ke jam buka hari itu.
     assert shift_into_open_hours(utc(20, 6), always()) == utc(20, 8)
 
     def closed_21(d: date) -> DayOps:
@@ -242,11 +234,9 @@ def test_work_hours_between_counts_only_open_hours() -> None:
 
 
 def test_add_work_hours_skips_closed_hours_and_days() -> None:
-    # Dalam hari yang sama.
     assert add_work_hours(utc(20, 9), 3, always()) == utc(20, 12)
     # Selasa 16.00 + 3 jam kerja = Rabu 10.00.
     assert add_work_hours(utc(20, 16), 3, always()) == utc(21, 10)
-    # Masuk sebelum buka: hitungan mulai 08.00.
     assert add_work_hours(utc(20, 6), 1, always()) == utc(20, 9)
 
     def closed_21(d: date) -> DayOps:

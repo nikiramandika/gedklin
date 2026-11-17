@@ -58,8 +58,6 @@ class Customer(Base):
 
 
 class ServiceCatalog(Base):
-    """Price list mitra. Di-seed dari seed/price_catalog.json, harga diubah pemilik."""
-
     __tablename__ = "service_catalog"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -68,19 +66,14 @@ class ServiceCatalog(Base):
     group: Mapped[CatalogGroup] = mapped_column(_enum(CatalogGroup))
     process: Mapped[Process] = mapped_column(_enum(Process))
     unit: Mapped[CatalogUnit] = mapped_column(_enum(CatalogUnit))
-    # Rupiah. KILOAN_7KG: harga 7 kg pertama, LOAD: per load, KG: per kg, PCS: per potong.
     # NULL = harga belum diketahui (mis. dry clean); item belum bisa dipesan.
     price: Mapped[int | None] = mapped_column(Integer)
-    # Tambahan per kg (KILOAN_7KG) atau per pcs (LOAD).
     extra_price: Mapped[int | None] = mapped_column(Integer)
-    # Berat yang sudah termasuk harga dasar kiloan (7 kg).
     base_kg: Mapped[float | None] = mapped_column(Float)
-    # Aturan min/maks.
     min_qty: Mapped[float | None] = mapped_column(Float)
     kg_per_load: Mapped[float | None] = mapped_column(Float)
     pcs_per_load: Mapped[int | None] = mapped_column(Integer)
     max_extra: Mapped[float | None] = mapped_column(Float)
-    # Hanya CKL dan CKS yang boleh Express (harga x express_multiplier).
     express_eligible: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false")
     )
@@ -89,8 +82,6 @@ class ServiceCatalog(Base):
 
 
 class ServicePromise(Base):
-    """Janji waktu standar mitra per proses (jam kalender). NULL = belum diketahui."""
-
     __tablename__ = "service_promise"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -102,8 +93,6 @@ class ServicePromise(Base):
 
 
 class AppSetting(Base):
-    """Pengaturan yang bisa diubah pemilik, mis. express_multiplier."""
-
     __tablename__ = "app_settings"
 
     key: Mapped[str] = mapped_column(String(50), primary_key=True)
@@ -125,22 +114,19 @@ class Order(Base):
     picked_up_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     status: Mapped[OrderStatus] = mapped_column(_enum(OrderStatus), default=OrderStatus.RECEIVED)
 
-    # Janji standar mitra: tolok ukur "terlambat", juga fallback ETA bila model tidak ada.
+    # Tolok ukur terlambat; juga fallback ETA bila model tidak ada.
     promised_ready_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
-    # Perkiraan terkini; bisa berubah bila antrean di depannya berubah.
     predicted_ready_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
-    # Perkiraan saat nota dibuat/dikoreksi, untuk mengukur akurasi model.
+    # Perkiraan di nota, untuk mengukur akurasi model.
     initial_predicted_ready_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     last_notified_eta: Mapped[datetime | None] = mapped_column(UTCDateTime)
     delay_notif_count: Mapped[int] = mapped_column(Integer, default=0)
     ready_notif_sent: Mapped[bool] = mapped_column(Boolean, default=False)
     needs_followup: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
-    # Catatan kondisi/permintaan, mis. "ada noda di kemeja putih, pisah warna".
     notes: Mapped[str | None] = mapped_column(Text)
-    # Lokasi rak saat siap diambil, mis. "B3".
     rack_location: Mapped[str | None] = mapped_column(String(20))
-    # Pembayaran di konter. paid_at NULL = belum lunas.
+    # paid_at NULL = belum lunas.
     payment_method: Mapped[PaymentMethod | None] = mapped_column(_enum(PaymentMethod))
     paid_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     cancelled_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
@@ -163,13 +149,10 @@ class Order(Base):
 
     @property
     def created_by_name(self) -> str | None:
-        """Kasir yang menerima pesanan."""
         return self.creator.name if self.creator else None
 
 
 class OrderItem(Base):
-    """Satu baris pesanan, mis. 6 kg CKS, 1 bed cover, atau 2 kemeja."""
-
     __tablename__ = "order_items"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -181,12 +164,10 @@ class OrderItem(Base):
     process: Mapped[Process] = mapped_column(_enum(Process))
     weight_kg: Mapped[float | None] = mapped_column(Float)
     qty_pcs: Mapped[int | None] = mapped_column(Integer)
-    # Kiloan: ceil(kg / kapasitas mesin), untuk fitur ML, terpisah dari harga.
-    # Item khusus per load: jumlah load sesuai price list.
+    # Untuk fitur ML, terpisah dari harga.
     machine_loads: Mapped[int | None] = mapped_column(Integer)
     extra_kg: Mapped[int | None] = mapped_column(Integer)
     extra_pcs: Mapped[int | None] = mapped_column(Integer)
-    # True bila item ini dikenai harga dan janji Express (hanya CKL/CKS).
     is_express: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     subtotal: Mapped[int] = mapped_column(Integer)
 
@@ -228,7 +209,6 @@ class DailyOperation(Base):
 class Notification(Base):
     __tablename__ = "notifications"
     __table_args__ = (
-        # Notifikasi siap diambil hanya boleh ada satu per pesanan.
         Index(
             "uq_notifications_ready_once",
             "order_id",
@@ -236,7 +216,6 @@ class Notification(Base):
             postgresql_where=text("type = 'READY'"),
             sqlite_where=text("type = 'READY'"),
         ),
-        # Nota digital otomatis juga hanya sekali per pesanan.
         Index(
             "uq_notifications_receipt_once",
             "order_id",
@@ -270,21 +249,16 @@ class PredictionLog(Base):
 
 
 class ActivityLog(Base):
-    """Jejak aktivitas petugas: siapa melakukan apa, kapan, dan apa yang berubah."""
-
     __tablename__ = "activity_logs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     # NULL = sistem (mis. tugas terjadwal).
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
-    # mis. "order.create", "order.status", "catalog.update", "user.create", "auth.login".
     action: Mapped[str] = mapped_column(String(40), index=True)
-    # Kelompok untuk filter: order, catalog, user, settings, operation, auth.
     entity_type: Mapped[str] = mapped_column(String(20), index=True)
     entity_id: Mapped[str | None] = mapped_column(String(40))
-    # Kalimat yang dibaca pemilik, mis. "Mengubah harga Cuci + Kering + Setrika".
     summary: Mapped[str] = mapped_column(String(255))
-    # {field: [sebelum, sesudah]}. Password tidak pernah disimpan di sini.
+    # Password tidak pernah dicatat di sini.
     changes: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
 

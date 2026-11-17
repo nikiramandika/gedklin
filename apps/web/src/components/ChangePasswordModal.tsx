@@ -9,7 +9,6 @@ import { Button, ErrorText, Field, inputClass } from "./ui";
 
 const FORM_ID = "change-password-form";
 
-/** Petugas mengganti password sendiri. */
 export function ChangePasswordModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const toast = useToast();
   const [current, setCurrent] = useState("");

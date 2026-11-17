@@ -1,17 +1,4 @@
-"""Bandingkan baseline janji mitra, baseline median, Linear Regression, Random Forest, dan XGBoost.
-
-Membaca tabel fitur hasil build_dataset.py. Split berdasarkan waktu: hari-hari
-terakhir (`--test-days`) menjadi data uji.
-
-Model belajar durasi dalam jam operasional (`duration_work_hours`). Evaluasi meniru
-persis cara API menghitung ETA, lalu error diukur dalam jam kalender (yang dilihat
-pelanggan):
-- model ML dan baseline median: `add_work_hours(received_at, prediksi)`
-- baseline janji mitra: `shift_into_open_hours(received_at + promised_hours)`
-
-Model dengan MAE terkecil (selain janji mitra, yang sudah jadi fallback API)
-disimpan ke ml/models/best_model.joblib + metadata.json.
-"""
+"""Bandingkan baseline janji mitra, baseline median, Linear Regression, Random Forest, dan XGBoost."""  # noqa: E501
 
 from __future__ import annotations
 
@@ -84,7 +71,6 @@ def evaluate(y_true: np.ndarray, y_pred: np.ndarray, tolerance_hours: float) -> 
 def to_calendar_hours(
     name: str, received: pd.Series, raw: np.ndarray, day_ops: DayOpsLookup
 ) -> np.ndarray:
-    """Ubah keluaran model menjadi durasi kalender, sama seperti ETA di API."""
     out = []
     for ts, value in zip(received, raw, strict=True):
         start = ts.to_pydatetime()
@@ -101,7 +87,6 @@ def default_daily(source: str) -> Path:
 
 
 def group_mae(test: pd.DataFrame, preds: dict[str, np.ndarray]) -> pd.DataFrame:
-    """MAE per max_process_level dan per Reguler/Express."""
     groups = {
         "max_process_level": test["max_process_level"].astype(int).astype(str),
         "kecepatan": np.where(test["is_express"] >= 0.5, "Express", "Reguler"),
@@ -183,7 +168,6 @@ def main() -> None:
 
     reports_dir = ROOT / "reports"
     reports_dir.mkdir(exist_ok=True)
-    # Laporan dari data dummy diberi nama terpisah dan tidak di-commit.
     suffix = "_dummy" if source == "dummy" else ""
     report.to_csv(reports_dir / f"comparison{suffix}.csv", index=False)
     by_group.to_csv(reports_dir / f"comparison_by_group{suffix}.csv", index=False)

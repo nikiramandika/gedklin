@@ -13,13 +13,6 @@ import {
 import { IconAlert, IconCheck, IconInfo, IconX } from "./icons";
 import { Button, ErrorText, IconButton } from "./ui";
 
-/*
- * Lapisan di atas halaman: Drawer (form panjang / detail), Modal (form pendek),
- * ConfirmDialog (aksi yang tidak bisa dibatalkan), dan Toast (umpan balik singkat).
- * Drawer, Modal, dan ConfirmDialog memakai <dialog> bawaan browser sehingga fokus
- * terkunci di dalam, Esc menutup, dan halaman di belakang tidak bisa diklik.
- */
-
 function useNativeDialog(open: boolean) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -54,7 +47,6 @@ function DialogHeader({
 const backdropClass =
   "backdrop:bg-nav/45 backdrop:backdrop-blur-[2px] backdrop:animate-[fade-in_200ms_ease-out]";
 
-/** Panel dari kanan untuk form panjang atau detail. Di HP memenuhi layar. */
 export function Drawer({
   open,
   onClose,
@@ -68,7 +60,6 @@ export function Drawer({
   title: ReactNode;
   description?: ReactNode;
   children: ReactNode;
-  /** Tombol aksi, menempel di bawah panel. */
   footer?: ReactNode;
 }) {
   const ref = useNativeDialog(open);
@@ -99,7 +90,6 @@ export function Drawer({
   );
 }
 
-/** Jendela di tengah untuk form pendek. */
 export function Modal({
   open,
   onClose,
@@ -142,15 +132,11 @@ export function Modal({
 }
 
 const CONFIRM_TONE = {
-  /** Tidak bisa dibatalkan, mis. menghapus. */
   danger: { icon: IconAlert, badge: "bg-danger-50 text-danger-600 ring-danger-600/15", button: "danger" },
-  /** Berdampak ke pengguna lain tapi bisa dikembalikan, mis. menonaktifkan. */
   warn: { icon: IconAlert, badge: "bg-warn-50 text-warn-700 ring-warn-600/20", button: "dark" },
-  /** Mengaktifkan kembali. */
   brand: { icon: IconInfo, badge: "bg-brand-50 text-brand-600 ring-brand-100", button: "primary" },
 } as const;
 
-/** Konfirmasi sebelum aksi yang berdampak, supaya tidak terjadi karena salah pencet. */
 export function ConfirmDialog({
   open,
   onClose,
@@ -210,8 +196,6 @@ export function ConfirmDialog({
     </dialog>
   );
 }
-
-/* ---------- Toast ---------- */
 
 type ToastTone = "success" | "error";
 type ShowToast = (message: string, tone?: ToastTone) => void;

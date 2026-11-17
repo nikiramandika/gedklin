@@ -1,9 +1,5 @@
 @import "tailwindcss";
 
-/*
- * Token Gedklin. Kanvas terang untuk konter yang terang; sidebar navy untuk navigasi;
- * biru Gedklin hanya untuk aksi utama, seleksi, dan status Diproses.
- */
 @theme inline {
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
@@ -95,7 +91,6 @@
     caret-color: var(--color-brand-600);
   }
 
-  /* Angka di tabel dan harga tidak boleh bergeser saat berubah. */
   .tabular {
     font-variant-numeric: tabular-nums;
   }
@@ -160,7 +155,6 @@
   }
 }
 
-/* Drawer kanan dan modal (components/overlay.tsx). */
 @keyframes sheet-in {
   from {
     transform: translateX(100%);
@@ -174,7 +168,6 @@
   }
 }
 
-/* Halaman di belakang drawer/modal tidak ikut tergulir. */
 html:has(dialog[open]) {
   overflow: hidden;
 }

@@ -1,5 +1,3 @@
-"""Fitur pemilik: katalog/harga, pengaturan, janji waktu, akun, operasional harian, dasbor."""
-
 from datetime import date, datetime, time, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -73,9 +71,6 @@ DAILY_FIELDS = (
     "machine_issue_note",
 )
 ROLE_LABEL = {Role.OWNER: "Pemilik", Role.ADMIN: "Admin", Role.CASHIER: "Kasir"}
-
-
-# --- Katalog layanan & harga -----------------------------------------------
 
 
 @router.get("/catalog", response_model=list[CatalogItemOut])
@@ -169,9 +164,6 @@ def delete_catalog_item(
     db.commit()
 
 
-# --- Pengaturan & janji waktu ----------------------------------------------
-
-
 def _settings_out(db: Session) -> AppSettingsOut:
     config = load_app_config(db)
     day = config.default_day
@@ -255,9 +247,6 @@ def upsert_promise(
     return row
 
 
-# --- Akun ------------------------------------------------------------------
-
-
 @router.get("/users", response_model=list[UserOut])
 def list_users(db: Session = Depends(get_db), _: User = Depends(owner)):
     return list(db.scalars(select(User).order_by(User.role, User.name)))
@@ -323,9 +312,6 @@ def update_user(
     return user
 
 
-# --- Operasional harian ----------------------------------------------------
-
-
 @router.get("/daily-operations", response_model=list[DailyOperationOut])
 def list_daily_operations(
     db: Session = Depends(get_db),
@@ -369,9 +355,6 @@ def upsert_daily_operation(
         )
     db.commit()
     return row
-
-
-# --- Dasbor ----------------------------------------------------------------
 
 
 def _local_day_bounds(day: date) -> tuple[datetime, datetime]:
@@ -426,9 +409,7 @@ def dashboard(db: Session = Depends(get_db), _: User = Depends(owner)) -> Dashbo
         for s, c in db.execute(select(Order.status, func.count(Order.id)).group_by(Order.status))
     }
 
-    # Akurasi 7 hari terakhir pada pesanan READY: prediksi awal (yang tertulis di nota)
-    # vs janji standar mitra. Prediksi terkini tidak dipakai karena bisa berubah
-    # mendekati waktu siap sehingga akurasinya terlihat lebih baik dari kenyataan.
+    # Prediksi awal, karena prediksi terkini mendekati waktu siap dan tampak lebih akurat.
     settings = get_settings()
     now = utcnow()
     since = now - timedelta(days=7)

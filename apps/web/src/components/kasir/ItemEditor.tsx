@@ -9,11 +9,6 @@ import type { CatalogGroup, CatalogItem, OrderItem, OrderItemInput, Quote } from
 import { IconBolt, IconPlus, IconTrash } from "../icons";
 import { Field, IconButton, Segmented, Select, Stepper, inputClass } from "../ui";
 
-/*
- * Isi pesanan (item + kecepatan) yang dipakai bersama oleh form pesanan baru
- * dan koreksi pesanan. Harga selalu dihitung server lewat POST /orders/quote.
- */
-
 interface Line {
   key: number;
   code: string;
@@ -75,7 +70,6 @@ export function useItemEditor(initial?: { items: OrderItem[]; isExpress: boolean
   }, []);
 
   const byCode = useMemo(() => new Map(catalog.map((c) => [c.code, c])), [catalog]);
-  // Express hanya untuk item express_eligible (CKL/CKS); backend memvalidasi aturan yang sama.
   const expressAvailable = lines.some((l) => byCode.get(l.code)?.express_eligible);
   const express = speed === "express" && expressAvailable;
   const expressNames = catalog
@@ -91,7 +85,6 @@ export function useItemEditor(initial?: { items: OrderItem[]; isExpress: boolean
       const inputs = itemInputs(item);
       return (!inputs.weight || (i.weight_kg ?? 0) > 0) && (!inputs.pcs || i.qty_pcs !== null);
     });
-  // Item yang sudah nonaktif di katalog tidak bisa dipilih lagi saat koreksi.
   const unavailable = catalog.length > 0 && lines.some((l) => !byCode.has(l.code));
 
   useEffect(() => {

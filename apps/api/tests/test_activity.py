@@ -58,7 +58,6 @@ def test_owner_changes_are_logged_with_before_and_after(
     ]
     assert catalog[1]["changes"] == {"price": [45_000, 50_000]}
 
-    # Tanpa perubahan: tidak ada log baru.
     client.put("/catalog/CKS", json={"is_active": False}, headers=owner)
     assert len(logs(client, owner, entity_type="catalog")) == 2
 
@@ -99,6 +98,5 @@ def test_search_by_tracking_code_shows_whole_order_trail(
     assert all(e["entity_id"] == code for e in trail)
     assert other["tracking_code"] not in str(trail)
 
-    # Teks bebas di ringkasan, mis. nama pelanggan.
     assert len(logs(client, owner, q="siti")) == 5
     assert logs(client, owner, q="TIDAKADA00") == []

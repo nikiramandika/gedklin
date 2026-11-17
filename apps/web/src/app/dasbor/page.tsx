@@ -214,7 +214,6 @@ function WeekChart({ days }: { days: Dashboard["last_7_days"] }) {
       }
     >
       <div className="relative">
-        {/* Garis bantu tipis di 50% dan 100%. */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-56" aria-hidden="true">
           <div className="absolute inset-x-0 top-6 border-t border-dashed border-line" />
           <div className="absolute inset-x-0 top-[124px] border-t border-dashed border-line" />

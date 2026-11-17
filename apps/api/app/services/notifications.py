@@ -1,5 +1,3 @@
-"""Notifikasi WhatsApp: interface sender + adapter per provider, dan aturan pengiriman."""
-
 from __future__ import annotations
 
 import json
@@ -21,13 +19,10 @@ logger = logging.getLogger(__name__)
 
 class NotificationSender(ABC):
     @abstractmethod
-    def send(self, phone_wa: str, message: str) -> str:
-        """Kirim pesan dan kembalikan id pesan dari provider. Raise jika gagal."""
+    def send(self, phone_wa: str, message: str) -> str: ...
 
 
 class ConsoleSender(NotificationSender):
-    """Mode dev: hanya menulis pesan ke log."""
-
     def send(self, phone_wa: str, message: str) -> str:
         msg_id = f"console-{uuid.uuid4().hex[:12]}"
         logger.info("[WA %s] ke %s:\n%s", msg_id, phone_wa, message)
@@ -35,12 +30,6 @@ class ConsoleSender(NotificationSender):
 
 
 class FonnteSender(NotificationSender):
-    """WhatsApp lewat Fonnte (https://docs.fonnte.com/api-send-message/).
-
-    Nomor 08xx diubah Fonnte menjadi 628xx (countryCode 62). Device harus terhubung:
-    bila tidak, Fonnte menolak (connectOnly) dan task Celery mencoba ulang.
-    """
-
     URL = "https://api.fonnte.com/send"
 
     def __init__(self, token: str, timeout: float = 15) -> None:
@@ -99,7 +88,6 @@ def format_rupiah(value: int) -> str:
 
 
 def describe_item(item: OrderItem) -> str:
-    """Mis. "Cuci + Kering + Setrika 8 kg" atau "Kemeja Lengan Panjang 2 pcs"."""
     parts = []
     if item.weight_kg is not None:
         parts.append(f"{item.weight_kg:g} kg")
@@ -114,10 +102,8 @@ def tracking_url(order: Order, settings: Settings | None = None) -> str:
 
 
 def receipt_message(order: Order) -> str:
-    """Nota digital: dikirim otomatis saat pesanan dibuat, juga dipakai tombol WA manual."""
     eta = format_local(order.predicted_ready_at) if order.predicted_ready_at else "-"
     promise = order.promised_ready_at
-    # Janji standar = batas "terlambat"; ditulis hanya bila berbeda dari perkiraan.
     promise_line = (
         f"Janji standar layanan: {format_local(promise)}\n"
         if promise and promise != order.predicted_ready_at

@@ -1,5 +1,3 @@
-"""Pengaturan yang bisa diubah pemilik, janji waktu, dan kondisi operasional harian."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,8 +16,6 @@ from gedklin_ml.features import (
     Promise,
 )
 
-# Nilai bawaan bila kunci belum ada di tabel app_settings. Seed mengisi
-# express_multiplier, machine_capacity_kg, dan default_promise_hours dari price_catalog.json.
 DEFAULTS: dict[str, str] = {
     "express_multiplier": "2",
     "machine_capacity_kg": f"{MACHINE_CAPACITY_KG:g}",
@@ -35,11 +31,8 @@ DEFAULTS: dict[str, str] = {
 @dataclass(frozen=True)
 class AppConfig:
     express_multiplier: float
-    # Kapasitas satu mesin cuci (kg), untuk machine_loads kiloan.
     machine_capacity_kg: float
-    # Janji bila semua layanan di pesanan belum punya janji standar.
     default_promise_hours: float
-    # Kapasitas normal mitra, dipakai bila daily_operations hari itu belum diisi.
     default_day: DayOps
 
 
@@ -95,7 +88,6 @@ def to_day_ops(row: DailyOperation) -> DayOps:
 
 
 def day_ops_lookup(db: Session, config: AppConfig) -> DayOpsLookup:
-    """Kondisi operasional per tanggal: data harian jika ada, jika tidak kapasitas normal."""
     cache: dict[date, DayOps] = {}
 
     def lookup(day: date) -> DayOps:

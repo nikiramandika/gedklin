@@ -1,13 +1,3 @@
-"""Prediksi durasi pesanan (jam operasional) dari model ML.
-
-Model memprediksi jam kerja (`duration_work_hours`); pemanggil mengubahnya ke
-waktu kalender dengan `add_work_hours`, sama seperti evaluasi di train_compare.py.
-
-Aplikasi tidak boleh crash karena model: bila model tidak ada, gagal dimuat,
-atau prediksinya tidak valid, `predict_work_hours` mengembalikan None dan pemanggil
-memakai `promised_ready_at` (janji standar mitra).
-"""
-
 from __future__ import annotations
 
 import json

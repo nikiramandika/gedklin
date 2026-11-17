@@ -1,7 +1,4 @@
-// Service worker Gedklin (PWA untuk staf dan pelanggan).
-// - Aset statis Next (/_next/static, ikon): cache-first, karena nama filenya ber-hash.
-// - Halaman: network-first, simpan salinan terakhir; saat offline pakai salinan itu atau /offline.
-// - Panggilan API (origin berbeda) tidak disentuh supaya data pesanan selalu terbaru.
+// Aset statis cache-first, halaman network-first dengan fallback /offline, API tidak disentuh.
 
 const VERSION = "gedklin-v2";
 const STATIC_CACHE = `${VERSION}-static`;

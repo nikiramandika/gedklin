@@ -74,7 +74,6 @@ export function useAuth(): AuthState {
   return ctx;
 }
 
-/** Arahkan ke /login bila belum login atau role tidak diizinkan. */
 export function useRequireRole(roles: Role[]): User | null {
   const { user, ready } = useAuth();
   const router = useRouter();

@@ -31,7 +31,6 @@ export interface CatalogItem {
   group: CatalogGroup;
   process: Process;
   unit: CatalogUnit;
-  /** null = harga belum ditetapkan (mis. dry clean). */
   price: number | null;
   extra_price: number | null;
   base_kg: number | null;
@@ -39,7 +38,6 @@ export interface CatalogItem {
   kg_per_load: number | null;
   pcs_per_load: number | null;
   max_extra: number | null;
-  /** Hanya CKL dan CKS yang boleh Express. */
   express_eligible: boolean;
   sort_order: number;
   is_active: boolean;
@@ -94,7 +92,6 @@ export interface StatusHistory {
   from_status: OrderStatus | null;
   to_status: OrderStatus;
   changed_at: string;
-  /** Tidak ada di portal lacak publik. */
   changed_by_name?: string | null;
 }
 
@@ -105,7 +102,6 @@ export interface Order {
   is_express: boolean;
   items: OrderItem[];
   price_total: number;
-  /** Kasir yang menerima pesanan. */
   created_by_name: string | null;
   notes: string | null;
   rack_location: string | null;
@@ -214,7 +210,6 @@ export interface ActivityLog {
   entity_type: ActivityEntity;
   entity_id: string | null;
   summary: string;
-  /** {field: [sebelum, sesudah]} */
   changes: Record<string, [unknown, unknown]> | null;
   created_at: string;
 }
