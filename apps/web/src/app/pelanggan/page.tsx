@@ -22,7 +22,7 @@ import {
   tileListClass,
 } from "@/components/ui";
 import { api } from "@/lib/api";
-import { formatDateTime, formatRupiah, summarizeItems } from "@/lib/format";
+import { formatDateTime, formatRupiah, initials, summarizeItems } from "@/lib/format";
 import type { CustomerDetail, CustomerSummary, Role } from "@/lib/types";
 
 const ROLES: Role[] = ["owner", "cashier"];
@@ -31,14 +31,6 @@ const SEARCH_DELAY_MS = 300;
 const EDIT_FORM = "customer-edit-form";
 
 type Filter = "all" | "unpaid";
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase())
-    .join("");
-}
 
 /** 6281234567890 -> 0812-3456-7890 */
 function displayPhone(phone: string): string {

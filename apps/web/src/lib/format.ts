@@ -68,6 +68,16 @@ export function describeItem(item: TrackingItem): string {
   return parts.join(" ");
 }
 
+/** Dua huruf awal nama untuk avatar, mis. "Budi Santoso" -> "BS". */
+export function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase())
+    .join("");
+}
+
 export function summarizeItems(items: TrackingItem[]): string {
   return items.map(describeItem).join(", ");
 }

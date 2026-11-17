@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ComponentType, type ReactNode, type SVGProps } from "react";
 
 import { useAuth, useRequireRole } from "@/lib/auth";
+import { initials } from "@/lib/format";
 import { useInstallPrompt, useOnline } from "@/lib/pwa";
 import type { Role, User } from "@/lib/types";
 
@@ -72,15 +73,6 @@ const ROLE_LABEL: Record<Role, string> = {
 
 function isActive(pathname: string, href: string): boolean {
   return href === "/dasbor" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
-}
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase())
-    .join("");
 }
 
 export function AppShell({

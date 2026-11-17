@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { BrandMark, IconChat, IconClock, IconReceipt } from "./icons";
+import { BrandMark, IconReceipt } from "./icons";
 import { TrackingForm } from "./TrackingForm";
 
 const STEPS = [

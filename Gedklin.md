@@ -66,7 +66,7 @@ apps/
     alembic/
     tests/
 ml/
-  features/       # feature builder, DIPAKAI BERSAMA oleh training dan API
+  gedklin_ml/     # feature builder (features.py), DIPAKAI BERSAMA oleh training dan API
   data/           # raw/ dan processed/ (raw tidak di-commit)
   scripts/        # generate_dummy.py, build_dataset.py, train_compare.py
   models/         # artefak model terbaik (joblib) + metadata.json
@@ -250,7 +250,7 @@ Simpan waktu dalam UTC di database, tampilkan dalam **Asia/Jakarta**.
 - Laporkan juga MAE per `max_process_level` dan per Reguler/Express.
 - Target: MAE lebih kecil dari kedua baseline. Target angka absolut ditetapkan setelah melihat sebaran data pada minggu kedua pengumpulan.
 - Output: `ml/reports/comparison.csv`, model terbaik ke `ml/models/best_model.joblib` + `metadata.json` (nama model, versi, daftar dan urutan fitur, tanggal latih, metrik).
-- Feature builder di `ml/features/` dipakai bersama oleh training dan API. Jangan duplikasi logika fitur.
+- Feature builder di `ml/gedklin_ml/features.py` dipakai bersama oleh training dan API. Jangan duplikasi logika fitur.
 
 ## Konvensi kode
 
@@ -262,15 +262,15 @@ Simpan waktu dalam UTC di database, tampilkan dalam **Asia/Jakarta**.
 - Harga selalu dalam Rupiah bertipe integer.
 - Teks UI dalam Bahasa Indonesia.
 
-## Perintah (isi setelah scaffold dibuat)
+## Perintah
 
 ```bash
-# docker compose -f infra/docker-compose.yml up -d
-# cd apps/api && alembic upgrade head && python -m app.seed && uvicorn app.main:app --reload
-# cd apps/api && celery -A app.workers worker -B --loglevel=info
-# cd apps/web && npm run dev
-# cd ml && python scripts/generate_dummy.py && python scripts/build_dataset.py && python scripts/train_compare.py
-# cd apps/api && pytest
+docker compose -f infra/docker-compose.yml up -d
+cd apps/api && alembic upgrade head && python -m app.seed && uvicorn app.main:app --reload
+cd apps/api && celery -A app.workers worker -B --loglevel=info
+cd apps/web && npm run dev
+cd ml && python scripts/generate_dummy.py && python scripts/build_dataset.py && python scripts/train_compare.py
+cd apps/api && pytest
 ```
 
 ## Milestone

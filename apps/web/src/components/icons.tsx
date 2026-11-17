@@ -34,7 +34,6 @@ export const IconPlus = make(<path d="M5 12h14M12 5v14" />, "IconPlus");
 export const IconMinus = make(<path d="M5 12h14" />, "IconMinus");
 export const IconCheck = make(<path d="M20 6 9 17l-5-5" />, "IconCheck");
 export const IconChevronRight = make(<path d="m9 18 6-6-6-6" />, "IconChevronRight");
-export const IconChevronLeft = make(<path d="m15 18-6-6 6-6" />, "IconChevronLeft");
 export const IconArrowLeft = make(<path d="m12 19-7-7 7-7M19 12H5" />, "IconArrowLeft");
 export const IconRefresh = make(
   <>
@@ -179,10 +178,6 @@ export const IconUser = make(
     <circle cx="12" cy="7" r="4" />
   </>,
   "IconUser",
-);
-export const IconExternal = make(
-  <path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />,
-  "IconExternal",
 );
 
 export const IconWallet = make(
