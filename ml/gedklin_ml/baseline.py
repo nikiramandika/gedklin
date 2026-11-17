@@ -2,7 +2,7 @@
 
 - `PromiseBaseline`: prediksi = janji standar mitra (`promised_hours`). Ini kondisi
   saat ini yang ingin dikalahkan, dan juga fallback ETA di API.
-- `GroupMedianRegressor`: median durasi per (`max_process_level`, `is_express`).
+- `GroupMedianRegressor`: median target (jam kerja) per (`max_process_level`, `is_express`).
 """
 
 from __future__ import annotations

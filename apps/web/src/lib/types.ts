@@ -179,6 +179,8 @@ export interface Dashboard {
   eta_mae_hours_7d: number | null;
   eta_within_tolerance_pct_7d: number | null;
   promise_mae_hours_7d: number | null;
+  late_vs_promise_7d: number;
+  overdue_active: number;
   eta_samples_7d: number;
   eta_tolerance_hours: number;
   model_version: string;

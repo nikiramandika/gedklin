@@ -41,6 +41,7 @@ from app.services.queue import (
 from gedklin_ml.features import (
     DayOpsLookup,
     Promise,
+    add_work_hours,
     build_features,
     local_date,
     promised_hours,
@@ -158,7 +159,11 @@ def promised_ready_at(order: Order, ctx: EtaContext) -> datetime:
 
 
 def compute_features(
-    db: Session, order: Order, ctx: EtaContext, active: list[Order] | None = None
+    db: Session,
+    order: Order,
+    ctx: EtaContext,
+    active: list[Order] | None = None,
+    now: datetime | None = None,
 ) -> dict[str, float]:
     """Fitur pesanan memakai feature builder yang sama dengan training.
 
@@ -169,7 +174,8 @@ def compute_features(
     """
     queue = queue_stats(order.received_at, records_active_at(db, order.received_at))
     if active is not None:
-        ahead = summarize_queue(queue_record(o, None) for o in active if is_ahead(o, order))
+        now = now or utcnow()
+        ahead = summarize_queue(queue_record(o, None) for o in active if is_ahead(o, order, now))
         queue = queue.max(ahead)
     return build_features(
         received_at=order.received_at,
@@ -187,18 +193,20 @@ def predict_eta(
     active: list[Order] | None = None,
     now: datetime | None = None,
 ) -> datetime:
-    features = compute_features(db, order, ctx, active)
-    hours, version = get_predictor().predict_hours(features)
+    """Perkiraan siap dari model (jam kerja sejak masuk), atau janji mitra bila model tidak ada.
+
+    ETA hanya berubah bila masukannya berubah (antrean di depannya, isi pesanan,
+    operasional harian). ETA yang sudah lewat tidak digeser: keterlambatan diukur
+    terhadap `promised_ready_at` dan ditampilkan di UI, bukan ditutupi jam baru.
+    """
+    features = compute_features(db, order, ctx, active, now)
+    hours, version = get_predictor().predict_work_hours(features)
     if hours is None:
         # Model tidak tersedia: fallback ke janji standar mitra.
         eta = order.promised_ready_at or promised_ready_at(order, ctx)
         version = PROMISE_VERSION
     else:
-        eta = shift_into_open_hours(order.received_at + timedelta(hours=hours), ctx.day_ops)
-    if now is not None and eta <= now:
-        # Sudah lewat ETA tapi belum READY: geser ke depan.
-        buffer = timedelta(minutes=get_settings().overdue_buffer_minutes)
-        eta = shift_into_open_hours(now + buffer, ctx.day_ops)
+        eta = add_work_hours(order.received_at, hours, ctx.day_ops)
 
     previous = order.predicted_ready_at
     if previous is None or abs(eta - previous) >= timedelta(minutes=1):
@@ -214,14 +222,31 @@ def predict_eta(
     return order.predicted_ready_at or eta
 
 
+def latest_model_version(db: Session, order_id: int) -> str | None:
+    return db.scalar(
+        select(PredictionLog.model_version)
+        .where(PredictionLog.order_id == order_id)
+        .order_by(PredictionLog.id.desc())
+        .limit(1)
+    )
+
+
 def recompute_etas(db: Session, now: datetime | None = None) -> list[int]:
     """Hitung ulang ETA pesanan aktif dan antrekan notifikasi keterlambatan."""
     now = now or utcnow()
     ctx = EtaContext.load(db)
-    active = active_orders(db)
+    active = active_orders(db, now)
     delay_notifications: list[Notification] = []
     for order in active:
+        before = latest_model_version(db, order.id)
         eta = predict_eta(db, order, ctx, active, now)
+        db.flush()  # session tanpa autoflush: log prediksi baru harus terbaca
+        after = latest_model_version(db, order.id)
+        if before is not None and before != after:
+            # Model diganti (mis. deploy model baru): ETA bergeser bukan karena antrean,
+            # jadi tidak dikirimi WA "antrean ramai". ETA baru jadi patokan berikutnya.
+            order.last_notified_eta = eta
+            continue
         if should_send_delay(order, eta):
             order.last_notified_eta = eta
             order.delay_notif_count += 1
@@ -319,8 +344,10 @@ def create_order(
     )
     ctx = EtaContext.load(db)
     order.promised_ready_at = promised_ready_at(order, ctx)
-    # ETA awal dicantumkan di nota, jadi dianggap sudah diberitahukan.
+    # ETA awal dicantumkan di nota, jadi dianggap sudah diberitahukan. Disimpan juga
+    # sebagai prediksi awal untuk mengukur akurasi model.
     order.last_notified_eta = predict_eta(db, order, ctx)
+    order.initial_predicted_ready_at = order.last_notified_eta
     receipt_notif = Notification(order_id=order.id, type=NotificationType.RECEIPT)
     db.add(receipt_notif)
     db.commit()
@@ -544,7 +571,8 @@ def update_items(
     order.promised_ready_at = promised_ready_at(order, ctx)
     order.predicted_ready_at = None
     # Perkiraan baru dikirim ulang lewat nota, jadi tidak memicu WA "perkiraan mundur".
-    order.last_notified_eta = predict_eta(db, order, ctx, active_orders(db), now)
+    order.last_notified_eta = predict_eta(db, order, ctx, active_orders(db, now), now)
+    order.initial_predicted_ready_at = order.last_notified_eta
     db.commit()
     recompute_etas(db, now)
     db.refresh(order)

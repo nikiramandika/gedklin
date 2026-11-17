@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth";
 import {
   STATUS_ACTION,
   STATUS_LABEL,
+  etaState,
   formatDateTime,
   formatRupiah,
   lineDetail,
@@ -154,6 +155,7 @@ function OrderDetailPanel({
   const next = order?.next_status ?? null;
   const editable = !!order && (order.status === "RECEIVED" || order.status === "PROCESSING") && !order.is_paid;
   const cancelled = order?.status === "CANCELLED";
+  const timing = order ? etaState(order, now) : null;
 
   if (mode === "items" && order) {
     return (
@@ -268,11 +270,22 @@ function OrderDetailPanel({
                       {formatDateTime(order.ready_at ?? order.predicted_ready_at)}
                     </span>
                     {!order.ready_at && now > 0 && (
-                      <span className="block text-xs text-muted">{relativeEta(order.predicted_ready_at, now)}</span>
+                      <span className="block text-xs text-muted">
+                        {timing === "due" ? "segera siap" : relativeEta(order.predicted_ready_at, now)}
+                      </span>
                     )}
                   </dd>
                   <dt className="text-muted">Janji standar</dt>
-                  <dd className="text-right text-ink-2">{formatDateTime(order.promised_ready_at)}</dd>
+                  <dd className="text-right">
+                    <span className={timing === "late" ? "font-medium text-danger-600" : "text-ink-2"}>
+                      {formatDateTime(order.promised_ready_at)}
+                    </span>
+                    {timing === "late" && (
+                      <span className="block text-xs font-medium text-danger-600">
+                        Terlambat, {relativeEta(order.promised_ready_at, now)}
+                      </span>
+                    )}
+                  </dd>
                 </>
               )}
               <dt className="text-muted">Diterima</dt>

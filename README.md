@@ -148,10 +148,15 @@ cd apps/web && npm run lint && npx tsc --noEmit && npm run build
 - `build_dataset.py` mengubah data mentah menjadi fitur (`ml/data/processed/features.csv`) memakai
   feature builder bersama `ml/gedklin_ml/features.py` yang juga dipakai API.
 - `train_compare.py` membandingkan baseline janji mitra, baseline median, Linear Regression,
-  Random Forest, dan XGBoost dengan split berbasis waktu. Target `duration_hours` (jam kalender);
-  error dalam jam, toleransi `ETA_TOLERANCE_HOURS` (default 6). Hasil: `ml/reports/comparison.csv`,
+  Random Forest, dan XGBoost dengan split berbasis waktu. Model belajar `duration_work_hours`
+  (jam operasional); prediksinya diubah ke waktu kalender dengan `add_work_hours`, persis seperti
+  API, lalu error diukur dalam jam kalender dengan toleransi `ETA_TOLERANCE_HOURS` (default 6).
+  `ml/data/raw/daily.csv` dibutuhkan untuk konversi ini. Hasil: `ml/reports/comparison.csv`,
   `comparison_by_group.csv` (MAE per `max_process_level` dan Reguler/Express),
   `ml/models/best_model.joblib` + `metadata.json`.
 - Hasil dari data dummy ditulis ke `ml/reports/*_dummy.csv` dan **tidak boleh dilaporkan**.
-- API memuat model dari `MODEL_PATH`; jika gagal atau fiturnya tidak cocok, ETA memakai
-  `promised_ready_at` (janji standar mitra).
+- API memuat model dari `MODEL_PATH`; jika gagal, fiturnya tidak cocok, atau satuannya bukan
+  `work_hours` (model lama), ETA memakai `promised_ready_at` (janji standar mitra).
+- Model tidak di-commit. Setelah melatih ulang, salin `best_model.joblib` + `metadata.json` ke
+  `/opt/gedklin/models/` di VM lalu restart `api` dan `worker`. Cek di Dasbor: "Model: ..." tidak
+  boleh `janji-mitra`.

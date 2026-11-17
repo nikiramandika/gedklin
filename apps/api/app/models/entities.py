@@ -125,9 +125,12 @@ class Order(Base):
     picked_up_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     status: Mapped[OrderStatus] = mapped_column(_enum(OrderStatus), default=OrderStatus.RECEIVED)
 
-    # Janji standar mitra, juga fallback ETA bila model tidak tersedia.
+    # Janji standar mitra: tolok ukur "terlambat", juga fallback ETA bila model tidak ada.
     promised_ready_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    # Perkiraan terkini; bisa berubah bila antrean di depannya berubah.
     predicted_ready_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    # Perkiraan saat nota dibuat/dikoreksi, untuk mengukur akurasi model.
+    initial_predicted_ready_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     last_notified_eta: Mapped[datetime | None] = mapped_column(UTCDateTime)
     delay_notif_count: Mapped[int] = mapped_column(Integer, default=0)
     ready_notif_sent: Mapped[bool] = mapped_column(Boolean, default=False)

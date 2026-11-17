@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
-import { STATUS_ACTION, formatDateTime, formatRupiah, relativeEta, summarizeItems } from "@/lib/format";
+import { STATUS_ACTION, etaState, formatDateTime, formatRupiah, relativeEta, summarizeItems } from "@/lib/format";
 import type { Order } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 
@@ -286,7 +286,7 @@ function EmptyBoard({ tab }: { tab: BoardTab }) {
   if (tab === "queue")
     return (
       <EmptyState icon={IconList} title="Antrean kosong">
-        Semua cucian sudah selesai. Pesanan baru akan muncul di sini, Express paling atas.
+        Semua cucian sudah selesai. Pesanan baru akan muncul di sini: yang sedang diproses dan Express paling atas.
       </EmptyState>
     );
   if (tab === "ready")
@@ -316,8 +316,9 @@ function OrderRow({
   const now = useNow();
   const [busy, setBusy] = useState(false);
 
-  const overdue =
-    now > 0 && !o.ready_at && o.predicted_ready_at !== null && new Date(o.predicted_ready_at).getTime() < now;
+  // Terlambat diukur dari janji standar di nota, bukan dari perkiraan.
+  const timing = etaState(o, now);
+  const overdue = timing === "late";
   const waitingDays = o.ready_at && now > 0 ? Math.floor((now - new Date(o.ready_at).getTime()) / DAY_MS) : 0;
 
   async function run() {
@@ -398,9 +399,22 @@ function OrderRow({
               </>
             ) : (
               <>
-                {overdue ? "Terlambat · " : "Perkiraan "}
-                {formatDateTime(o.predicted_ready_at)}
-                {now > 0 && <span className="opacity-80">({relativeEta(o.predicted_ready_at, now)})</span>}
+                {overdue ? (
+                  <>
+                    Terlambat · janji {formatDateTime(o.promised_ready_at)}
+                    <span className="opacity-80">({relativeEta(o.promised_ready_at, now)})</span>
+                  </>
+                ) : timing === "due" ? (
+                  <>
+                    Segera siap · perkiraan {formatDateTime(o.predicted_ready_at)}
+                    <span className="opacity-80">(janji {formatDateTime(o.promised_ready_at)})</span>
+                  </>
+                ) : (
+                  <>
+                    Perkiraan {formatDateTime(o.predicted_ready_at)}
+                    {now > 0 && <span className="opacity-80">({relativeEta(o.predicted_ready_at, now)})</span>}
+                  </>
+                )}
               </>
             )}
           </p>

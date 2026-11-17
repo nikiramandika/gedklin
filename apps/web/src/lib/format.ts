@@ -156,3 +156,23 @@ export function relativeEta(iso: string | null, now: number): string {
     d > 0 ? `${d} hari${h > 0 ? ` ${h} jam` : ""}` : h > 0 ? `${h} jam ${m} menit` : `${m} menit`;
   return diff >= 0 ? `${text} lagi` : `lewat ${text}`;
 }
+
+/**
+ * Posisi pesanan aktif terhadap waktunya:
+ * - "late": sudah lewat janji standar (tolok ukur terlambat, tidak pernah bergeser)
+ * - "due": perkiraan sudah lewat tapi janji belum, cucian sedang diselesaikan
+ * - "on_track": belum lewat perkiraan
+ * null bila pesanan sudah siap.
+ */
+export type EtaState = "late" | "due" | "on_track";
+
+export function etaState(
+  o: { promised_ready_at: string | null; predicted_ready_at: string | null; ready_at: string | null },
+  now: number,
+): EtaState | null {
+  if (o.ready_at) return null;
+  if (!now) return "on_track";
+  if (o.promised_ready_at && new Date(o.promised_ready_at).getTime() < now) return "late";
+  if (o.predicted_ready_at && new Date(o.predicted_ready_at).getTime() < now) return "due";
+  return "on_track";
+}

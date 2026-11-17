@@ -89,7 +89,7 @@ def create_order(
 
 @router.get("/queue", response_model=list[OrderOut])
 def queue(db: Session = Depends(get_db), _: User = Depends(staff)) -> list[OrderOut]:
-    """Antrean aktif: Express dulu, lalu FIFO."""
+    """Antrean aktif: yang sedang diproses, Express, Reguler mendekati janji, lalu FIFO."""
     return [to_out(o, i) for i, o in enumerate(active_orders(db), start=1)]
 
 

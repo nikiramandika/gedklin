@@ -162,31 +162,124 @@ def test_receipt_sent_automatically_once_on_create(
     db.rollback()
 
 
-def test_delay_notification_regular_only_and_max_two(
-    client: TestClient, cashier: dict, db: Session
+class QueueAwarePredictor:
+    """Model tiruan: tiap pesanan di depan menambah 10 jam kerja."""
+
+    model_version = "uji-antrean"
+
+    def predict_work_hours(self, features: dict[str, float]) -> tuple[float, str]:
+        return 2 + 10 * features["active_orders_count"], self.model_version
+
+
+def _create(db: Session, phone: str, at: datetime, *, express: bool = False) -> Order:
+    return create_order(
+        db,
+        customer_name="Budi",
+        customer_phone=phone,
+        is_express=express,
+        items=[ItemRequest("CKL", weight_kg=5)],
+        user=None,
+        now=at,
+    )
+
+
+# Selasa 20/10/2026 09.00 WIB.
+MORNING = datetime(2026, 10, 20, 2, 0, tzinfo=UTC)
+
+
+def test_delay_notification_when_express_cuts_in_regular_only_and_max_two(
+    db: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.services.orders import recompute_etas
-
-    regular = new_order(client, cashier, customer_phone="081111111111")
-    express = new_order(client, cashier, customer_phone="082222222222", is_express=True)
-
-    now = utcnow()
-    for hours in (60, 120, 180):
-        recompute_etas(db, now + timedelta(hours=hours))
+    monkeypatch.setattr("app.services.orders.get_predictor", lambda: QueueAwarePredictor())
+    regular = _create(db, "081111111111", MORNING)
+    first_eta = regular.predicted_ready_at
+    # Tiap Express yang masuk belakangan dikerjakan lebih dulu -> ETA Reguler mundur.
+    for i in range(3):
+        _create(db, f"08222222222{i}", MORNING + timedelta(minutes=10 * (i + 1)), express=True)
 
     db.expire_all()
-    reg = db.get(Order, regular["id"])
-    exp = db.get(Order, express["id"])
+    reg = db.get(Order, regular.id)
+    assert reg.predicted_ready_at > first_eta
+    assert reg.initial_predicted_ready_at == first_eta
     assert reg.delay_notif_count == 2
-    assert exp.delay_notif_count == 0
     delays = list(
-        db.scalars(
-            select(Notification).where(
-                Notification.order_id == regular["id"], Notification.type == NotificationType.DELAY
-            )
-        )
+        db.scalars(select(Notification).where(Notification.type == NotificationType.DELAY))
     )
-    assert len(delays) == 2 and all(n.status == NotificationStatus.SENT for n in delays)
+    assert [n.order_id for n in delays] == [regular.id, regular.id]
+    assert all(n.status == NotificationStatus.SENT for n in delays)
+
+
+def test_model_switch_does_not_send_delay_whatsapp(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Deploy model baru menggeser ETA, tapi itu bukan antrean ramai: jangan kirim WA."""
+    from app.services.orders import recompute_etas
+
+    # Dibuat saat model belum ada (janji mitra: CKL 2 hari).
+    regular = _create(db, "081111111111", MORNING)
+    _create(db, "082222222222", MORNING + timedelta(minutes=5))
+
+    class SlowModel(QueueAwarePredictor):
+        model_version = "model-baru"
+
+        def predict_work_hours(self, features: dict[str, float]) -> tuple[float, str]:
+            return 40.0, self.model_version
+
+    monkeypatch.setattr("app.services.orders.get_predictor", lambda: SlowModel())
+    recompute_etas(db, MORNING + timedelta(hours=1))
+
+    db.expire_all()
+    reg = db.get(Order, regular.id)
+    assert reg.predicted_ready_at > reg.promised_ready_at + timedelta(hours=6)
+    assert reg.last_notified_eta == reg.predicted_ready_at
+    assert reg.delay_notif_count == 0
+    assert (
+        db.scalar(select(Notification).where(Notification.type == NotificationType.DELAY)) is None
+    )
+
+
+def test_overdue_eta_is_not_moved_by_clicks(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    """ETA yang sudah lewat tidak digeser ke "jam klik + 1 jam"."""
+    from app.services.orders import change_status
+
+    monkeypatch.setattr("app.services.orders.get_predictor", lambda: QueueAwarePredictor())
+    late = _create(db, "081111111111", MORNING)
+    eta = late.predicted_ready_at
+    later = MORNING + timedelta(days=3)
+
+    # Pesanan baru (di belakangnya) dan "mulai proses" pesanan itu sendiri.
+    _create(db, "082222222222", later)
+    change_status(db, late, OrderStatus.PROCESSING, None, later + timedelta(minutes=5))
+
+    db.expire_all()
+    late = db.get(Order, late.id)
+    assert late.predicted_ready_at == eta
+    assert late.promised_ready_at < later
+    assert late.delay_notif_count == 0
+
+
+def test_started_order_goes_ahead_and_pushes_waiting_eta(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pesanan yang sudah diproses dikerjakan lebih dulu, jadi ETA yang menunggu mundur."""
+    from app.services.orders import change_status
+
+    monkeypatch.setattr("app.services.orders.get_predictor", lambda: QueueAwarePredictor())
+    first = _create(db, "081111111111", MORNING)
+    second = _create(db, "082222222222", MORNING + timedelta(minutes=5))
+    eta = first.predicted_ready_at
+
+    change_status(db, second, OrderStatus.PROCESSING, None, MORNING + timedelta(minutes=10))
+
+    db.expire_all()
+    assert db.get(Order, first.id).predicted_ready_at > eta
+
+
+def test_model_eta_counts_only_open_hours(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Diterima Selasa 16.00 WIB, model 2 jam kerja -> Rabu 09.00 WIB (bukan 08.00).
+    monkeypatch.setattr("app.services.orders.get_predictor", lambda: QueueAwarePredictor())
+    order = _create(db, "081111111111", datetime(2026, 10, 20, 9, 0, tzinfo=UTC))
+    assert order.predicted_ready_at == datetime(2026, 10, 21, 2, 0, tzinfo=UTC)
 
 
 def test_small_eta_changes_do_not_notify(client: TestClient, cashier: dict, db: Session) -> None:

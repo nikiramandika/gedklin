@@ -1,23 +1,55 @@
-"""Antrean berbasis aturan: Express dulu, lalu FIFO berdasarkan waktu masuk."""
+"""Antrean berbasis aturan.
+
+Urutan pengerjaan:
+1. Pesanan yang sudah PROCESSING (sudah di mesin/setrika) tidak disela.
+2. Express dulu.
+3. Reguler yang janjinya tinggal <= REGULAR_ESCALATION_HOURS (atau sudah lewat)
+   didahulukan dari Reguler lain, supaya janji Reguler tetap terkejar walau
+   pesanan yang masuk belakangan punya janji lebih pendek.
+4. FIFO berdasarkan waktu masuk.
+"""
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.models import ACTIVE_STATUSES, Order
+from app.config import get_settings
+from app.db import utcnow
+from app.models import ACTIVE_STATUSES, Order, OrderStatus
 from gedklin_ml.features import OrderContent, QueueRecord, content_from_items
 
 
-def active_orders(db: Session) -> list[Order]:
-    stmt = (
-        select(Order)
-        .where(Order.status.in_(ACTIVE_STATUSES))
-        .order_by(Order.is_express.desc(), Order.received_at.asc(), Order.id.asc())
-    )
-    return list(db.scalars(stmt))
+def is_escalated(order: Order, now: datetime, threshold_hours: float | None = None) -> bool:
+    """True jika pesanan Reguler sudah dekat (atau lewat) janji standarnya."""
+    if order.is_express or order.promised_ready_at is None:
+        return False
+    if threshold_hours is None:
+        threshold_hours = get_settings().regular_escalation_hours
+    return order.promised_ready_at - now <= timedelta(hours=threshold_hours)
+
+
+def queue_rank(
+    order: Order, now: datetime, threshold_hours: float | None = None
+) -> tuple[int, int, datetime, int]:
+    """Kunci urutan antrean; makin kecil makin dulu dikerjakan."""
+    started = 0 if order.status == OrderStatus.PROCESSING else 1
+    if order.is_express:
+        tier = 0
+    elif is_escalated(order, now, threshold_hours):
+        tier = 1
+    else:
+        tier = 2
+    return started, tier, order.received_at, order.id
+
+
+def active_orders(db: Session, now: datetime | None = None) -> list[Order]:
+    now = now or utcnow()
+    threshold = get_settings().regular_escalation_hours
+    orders = db.scalars(select(Order).where(Order.status.in_(ACTIVE_STATUSES)))
+    return sorted(orders, key=lambda o: queue_rank(o, now, threshold))
 
 
 def order_content(order: Order) -> OrderContent:
@@ -43,10 +75,8 @@ def records_active_at(db: Session, at: datetime) -> list[QueueRecord]:
     return [queue_record(o, left_queue_at(o)) for o in db.scalars(stmt)]
 
 
-def is_ahead(other: Order, order: Order) -> bool:
-    """True jika `other` diproses lebih dulu dari `order` menurut aturan antrean."""
+def is_ahead(other: Order, order: Order, now: datetime) -> bool:
+    """True jika `other` dikerjakan lebih dulu dari `order` menurut aturan antrean."""
     if other.id == order.id:
         return False
-    if other.is_express != order.is_express:
-        return other.is_express
-    return (other.received_at, other.id) < (order.received_at, order.id)
+    return queue_rank(other, now) < queue_rank(order, now)

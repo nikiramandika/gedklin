@@ -293,9 +293,22 @@ function AccuracyCard({ data }: { data: Dashboard }) {
               <span className="text-lg text-muted">%</span>
             </p>
             <p className="text-[13px] text-muted">
-              perkiraan meleset kurang dari {data.eta_tolerance_hours} jam
+              perkiraan di nota meleset kurang dari {data.eta_tolerance_hours} jam
             </p>
           </div>
+          <p className="text-[13px] text-ink-2">
+            <span className="tabular font-semibold">{data.late_vs_promise_7d}</span> dari {data.eta_samples_7d}{" "}
+            pesanan selesai setelah janji standar
+            {data.overdue_active > 0 && (
+              <>
+                {" "}
+                ·{" "}
+                <span className="font-medium text-danger-600">
+                  {data.overdue_active} pesanan aktif sudah lewat janji
+                </span>
+              </>
+            )}
+          </p>
           <div className="space-y-3">
             <p className="text-[13px] font-medium text-ink-2">Rata-rata selisih (makin pendek makin baik)</p>
             <ErrorBar label="Perkiraan sistem" hours={model} scale={scale} strong />

@@ -25,7 +25,7 @@ Solusi inti:
 - Satu model regresi: prediksi `duration_hours` = `ready_at - received_at` (dalam jam) per pesanan.
 - Perbandingan algoritma: baseline median vs Linear Regression vs Random Forest vs XGBoost.
 - Pilihan kecepatan: **Reguler** atau **Express** (Express tidak tercetak di price list, tapi ada menurut mitra).
-- Urutan antrean berbasis aturan: **Express dulu, lalu FIFO** berdasarkan waktu masuk.
+- Urutan antrean berbasis aturan: **yang sudah diproses tidak disela, Express dulu, Reguler yang mendekati janji, lalu FIFO** berdasarkan waktu masuk (detail di "Logika antrean dan ETA").
 - Aturan notifikasi WhatsApp (lihat bagian "Aturan notifikasi").
 
 **Di luar scope**, jangan diimplementasikan:
@@ -188,7 +188,11 @@ Simpan waktu dalam UTC di database, tampilkan dalam **Asia/Jakarta**.
 
 ## Logika antrean dan ETA
 
-1. Urutan antrean: `ORDER BY is_express DESC, received_at ASC` untuk pesanan yang belum `READY`.
+1. Urutan antrean untuk pesanan yang belum `READY` (`app/services/queue.py`):
+   1. `PROCESSING` sebelum `RECEIVED`: cucian yang sudah di mesin/setrika tidak disela.
+   2. Express.
+   3. Reguler yang janjinya tinggal ≤ `REGULAR_ESCALATION_HOURS` (default 8 jam, menunggu kesepakatan mitra) atau sudah lewat, supaya janji Reguler tetap terkejar.
+   4. FIFO berdasarkan `received_at`.
 2. Fitur dihitung **saat pesanan masuk** (tidak boleh memakai info masa depan):
 
    | Kelompok | Fitur |
@@ -201,7 +205,11 @@ Simpan waktu dalam UTC di database, tampilkan dalam **Asia/Jakarta**.
    | Rasio beban | `loads_per_washer` = `active_loads_total / washers_available`, `dry_loads_per_dryer` = load aktif yang butuh pengering / `dryers_available` |
 
    `has_ironing` bernilai true jika ada item dengan process CKS, S, atau SATUAN. Setrika dan item satuan dikerjakan manual oleh 2 petugas yang sama, tanpa mesin, sehingga kemungkinan besar jadi penyebab antrean. Item satuan dan dry clean tidak menambah `machine_loads`.
-3. ETA dihitung ulang saat ada pesanan baru atau perubahan status, untuk pesanan yang belum `READY`.
+3. ETA dihitung ulang saat ada pesanan baru, perubahan status, koreksi, atau pembatalan, untuk pesanan yang belum `READY`. ETA hanya berubah bila masukannya berubah (antrean di depannya, isi pesanan, operasional harian). ETA yang sudah lewat **tidak digeser**.
+   - Model memprediksi **jam operasional**; ETA = `add_work_hours(received_at, prediksi)`, sehingga selalu jatuh di jam buka dan tersebar sepanjang hari.
+   - `promised_ready_at` (janji standar) adalah kontrak dengan pelanggan dan **tolok ukur terlambat**: pesanan aktif terlambat bila sekarang > `promised_ready_at`. UI menampilkan "Terlambat · lewat X jam" dari janji, bukan dari perkiraan.
+   - Perkiraan sudah lewat tapi janji belum: UI menampilkan "Segera siap" tanpa jam karangan.
+   - `initial_predicted_ready_at` menyimpan perkiraan di nota; akurasi di dasbor diukur dari kolom ini.
 4. Service `eta` memuat model dari `MODEL_PATH`. Jika model tidak ada atau gagal, **fallback ke `promised_ready_at`**. Aplikasi tidak boleh crash karena model.
 
 ## Aturan notifikasi WhatsApp
@@ -237,7 +245,7 @@ Simpan waktu dalam UTC di database, tampilkan dalam **Asia/Jakarta**.
   - **Baseline 2, median**: median durasi per (`max_process_level`, `is_express`) dari data train.
   - LinearRegression, RandomForestRegressor, XGBRegressor.
 - Semua durasi dan error dalam satuan **jam**, karena durasi pesanan 1–4 hari.
-- Target utama tetap jam kalender (`duration_hours`), karena itu yang dilihat pelanggan. Untuk analisis, simpan juga `duration_work_hours`, yaitu durasi yang hanya dihitung dalam jam operasional 08.00–17.00 pada hari buka.
+- Model belajar `duration_work_hours` (durasi dalam jam operasional hari buka), karena cucian tidak dikerjakan saat toko tutup. Error tetap diukur dalam **jam kalender** (`duration_hours`, yang dilihat pelanggan): prediksi diubah ke waktu siap dengan `add_work_hours` persis seperti API, dan baseline janji mitra dengan `shift_into_open_hours`. Evaluasi harus meniru cara API menghitung ETA.
 - Metrik: MAE (utama), RMSE, R², dan persentase prediksi dengan error < `ETA_TOLERANCE_HOURS` (default 6 jam).
 - Laporkan juga MAE per `max_process_level` dan per Reguler/Express.
 - Target: MAE lebih kecil dari kedua baseline. Target angka absolut ditetapkan setelah melihat sebaran data pada minggu kedua pengumpulan.

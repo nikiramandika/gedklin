@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { ApiError, api } from "@/lib/api";
-import { STATUS_LABEL, describeItem, formatDateTime, relativeEta, speedLabel } from "@/lib/format";
+import { STATUS_LABEL, describeItem, etaState, formatDateTime, relativeEta, speedLabel } from "@/lib/format";
 import type { OrderStatus, Tracking } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 
@@ -111,6 +111,7 @@ function TrackingBody({ order, now }: { order: Tracking; now: number }) {
   const ready = order.status === "READY";
   const done = order.status === "PICKED_UP";
   const cancelled = order.status === "CANCELLED";
+  const timing = etaState(order, now);
 
   return (
     <>
@@ -144,6 +145,28 @@ function TrackingBody({ order, now }: { order: Tracking; now: number }) {
               Diambil pada <strong className="font-semibold">{formatDateTime(order.picked_up_at)}</strong>. Terima
               kasih sudah mencuci di Gedklin!
             </p>
+          ) : timing === "late" ? (
+            <>
+              <p className="text-[13px] text-white/75">Melewati janji standar</p>
+              <p className="tabular mt-0.5 text-xl font-semibold">{formatDateTime(order.promised_ready_at)}</p>
+              <p className="mt-1 text-sm text-white/80">
+                Mohon maaf, cucian Anda sedang kami selesaikan secepatnya. Kami kirim WhatsApp begitu siap
+                diambil.
+              </p>
+            </>
+          ) : timing === "due" ? (
+            <>
+              <p className="text-[13px] text-white/75">Perkiraan siap diambil</p>
+              <p className="mt-0.5 text-xl font-semibold">Segera siap</p>
+              <p className="text-sm text-white/80">
+                Cucian sedang diselesaikan. Kami kirim WhatsApp begitu siap diambil.
+              </p>
+              {order.promised_ready_at && (
+                <p className="mt-2 text-xs text-white/70">
+                  Janji standar: {formatDateTime(order.promised_ready_at)}
+                </p>
+              )}
+            </>
           ) : (
             <>
               <p className="text-[13px] text-white/75">Perkiraan siap diambil</p>

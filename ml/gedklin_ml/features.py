@@ -98,10 +98,15 @@ FEATURE_ORDER: list[str] = [
     "loads_per_washer",
     "dry_loads_per_dryer",
 ]
-# Target utama: jam kalender ready_at - received_at (yang dilihat pelanggan).
+# Durasi jam kalender ready_at - received_at (yang dilihat pelanggan). Error model
+# selalu dilaporkan dalam satuan ini.
 TARGET = "duration_hours"
-# Untuk analisis: durasi yang hanya dihitung dalam jam operasional hari buka.
+# Target yang dipelajari model: durasi dalam jam operasional hari buka. Cucian tidak
+# dikerjakan saat toko tutup, jadi prediksi jam kerja dikonversi kembali ke waktu
+# kalender dengan `add_work_hours` dan otomatis jatuh di jam buka, tersebar sepanjang
+# hari (bukan menumpuk di jam buka seperti saat jam kalender dipotong ke jam buka).
 WORK_TARGET = "duration_work_hours"
+MODEL_UNIT = "work_hours"
 
 
 @dataclass(frozen=True)
@@ -297,6 +302,29 @@ def work_hours_between(start: datetime, end: datetime, day_ops: DayOpsLookup) ->
                 total += hi - lo
         day += timedelta(days=1)
     return total / timedelta(hours=1)
+
+
+def add_work_hours(
+    start: datetime, hours: float, day_ops: DayOpsLookup, max_days: int = 60
+) -> datetime:
+    """Kebalikan `work_hours_between`: maju `hours` jam operasional dari `start`.
+
+    Jam tutup dan hari libur dilewati, jadi hasilnya selalu jatuh di dalam jam buka.
+    Contoh buka 08-17: Senin 16.00 + 3 jam kerja = Selasa 10.00.
+    """
+    local = to_local(start)
+    remaining = timedelta(hours=max(float(hours), 0.0))
+    for _ in range(max_days):
+        ops = day_ops(local.date())
+        if ops.is_open:
+            open_dt, close_dt = _open_window(local.date(), ops)
+            cursor = max(local, open_dt)
+            if cursor <= close_dt:
+                if cursor + remaining <= close_dt:
+                    return (cursor + remaining).astimezone(UTC)
+                remaining -= close_dt - cursor
+        local = datetime.combine(local.date() + timedelta(days=1), time.min, tzinfo=LOCAL_TZ)
+    return (local + remaining).astimezone(UTC)
 
 
 # --- Janji waktu -----------------------------------------------------------

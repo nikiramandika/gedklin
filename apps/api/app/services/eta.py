@@ -1,7 +1,10 @@
-"""Prediksi durasi pesanan (jam) dari model ML.
+"""Prediksi durasi pesanan (jam operasional) dari model ML.
+
+Model memprediksi jam kerja (`duration_work_hours`); pemanggil mengubahnya ke
+waktu kalender dengan `add_work_hours`, sama seperti evaluasi di train_compare.py.
 
 Aplikasi tidak boleh crash karena model: bila model tidak ada, gagal dimuat,
-atau prediksinya tidak valid, `predict_hours` mengembalikan None dan pemanggil
+atau prediksinya tidak valid, `predict_work_hours` mengembalikan None dan pemanggil
 memakai `promised_ready_at` (janji standar mitra).
 """
 
@@ -15,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from app.config import get_settings
-from gedklin_ml.features import FEATURE_ORDER, to_vector
+from gedklin_ml.features import FEATURE_ORDER, MODEL_UNIT, to_vector
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +42,16 @@ class EtaPredictor:
                 logger.error("metadata.json tidak ada di samping model, pakai janji mitra")
                 return
             meta = json.loads(meta_path.read_text())
-            if meta.get("features") != FEATURE_ORDER or meta.get("unit") != "hours":
-                logger.error("Fitur/satuan model tidak cocok, pakai janji mitra")
+            if meta.get("features") != FEATURE_ORDER:
+                logger.error("Fitur model tidak cocok, pakai janji mitra")
+                return
+            if meta.get("unit") != MODEL_UNIT:
+                logger.error(
+                    "Satuan model %s, seharusnya %s. Latih ulang dengan train_compare.py, "
+                    "sementara pakai janji mitra",
+                    meta.get("unit"),
+                    MODEL_UNIT,
+                )
                 return
             import joblib
 
@@ -52,7 +63,7 @@ class EtaPredictor:
             self.model = None
             self.model_version = PROMISE_VERSION
 
-    def predict_hours(self, features: dict[str, float]) -> tuple[float | None, str]:
+    def predict_work_hours(self, features: dict[str, float]) -> tuple[float | None, str]:
         if self.model is None:
             return None, PROMISE_VERSION
         try:

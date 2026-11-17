@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 
+import pytest
+
 from gedklin_ml.features import (
     DEFAULT_DAY_OPS,
     FEATURE_ORDER,
@@ -9,6 +11,7 @@ from gedklin_ml.features import (
     Promise,
     QueueRecord,
     QueueStats,
+    add_work_hours,
     build_features,
     content_from_form,
     content_from_items,
@@ -236,3 +239,24 @@ def test_work_hours_between_counts_only_open_hours() -> None:
     assert work_hours_between(utc(20, 15), utc(21, 10), always()) == 4
     short = DayOps(close_time=time(12, 0))
     assert work_hours_between(utc(20, 8), utc(20, 17), always(short)) == 4
+
+
+def test_add_work_hours_skips_closed_hours_and_days() -> None:
+    # Dalam hari yang sama.
+    assert add_work_hours(utc(20, 9), 3, always()) == utc(20, 12)
+    # Selasa 16.00 + 3 jam kerja = Rabu 10.00.
+    assert add_work_hours(utc(20, 16), 3, always()) == utc(21, 10)
+    # Masuk sebelum buka: hitungan mulai 08.00.
+    assert add_work_hours(utc(20, 6), 1, always()) == utc(20, 9)
+
+    def closed_21(d: date) -> DayOps:
+        return DayOps(is_open=False) if d == date(2026, 10, 21) else DEFAULT_DAY_OPS
+
+    assert add_work_hours(utc(20, 16), 3, closed_21) == utc(22, 10)
+
+
+def test_add_work_hours_is_inverse_of_work_hours_between() -> None:
+    start = utc(20, 14, 30)
+    for hours in (0.5, 4, 9, 20.25):
+        end = add_work_hours(start, hours, always())
+        assert work_hours_between(start, end, always()) == pytest.approx(hours)

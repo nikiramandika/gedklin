@@ -433,6 +433,10 @@ class DashboardOut(BaseModel):
     eta_mae_hours_7d: float | None
     eta_within_tolerance_pct_7d: float | None
     promise_mae_hours_7d: float | None
+    # Pesanan READY 7 hari terakhir yang siap setelah janji standar.
+    late_vs_promise_7d: int = 0
+    # Pesanan aktif yang sudah melewati janji standar.
+    overdue_active: int = 0
     eta_samples_7d: int
     eta_tolerance_hours: float
     model_version: str

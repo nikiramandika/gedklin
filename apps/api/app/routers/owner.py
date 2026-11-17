@@ -426,16 +426,26 @@ def dashboard(db: Session = Depends(get_db), _: User = Depends(owner)) -> Dashbo
         for s, c in db.execute(select(Order.status, func.count(Order.id)).group_by(Order.status))
     }
 
-    # Akurasi 7 hari terakhir pada pesanan READY: model vs janji standar mitra.
+    # Akurasi 7 hari terakhir pada pesanan READY: prediksi awal (yang tertulis di nota)
+    # vs janji standar mitra. Prediksi terkini tidak dipakai karena bisa berubah
+    # mendekati waktu siap sehingga akurasinya terlihat lebih baik dari kenyataan.
     settings = get_settings()
-    since = utcnow() - timedelta(days=7)
+    now = utcnow()
+    since = now - timedelta(days=7)
+    initial = func.coalesce(Order.initial_predicted_ready_at, Order.predicted_ready_at)
     rows = db.execute(
-        select(Order.ready_at, Order.predicted_ready_at, Order.promised_ready_at).where(
-            Order.ready_at >= since, Order.predicted_ready_at.is_not(None)
+        select(Order.ready_at, initial, Order.promised_ready_at).where(
+            Order.ready_at >= since, initial.is_not(None)
         )
     ).all()
     eta_errors = [_hours(r - p) for r, p, _ in rows]
     promise_errors = [_hours(r - j) for r, _, j in rows if j is not None]
+    late_7d = sum(1 for r, _, j in rows if j is not None and r > j)
+    overdue_now = db.scalar(
+        select(func.count(Order.id)).where(
+            Order.status.in_(ACTIVE_STATUSES), Order.promised_ready_at < now
+        )
+    )
 
     def mean(values: list[float]) -> float | None:
         return round(sum(values) / len(values), 1) if values else None
@@ -454,6 +464,8 @@ def dashboard(db: Session = Depends(get_db), _: User = Depends(owner)) -> Dashbo
         eta_mae_hours_7d=mean(eta_errors),
         eta_within_tolerance_pct_7d=round(100 * sum(within) / len(within), 1) if within else None,
         promise_mae_hours_7d=mean(promise_errors),
+        late_vs_promise_7d=late_7d,
+        overdue_active=int(overdue_now or 0),
         eta_samples_7d=len(eta_errors),
         eta_tolerance_hours=settings.eta_tolerance_hours,
         model_version=get_predictor().model_version,

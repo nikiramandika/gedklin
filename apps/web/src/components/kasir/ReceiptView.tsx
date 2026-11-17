@@ -81,6 +81,10 @@ export function ReceiptView({ id }: { id: string }) {
               <Divider />
               <p className="text-xs">Perkiraan siap diambil:</p>
               <p className="font-bold">{formatDateTime(receipt.order.predicted_ready_at)}</p>
+              {receipt.order.promised_ready_at &&
+                receipt.order.promised_ready_at !== receipt.order.predicted_ready_at && (
+                  <p className="text-xs">Janji standar layanan: {formatDateTime(receipt.order.promised_ready_at)}</p>
+                )}
               <p className="mt-2 text-xs">Lacak status cucian:</p>
               <p className="break-all text-xs">{receipt.tracking_url}</p>
               <p className="mt-4 text-center text-xs">Terima kasih!</p>

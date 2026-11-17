@@ -116,6 +116,13 @@ def tracking_url(order: Order, settings: Settings | None = None) -> str:
 def receipt_message(order: Order) -> str:
     """Nota digital: dikirim otomatis saat pesanan dibuat, juga dipakai tombol WA manual."""
     eta = format_local(order.predicted_ready_at) if order.predicted_ready_at else "-"
+    promise = order.promised_ready_at
+    # Janji standar = batas "terlambat"; ditulis hanya bila berbeda dari perkiraan.
+    promise_line = (
+        f"Janji standar layanan: {format_local(promise)}\n"
+        if promise and promise != order.predicted_ready_at
+        else ""
+    )
     lines = "\n".join(f"- {describe_item(i)}: {format_rupiah(i.subtotal)}" for i in order.items)
     return (
         f"Nota Gedklin Laundry\n"
@@ -126,7 +133,8 @@ def receipt_message(order: Order) -> str:
         f"({'LUNAS' if order.is_paid else 'belum lunas, bayar saat ambil'})\n"
         + (f"Catatan: {order.notes}\n" if order.notes else "")
         + f"Perkiraan siap: {eta}\n"
-        f"Lacak: {tracking_url(order)}"
+        + promise_line
+        + f"Lacak: {tracking_url(order)}"
     )
 
 
