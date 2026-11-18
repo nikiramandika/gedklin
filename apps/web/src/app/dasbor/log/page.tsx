@@ -7,6 +7,7 @@ import { AppShell } from "@/components/AppShell";
 import {
   IconBolt,
   IconCalendar,
+  IconChart,
   IconChevronRight,
   IconHistory,
   IconKey,
@@ -46,6 +47,7 @@ const CATEGORIES: { key: ActivityEntity | "all"; label: string }[] = [
   { key: "user", label: "Akun" },
   { key: "settings", label: "Pengaturan" },
   { key: "operation", label: "Operasional" },
+  { key: "report", label: "Laporan" },
   { key: "auth", label: "Login" },
 ];
 
@@ -56,10 +58,14 @@ const ENTITY_STYLE: Record<ActivityEntity, { icon: typeof IconTag; tone: string 
   user: { icon: IconUsers, tone: "text-ink-2" },
   settings: { icon: IconBolt, tone: "text-warn-700" },
   operation: { icon: IconCalendar, tone: "text-ink-2" },
+  report: { icon: IconChart, tone: "text-brand-600" },
   auth: { icon: IconKey, tone: "text-muted" },
 };
 
 const FIELD_LABEL: Record<string, string> = {
+  provider: "Penyedia AI",
+  model: "Model AI",
+  api_key: "API key",
   status: "Status",
   pembayaran: "Pembayaran",
   catatan: "Catatan",

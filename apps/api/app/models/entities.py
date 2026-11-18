@@ -96,7 +96,8 @@ class AppSetting(Base):
     __tablename__ = "app_settings"
 
     key: Mapped[str] = mapped_column(String(50), primary_key=True)
-    value: Mapped[str] = mapped_column(String(100))
+    # Text karena API key AI disimpan terenkripsi.
+    value: Mapped[str] = mapped_column(Text)
 
 
 class Order(Base):
@@ -267,3 +268,26 @@ class ActivityLog(Base):
     @property
     def user_name(self) -> str | None:
         return self.user.name if self.user else None
+
+
+class AiAnalysis(Base):
+    """Riwayat analisis AI atas laporan, supaya hasil lama bisa dibuka tanpa memanggil AI lagi."""
+
+    __tablename__ = "ai_analyses"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    # NULL = analisis umum tanpa pertanyaan.
+    question: Mapped[str | None] = mapped_column(Text)
+    text: Mapped[str] = mapped_column(Text)
+    provider: Mapped[str] = mapped_column(String(20))
+    model: Mapped[str] = mapped_column(String(100))
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
+
+    creator: Mapped[User | None] = relationship(lazy="joined")
+
+    @property
+    def created_by_name(self) -> str | None:
+        return self.creator.name if self.creator else None

@@ -20,6 +20,9 @@ class Settings(BaseSettings):
 
     wa_provider: str = "console"
     wa_api_key: str = ""
+    # Hanya untuk WA_PROVIDER=openwa.
+    openwa_url: str = "http://localhost:2785"
+    openwa_session_id: str = ""
 
     jwt_secret: str = "dev-secret-ganti-di-production"
     jwt_expire_minutes: int = 60 * 12

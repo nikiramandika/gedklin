@@ -10,6 +10,8 @@ import uuid
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 
+import httpx
+
 from app.config import Settings, get_settings
 from app.models import Order, OrderItem
 from gedklin_ml.features import to_local
@@ -58,6 +60,60 @@ class FonnteSender(NotificationSender):
         return f"fonnte-{ids[0]}" if ids else f"fonnte-req-{data.get('requestid', '')}"
 
 
+class SendDeferred(Exception):
+    """Gateway menunda kiriman (batas harian/pemanasan nomor); ulangi setelah retry_after detik."""
+
+    def __init__(self, message: str, retry_after: int) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+class OpenWASender(NotificationSender):
+    """OpenWA (github.com/rmyndharis/OpenWA), gateway WhatsApp Web yang dijalankan sendiri."""
+
+    def __init__(self, base_url: str, api_key: str, session_id: str, timeout: float = 30) -> None:
+        if not api_key:
+            raise ValueError("WA_API_KEY (API key OpenWA) belum diisi")
+        if not session_id:
+            raise ValueError("OPENWA_SESSION_ID belum diisi")
+        self.url = f"{base_url.rstrip('/')}/api/sessions/{session_id}/messages/send-text"
+        self.api_key = api_key
+        self.timeout = timeout
+
+    @staticmethod
+    def chat_id(phone_wa: str) -> str:
+        digits = re.sub(r"\D", "", phone_wa)
+        if digits.startswith("0"):
+            digits = "62" + digits[1:]
+        return f"{digits}@c.us"
+
+    def send(self, phone_wa: str, message: str) -> str:
+        try:
+            res = httpx.post(
+                self.url,
+                json={"chatId": self.chat_id(phone_wa), "text": message},
+                headers={"X-API-Key": self.api_key},
+                timeout=self.timeout,
+            )
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"OpenWA tidak dapat dihubungi: {exc}") from exc
+        try:
+            data = res.json()
+        except ValueError:
+            data = None
+        if not isinstance(data, dict):
+            data = {}
+        if res.status_code == 429 and data.get("code") == "SEND_PACING_LIMITED":
+            retry_after = int(data.get("retryAfterSeconds") or 600)
+            raise SendDeferred(f"Ditunda batas kirim OpenWA ({retry_after} detik)", retry_after)
+        if res.status_code >= 400:
+            detail = data.get("message")
+            if isinstance(detail, list):
+                detail = "; ".join(map(str, detail))
+            raise RuntimeError(f"OpenWA HTTP {res.status_code}: {detail or res.text[:200]}")
+        return f"openwa-{data.get('messageId', '')}"[:100]
+
+
 def get_sender(settings: Settings | None = None) -> NotificationSender:
     settings = settings or get_settings()
     provider = settings.wa_provider.lower()
@@ -65,6 +121,8 @@ def get_sender(settings: Settings | None = None) -> NotificationSender:
         return ConsoleSender()
     if provider == "fonnte":
         return FonnteSender(settings.wa_api_key)
+    if provider == "openwa":
+        return OpenWASender(settings.openwa_url, settings.wa_api_key, settings.openwa_session_id)
     raise NotImplementedError(f"Adapter WA untuk provider '{provider}' belum dibuat")
 
 

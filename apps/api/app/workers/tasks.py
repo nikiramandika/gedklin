@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.db import SessionLocal, utcnow
 from app.models import Notification, NotificationStatus, NotificationType, Order
 from app.services.notifications import (
+    SendDeferred,
     delay_message,
     get_sender,
     ready_message,
@@ -18,6 +19,8 @@ from app.services.orders import mark_followups
 from app.workers import celery_app
 
 logger = logging.getLogger(__name__)
+# Penundaan karena batas kirim harian bisa berjam-jam; cukup untuk ±1 hari.
+MAX_DEFERRALS = 30
 
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=60)
@@ -43,6 +46,17 @@ def send_notification(self: Task, notification_id: int) -> str:
 
         try:
             msg_id = get_sender().send(order.customer.phone_wa, message)
+        except SendDeferred as exc:
+            # Bukan gagal: gateway sedang membatasi kiriman. FAILED supaya tidak diantrekan ulang
+            # oleh resend_pending_notifications; jeda maks 55 menit agar di bawah visibility
+            # timeout Redis (1 jam) sehingga task tidak terkirim ganda.
+            notif.status = NotificationStatus.FAILED
+            notif.error = str(exc)[:500]
+            db.commit()
+            logger.info("Notifikasi %s ditunda: %s", notification_id, exc)
+            raise self.retry(
+                exc=exc, countdown=min(exc.retry_after, 55 * 60), max_retries=MAX_DEFERRALS
+            ) from exc
         except Exception as exc:
             notif.status = NotificationStatus.FAILED
             notif.error = str(exc)[:500]

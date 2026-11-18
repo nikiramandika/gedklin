@@ -1,5 +1,6 @@
 from app.models.entities import (
     ActivityLog,
+    AiAnalysis,
     AppSetting,
     Customer,
     DailyOperation,
@@ -27,6 +28,7 @@ from app.models.enums import (
 __all__ = [
     "ACTIVE_STATUSES",
     "ActivityLog",
+    "AiAnalysis",
     "AppSetting",
     "CatalogGroup",
     "CatalogUnit",

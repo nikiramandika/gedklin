@@ -19,6 +19,9 @@ from app.models import (
     User,
 )
 from app.schemas import (
+    AiProviderOut,
+    AiSettingsIn,
+    AiSettingsOut,
     AppSettingsIn,
     AppSettingsOut,
     CatalogItemCreate,
@@ -35,6 +38,7 @@ from app.schemas import (
     UserUpdate,
 )
 from app.security import get_current_user, hash_password, require_roles
+from app.services import ai as ai_service
 from app.services import catalog as catalog_service
 from app.services.activity import diff, log_activity, snapshot
 from app.services.app_settings import load_app_config, save_app_settings
@@ -212,6 +216,60 @@ def update_app_settings(
         log_activity(db, me, "settings.update", "Mengubah pengaturan", changes=changed)
     db.commit()
     return after
+
+
+def _ai_settings_out(db: Session) -> AiSettingsOut:
+    config = ai_service.load_ai_config(db)
+    return AiSettingsOut(
+        provider=config.provider,
+        model=config.model,
+        has_key=config.ready,
+        key_hint=ai_service.mask_key(config.api_key),
+        providers=[
+            AiProviderOut(id=pid, label=p.label, default_model=p.default_model)
+            for pid, p in ai_service.PROVIDERS.items()
+        ],
+    )
+
+
+def _ai_audit(out: AiSettingsOut) -> dict:
+    return {"provider": out.provider, "model": out.model, "api_key": out.key_hint}
+
+
+@router.get("/settings/ai", response_model=AiSettingsOut)
+def get_ai_settings(db: Session = Depends(get_db), _: User = Depends(owner)) -> AiSettingsOut:
+    return _ai_settings_out(db)
+
+
+@router.put("/settings/ai", response_model=AiSettingsOut)
+def update_ai_settings(
+    data: AiSettingsIn, db: Session = Depends(get_db), me: User = Depends(owner)
+) -> AiSettingsOut:
+    before = _ai_audit(_ai_settings_out(db))
+    ai_service.save_ai_config(
+        db,
+        provider=data.provider,
+        model=data.model,
+        api_key=data.api_key,
+        clear_key=data.clear_key,
+    )
+    db.flush()
+    after = _ai_settings_out(db)
+    changed = diff(before, _ai_audit(after))
+    if changed:
+        log_activity(db, me, "settings.ai", "Mengubah pengaturan AI", changes=changed)
+    db.commit()
+    return after
+
+
+@router.post("/settings/ai/test")
+def test_ai_settings(db: Session = Depends(get_db), _: User = Depends(owner)) -> dict[str, str]:
+    config = ai_service.load_ai_config(db)
+    try:
+        reply = ai_service.chat(config, "Jawab singkat.", "Balas dengan satu kata: siap")
+    except ai_service.AiError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+    return {"model": config.model, "reply": reply[:100]}
 
 
 @router.get("/service-promises", response_model=list[ServicePromiseOut])

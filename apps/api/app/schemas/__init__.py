@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -364,6 +364,46 @@ class ReportOut(BaseModel):
     by_service: list[ReportRow]
     by_cashier: list[ReportRow]
     by_payment: list[ReportRow]
+
+
+class AiProviderOut(BaseModel):
+    id: str
+    label: str
+    default_model: str
+
+
+class AiSettingsOut(BaseModel):
+    provider: str
+    model: str
+    has_key: bool
+    key_hint: str | None
+    providers: list[AiProviderOut]
+
+
+class AiSettingsIn(BaseModel):
+    provider: Literal["gemini", "openrouter"]
+    model: str | None = Field(default=None, max_length=100)
+    # Kosong = key lama dipertahankan.
+    api_key: str | None = Field(default=None, max_length=500)
+    clear_key: bool = False
+
+
+class AiAnalysisIn(BaseModel):
+    start: date | None = None
+    end: date | None = None
+    question: str | None = Field(default=None, max_length=500)
+
+
+class AiAnalysisOut(ORM):
+    id: int
+    period_start: date
+    period_end: date
+    question: str | None
+    text: str
+    provider: str
+    model: str
+    created_by_name: str | None
+    created_at: datetime
 
 
 class ChangePasswordIn(BaseModel):

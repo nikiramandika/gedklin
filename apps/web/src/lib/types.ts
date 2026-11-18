@@ -200,6 +200,7 @@ export type ActivityEntity =
   | "user"
   | "settings"
   | "operation"
+  | "report"
   | "auth";
 
 export interface ActivityLog {
@@ -254,4 +255,26 @@ export interface Report {
   by_service: ReportRow[];
   by_cashier: ReportRow[];
   by_payment: ReportRow[];
+}
+
+export type AiProvider = "gemini" | "openrouter";
+
+export interface AiSettings {
+  provider: AiProvider;
+  model: string;
+  has_key: boolean;
+  key_hint: string | null;
+  providers: { id: AiProvider; label: string; default_model: string }[];
+}
+
+export interface AiAnalysis {
+  id: number;
+  period_start: string;
+  period_end: string;
+  question: string | null;
+  text: string;
+  provider: AiProvider;
+  model: string;
+  created_by_name: string | null;
+  created_at: string;
 }
