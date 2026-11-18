@@ -1,18 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
 import { PAYMENT_LABEL, formatDateTime, formatRupiah, paymentLabel, relativeEta } from "@/lib/format";
 import type { Customer, Order, PaymentMethod, Receipt } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 
-import { IconChat, IconCheck, IconPlus, IconPrinter, IconReceipt } from "../icons";
+import { IconChat, IconCheck, IconPlus, IconPrinter } from "../icons";
+import { Modal } from "../overlay";
 import {
   Alert,
   Button,
   ButtonLink,
-  CardHeader,
   ErrorText,
   Field,
   PaymentBadge,
@@ -22,35 +22,42 @@ import {
 } from "../ui";
 import { ItemLines, SpeedField, useItemEditor } from "./ItemEditor";
 
-type PayTiming = "later" | "now";
+// Satu pilihan untuk "kapan & bagaimana bayar": bayar nanti, atau langsung lunas dengan metodenya.
+type Pay = "later" | PaymentMethod;
 
 const METHODS: PaymentMethod[] = ["CASH", "QRIS", "TRANSFER"];
 const QUICK_NOTES = ["Ada noda", "Mudah luntur", "Pisah warna", "Ada yang robek", "Tanpa pewangi"];
+const LOOKUP_DELAY_MS = 400;
 
-export function NewOrderForm({ onCreated }: { onCreated: () => void }) {
+export function NewOrderForm({ onCreated }: { onCreated: (order: Order) => void }) {
   const editor = useItemEditor();
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
-  const [knownCustomer, setKnownCustomer] = useState(false);
+  const [knownCustomer, setKnownCustomer] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
-  const [payTiming, setPayTiming] = useState<PayTiming>("later");
-  const [method, setMethod] = useState<PaymentMethod>("CASH");
+  const [showNotes, setShowNotes] = useState(false);
+  const [pay, setPay] = useState<Pay>("later");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const now = useNow();
 
   const canSubmit = editor.ready && !busy;
+  const paidNow = pay !== "later";
 
-  async function lookupCustomer() {
-    if (phone.replace(/\D/g, "").length < 9) return;
-    try {
-      const c = await api<Customer | null>(`/orders/customers/lookup?phone=${encodeURIComponent(phone)}`);
-      setKnownCustomer(c !== null);
-      if (c && !name) setName(c.name);
-    } catch {
-    }
-  }
+  // Cari pelanggan lama begitu nomor terlihat lengkap, tanpa menunggu kasir pindah kolom.
+  useEffect(() => {
+    if (phone.replace(/\D/g, "").length < 10) return;
+    const id = setTimeout(() => {
+      api<Customer | null>(`/orders/customers/lookup?phone=${encodeURIComponent(phone)}`)
+        .then((c) => {
+          setKnownCustomer(c ? c.name : null);
+          if (c) setName((n) => n || c.name);
+        })
+        .catch(() => {});
+    }, LOOKUP_DELAY_MS);
+    return () => clearTimeout(id);
+  }, [phone]);
 
   function addQuickNote(text: string) {
     setNotes((n) => (n.trim() ? `${n.trim().replace(/[.,]$/, "")}, ${text.toLowerCase()}` : text));
@@ -59,10 +66,10 @@ export function NewOrderForm({ onCreated }: { onCreated: () => void }) {
   function reset() {
     setPhone("");
     setName("");
-    setKnownCustomer(false);
+    setKnownCustomer(null);
     setNotes("");
-    setPayTiming("later");
-    setMethod("CASH");
+    setShowNotes(false);
+    setPay("later");
     editor.reset();
   }
 
@@ -80,12 +87,12 @@ export function NewOrderForm({ onCreated }: { onCreated: () => void }) {
           is_express: editor.express,
           items: editor.items,
           notes: notes.trim() || null,
-          payment_method: payTiming === "now" ? method : null,
+          payment_method: paidNow ? pay : null,
         },
       });
       setReceipt(await api<Receipt>(`/orders/${order.id}/receipt`));
       reset();
-      onCreated();
+      onCreated(order);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal menyimpan pesanan");
     } finally {
@@ -93,164 +100,193 @@ export function NewOrderForm({ onCreated }: { onCreated: () => void }) {
     }
   }
 
-  if (receipt) {
-    const o = receipt.order;
-    return (
-      <section className="rounded-2xl bg-surface shadow-card animate-[enter-up_220ms_cubic-bezier(0.16,1,0.3,1)]">
-        <CardHeader icon={IconCheck} tone="ok" title="Pesanan tersimpan" description="Berikan kode ini ke pelanggan." />
-        <div className="space-y-5 p-5">
-          <div className="rounded-2xl bg-gradient-to-br from-brand-600 to-brand-800 px-4 py-6 text-center text-white shadow-raise">
-            <p className="text-xs font-medium text-brand-100">Kode lacak</p>
-            <p className="mt-2 font-mono text-[26px] font-semibold leading-none tracking-[0.14em] sm:text-[32px]">
-              {o.tracking_code}
-            </p>
-          </div>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2.5 text-sm">
-            <dt className="text-muted">Pelanggan</dt>
-            <dd className="text-right font-medium text-ink">{o.customer.name}</dd>
-            <dt className="text-muted">Layanan</dt>
-            <dd className="text-right font-medium text-ink">{o.is_express ? "Express" : "Reguler"}</dd>
-            <dt className="text-muted">Total</dt>
-            <dd className="text-right">
-              <span className="tabular block text-lg font-semibold text-ink">{formatRupiah(o.price_total)}</span>
-              <span className="text-xs text-muted">{paymentLabel(o)}</span>
-            </dd>
-            <dt className="text-muted">Perkiraan siap</dt>
-            <dd className="text-right">
-              <span className="font-medium text-ink">{formatDateTime(o.predicted_ready_at)}</span>
-              <span className="block text-xs text-muted">{relativeEta(o.predicted_ready_at, now)}</span>
-            </dd>
-          </dl>
-          <p className="text-center text-xs text-muted">
-            Nota dikirim otomatis ke WhatsApp pelanggan. Status pengiriman ada di detail pesanan.
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            <ButtonLink variant="whatsapp" size="lg" href={receipt.whatsapp_link} target="_blank" rel="noopener noreferrer">
-              <IconChat size={18} />
-              Kirim ulang WA
-            </ButtonLink>
-            <ButtonLink variant="secondary" size="lg" href={`/nota/${o.id}`} target="_blank" rel="noopener">
-              <IconPrinter size={18} />
-              Cetak Nota
-            </ButtonLink>
-          </div>
-          <Button variant="ghost" className="w-full" onClick={() => setReceipt(null)}>
-            <IconPlus size={18} />
-            Buat pesanan baru
-          </Button>
-        </div>
-      </section>
-    );
-  }
+  const total = editor.quote ? formatRupiah(editor.quote.total) : "Rp –";
+  const submitLabel = busy ? "Menyimpan..." : paidNow ? `Simpan · lunas ${PAYMENT_LABEL[pay]}` : "Simpan nota";
 
   return (
-    <form onSubmit={submit} className="rounded-2xl bg-surface shadow-card" aria-label="Pesanan baru">
-      <CardHeader icon={IconReceipt} title="Pesanan Baru" description="Harga dihitung otomatis sesuai price list." />
+    <>
+      <form onSubmit={submit} className="rounded-2xl bg-surface shadow-card" aria-label="Pesanan baru">
+        <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
+          <h2 className="text-base font-semibold text-ink">Nota baru</h2>
+          <span className="text-xs text-muted">Harga dari price list</span>
+        </header>
 
-      <div className="space-y-6 px-5 pb-5 pt-3">
-        <fieldset className="space-y-3">
-          <legend className="mb-3 text-sm font-semibold text-ink">Pelanggan</legend>
-          <Field label="No. WhatsApp" hint={knownCustomer ? "Pelanggan lama, nama terisi otomatis." : undefined}>
-            <input
-              className={inputClass}
-              type="tel"
-              inputMode="tel"
-              autoComplete="off"
-              placeholder="08xx xxxx xxxx"
-              value={phone}
-              onChange={(e) => {
-                setPhone(e.target.value);
-                setKnownCustomer(false);
-              }}
-              onBlur={lookupCustomer}
-              required
-            />
-          </Field>
-          <Field label="Nama pelanggan">
-            <input
-              className={inputClass}
-              autoComplete="off"
-              autoCapitalize="words"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-          </Field>
-        </fieldset>
-
-        <ItemLines editor={editor} />
-        <SpeedField editor={editor} />
-
-        <fieldset>
-          <legend className="mb-3 text-sm font-semibold text-ink">
-            Catatan <span className="font-normal text-muted">(opsional)</span>
-          </legend>
-          <div className="mb-2 flex flex-wrap gap-1.5">
-            {QUICK_NOTES.map((n) => (
-              <button
-                key={n}
-                type="button"
-                onClick={() => addQuickNote(n)}
-                className="inline-flex h-9 items-center gap-1 rounded-full bg-canvas px-3 text-[13px] font-medium text-ink-2 transition-colors duration-150 hover:bg-brand-50 hover:text-brand-700"
-              >
-                <IconPlus size={14} />
-                {n}
-              </button>
-            ))}
-          </div>
-          <textarea
-            className={textareaClass}
-            rows={2}
-            maxLength={1000}
-            placeholder="Kondisi barang atau permintaan pelanggan, mis. noda di kemeja putih"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            aria-label="Catatan pesanan"
-          />
-        </fieldset>
-
-        <fieldset>
-          <legend className="mb-3 text-sm font-semibold text-ink">Pembayaran</legend>
-          <Segmented<PayTiming>
-            label="Waktu pembayaran"
-            value={payTiming}
-            onChange={setPayTiming}
-            options={[
-              { value: "later", label: "Bayar saat ambil" },
-              { value: "now", label: "Lunas sekarang" },
-            ]}
-          />
-          {payTiming === "now" && (
-            <div className="mt-2">
-              <Segmented<PaymentMethod>
-                label="Metode pembayaran"
-                value={method}
-                onChange={setMethod}
-                options={METHODS.map((m) => ({ value: m, label: PAYMENT_LABEL[m] }))}
+        <div className="space-y-5 p-4">
+          <fieldset className="space-y-3">
+            <legend className="label-caps mb-2">1 · Pelanggan</legend>
+            <Field label="No. WhatsApp">
+              <input
+                className={inputClass}
+                type="tel"
+                inputMode="tel"
+                autoComplete="off"
+                placeholder="08xx xxxx xxxx"
+                value={phone}
+                onChange={(e) => {
+                  setPhone(e.target.value);
+                  setKnownCustomer(null);
+                }}
+                required
               />
+            </Field>
+            {knownCustomer && (
+              <p className="flex items-center gap-1.5 text-sm text-ok-700" role="status">
+                <IconCheck size={14} />
+                Pelanggan lama · {knownCustomer}
+              </p>
+            )}
+            <Field label="Nama">
+              <input
+                className={inputClass}
+                autoComplete="off"
+                autoCapitalize="words"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+            </Field>
+          </fieldset>
+
+          <div>
+            <p className="label-caps mb-2" aria-hidden="true">
+              2 · Cucian
+            </p>
+            <div className="space-y-4">
+              <ItemLines editor={editor} />
+              <SpeedField editor={editor} />
             </div>
+          </div>
+
+          <fieldset>
+            <legend className="label-caps mb-2">3 · Pembayaran</legend>
+            <Segmented<Pay>
+              label="Pembayaran"
+              value={pay}
+              onChange={setPay}
+              options={[
+                { value: "later", label: "Bayar nanti" },
+                ...METHODS.map((m) => ({ value: m, label: PAYMENT_LABEL[m] })),
+              ]}
+            />
+          </fieldset>
+
+          {showNotes ? (
+            <fieldset>
+              <legend className="label-caps mb-2">Catatan</legend>
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {QUICK_NOTES.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => addQuickNote(n)}
+                    className="inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-xs font-medium text-ink-2 ring-1 ring-inset ring-line-strong transition-colors duration-150 hover:bg-brand-50 hover:text-brand-700 hover:ring-brand-300 pointer-coarse:h-10 pointer-coarse:px-3"
+                  >
+                    <IconPlus size={12} />
+                    {n}
+                  </button>
+                ))}
+              </div>
+              <textarea
+                className={textareaClass}
+                rows={2}
+                maxLength={1000}
+                placeholder="Mis. noda di kemeja putih"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                aria-label="Catatan pesanan"
+                autoFocus
+              />
+            </fieldset>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowNotes(true)}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md text-sm font-medium text-brand-600 hover:text-brand-700 pointer-coarse:h-11"
+            >
+              <IconPlus size={14} />
+              Tambah catatan
+            </button>
           )}
-        </fieldset>
 
-        <ErrorText message={editor.quoteError} />
-        <ErrorText message={error ?? editor.catalogError} />
-        {editor.catalog.length === 0 && !editor.catalogError && <Alert tone="info">Memuat daftar layanan...</Alert>}
-      </div>
-
-      <footer className="sticky bottom-[calc(68px+env(safe-area-inset-bottom))] z-10 rounded-b-2xl bg-surface/95 px-5 py-4 shadow-[0_-8px_16px_-12px_rgb(16_24_40/0.18)] backdrop-blur lg:bottom-0">
-        <div className="mb-3 flex items-baseline justify-between gap-3">
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
-            Total · {editor.lines.length} item{editor.express ? " · Express" : ""}
-            <PaymentBadge paid={payTiming === "now"} />
-          </span>
-          <span className="tabular text-2xl font-semibold tracking-tight text-ink" aria-live="polite">
-            {editor.quote ? formatRupiah(editor.quote.total) : "Rp –"}
-          </span>
+          <ErrorText message={editor.quoteError} />
+          <ErrorText message={error ?? editor.catalogError} />
+          {editor.catalog.length === 0 && !editor.catalogError && <Alert tone="info">Memuat daftar layanan...</Alert>}
         </div>
-        <Button type="submit" size="lg" className="w-full" loading={busy} disabled={!canSubmit}>
-          {busy ? "Menyimpan..." : payTiming === "now" ? `Simpan & terima ${PAYMENT_LABEL[method]}` : "Simpan pesanan"}
+
+        <footer className="sticky bottom-[calc(57px+env(safe-area-inset-bottom))] z-10 rounded-b-2xl bg-surface px-4 py-3 shadow-[inset_0_1px_0_var(--color-line)] lg:bottom-0">
+          <div className="flex items-center justify-between gap-3">
+            <span className="flex min-w-0 flex-col items-start gap-1">
+              <span className="text-xs text-muted">
+                Total · {editor.lines.length} item{editor.express ? " · Express" : ""}
+              </span>
+              <span className="tabular display text-2xl text-ink" aria-live="polite">
+                {total}
+              </span>
+            </span>
+            <PaymentBadge paid={paidNow} />
+          </div>
+          <Button type="submit" size="lg" className="mt-3 w-full" loading={busy} disabled={!canSubmit}>
+            {submitLabel}
+          </Button>
+        </footer>
+      </form>
+
+      <SavedDialog receipt={receipt} now={now} onClose={() => setReceipt(null)} />
+    </>
+  );
+}
+
+// Setelah simpan: formulir sudah kosong untuk pelanggan berikutnya; kode lacak dan aksi nota muncul di dialog.
+function SavedDialog({ receipt, now, onClose }: { receipt: Receipt | null; now: number; onClose: () => void }) {
+  const o = receipt?.order;
+  return (
+    <Modal
+      open={receipt !== null}
+      onClose={onClose}
+      title="Nota tersimpan"
+      description="Masuk antrean · WhatsApp terkirim otomatis"
+      footer={
+        <Button size="lg" className="w-full" onClick={onClose} autoFocus>
+          <IconPlus size={16} />
+          Nota berikutnya
         </Button>
-      </footer>
-    </form>
+      }
+    >
+      {receipt && o && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3 rounded-lg bg-subtle px-4 py-3 ring-1 ring-inset ring-line">
+            <div>
+              <p className="text-xs text-muted">Kode lacak</p>
+              <p className="serial mt-1 text-2xl leading-none tracking-[0.12em]">{o.tracking_code}</p>
+            </div>
+            <PaymentBadge paid={o.is_paid} className="animate-stamp" />
+          </div>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-base">
+            <dt className="text-muted">Pelanggan</dt>
+            <dd className="text-right font-medium text-ink">{o.customer.name}</dd>
+            <dt className="text-muted">Total</dt>
+            <dd className="text-right">
+              <span className="tabular font-semibold text-ink">{formatRupiah(o.price_total)}</span>
+              <span className="block text-xs text-muted">{paymentLabel(o)}</span>
+            </dd>
+            <dt className="text-muted">Siap</dt>
+            <dd className="text-right">
+              <span className="font-medium text-ink">{formatDateTime(o.predicted_ready_at)}</span>
+              {now > 0 && <span className="block text-xs text-muted">{relativeEta(o.predicted_ready_at, now)}</span>}
+            </dd>
+          </dl>
+          <div className="grid grid-cols-2 gap-2">
+            <ButtonLink variant="secondary" href={receipt.whatsapp_link} target="_blank" rel="noopener noreferrer">
+              <IconChat size={16} className="text-ok-600" />
+              Kirim ulang WA
+            </ButtonLink>
+            <ButtonLink variant="secondary" href={`/nota/${o.id}`} target="_blank" rel="noopener">
+              <IconPrinter size={16} />
+              Cetak nota
+            </ButtonLink>
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }

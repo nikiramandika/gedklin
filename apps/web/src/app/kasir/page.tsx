@@ -3,28 +3,32 @@
 import { useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
-import { IconList, IconPackageCheck, IconPlusCircle, IconSearch } from "@/components/icons";
+import { IconClock, IconList, IconPackageCheck, IconPlusCircle } from "@/components/icons";
 import { NewOrderForm } from "@/components/kasir/NewOrderForm";
-import { OrderBoard, useBoardData, type BoardTab } from "@/components/kasir/OrderBoard";
+import { BOARD_TABS, OrderBoard, boardCount, useBoardData, type BoardTab } from "@/components/kasir/OrderBoard";
 import { useToast } from "@/components/overlay";
 import type { Role } from "@/lib/types";
 
 const ROLES: Role[] = ["cashier", "owner"];
 
-type View = "new" | BoardTab;
+const TAB_ICON: Record<BoardTab, typeof IconList> = {
+  received: IconList,
+  processing: IconClock,
+  ready: IconPackageCheck,
+};
 
 export default function KasirPage() {
-  const [view, setView] = useState<View>("new");
+  // HP: satu layar per tugas (nota baru atau salah satu tahap). Tablet/desktop: formulir dan papan berdampingan.
+  const [mobileView, setMobileView] = useState<"new" | "board">("new");
+  const [tab, setTab] = useState<BoardTab>("received");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [highlightId, setHighlightId] = useState<number | null>(null);
   const toast = useToast();
   const board = useBoardData(refreshKey);
-  const boardTab: BoardTab = view === "new" ? "queue" : view;
 
-  const items: { key: View; label: string; icon: typeof IconList; count?: number }[] = [
+  const items: { key: "new" | BoardTab; label: string; icon: typeof IconList; count?: number }[] = [
     { key: "new", label: "Baru", icon: IconPlusCircle },
-    { key: "queue", label: "Antrean", icon: IconList, count: board.queue?.length },
-    { key: "ready", label: "Siap", icon: IconPackageCheck, count: board.ready?.length },
-    { key: "search", label: "Cari", icon: IconSearch },
+    ...BOARD_TABS.map((t) => ({ key: t.key, label: t.short, icon: TAB_ICON[t.key], count: boardCount(board, t.key) })),
   ];
 
   return (
@@ -33,7 +37,7 @@ export default function KasirPage() {
       bottomBar={
         <ul className="grid grid-cols-4">
           {items.map((it) => {
-            const active = view === it.key;
+            const active = it.key === "new" ? mobileView === "new" : mobileView === "board" && tab === it.key;
             const Icon = it.icon;
             return (
               <li key={it.key}>
@@ -41,20 +45,22 @@ export default function KasirPage() {
                   type="button"
                   aria-current={active ? "page" : undefined}
                   onClick={() => {
-                    setView(it.key);
+                    if (it.key === "new") setMobileView("new");
+                    else {
+                      setMobileView("board");
+                      setTab(it.key);
+                    }
                     window.scrollTo({ top: 0 });
                   }}
-                  className={`relative flex h-16 w-full flex-col items-center justify-center gap-1 text-xs font-medium transition-colors duration-150 ${
+                  className={`relative flex h-14 w-full flex-col items-center justify-center gap-0.5 text-xs font-medium transition-colors duration-150 ${
                     active ? "text-brand-700" : "text-muted"
                   }`}
                 >
-                  {active && (
-                    <span className="absolute inset-x-6 top-0 h-0.5 rounded-b bg-brand-600" aria-hidden="true" />
-                  )}
+                  {active && <span className="absolute inset-x-5 top-0 h-[3px] bg-brand-600" aria-hidden="true" />}
                   <span className="relative">
-                    <Icon size={22} />
+                    <Icon size={20} />
                     {!!it.count && (
-                      <span className="tabular absolute -right-3 -top-1.5 min-w-5 rounded-full bg-brand-600 px-1 text-center text-[11px] font-semibold leading-[18px] text-white ring-2 ring-surface">
+                      <span className="tabular absolute -right-3.5 -top-1.5 min-w-5 rounded-full bg-brand-600 px-1 text-center text-xs font-semibold leading-[18px] text-white ring-2 ring-surface">
                         {it.count}
                       </span>
                     )}
@@ -67,23 +73,23 @@ export default function KasirPage() {
         </ul>
       }
     >
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(360px,420px)_minmax(0,1fr)]">
-        <div className={`${view === "new" ? "block" : "hidden"} lg:block`}>
+      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(340px,380px)_minmax(0,1fr)]">
+        <div className={`${mobileView === "new" ? "block" : "hidden"} lg:block`}>
           <NewOrderForm
-            onCreated={() => {
+            onCreated={(order) => {
               setRefreshKey((k) => k + 1);
-              toast("Pesanan tersimpan dan masuk antrean");
+              setTab("received");
+              setHighlightId(order.id);
+              toast(`${order.tracking_code} masuk antrean`);
             }}
           />
         </div>
-        <div className={`${view === "new" ? "hidden" : "block"} min-w-0 lg:block`}>
+        <div className={`${mobileView === "board" ? "block" : "hidden"} min-w-0 lg:block`}>
           <OrderBoard
-            tab={boardTab}
-            onTabChange={setView}
-            queue={board.queue}
-            ready={board.ready}
-            error={board.error}
-            reload={board.reload}
+            tab={tab}
+            onTabChange={setTab}
+            board={board}
+            highlightId={highlightId}
             onStatusChanged={(message) => toast(message)}
           />
         </div>

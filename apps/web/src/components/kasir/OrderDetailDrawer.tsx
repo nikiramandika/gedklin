@@ -19,7 +19,7 @@ import {
 import type { Order, OrderDetail, OrderNotification, Receipt } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 
-import { IconChat, IconHistory, IconPrinter } from "../icons";
+import { IconChat, IconEdit, IconHistory, IconPrinter } from "../icons";
 import { ConfirmDialog, Drawer, Modal } from "../overlay";
 import {
   Alert,
@@ -160,7 +160,7 @@ function OrderDetailPanel({
         open
         onClose={() => setMode("view")}
         title="Koreksi isi pesanan"
-        description={`${order.customer.name} · ${order.tracking_code}. Harga dan perkiraan siap dihitung ulang.`}
+        description={`${order.customer.name} · ${order.tracking_code}`}
         footer={
           <>
             <Button variant="ghost" onClick={() => setMode("view")} disabled={itemsBusy}>
@@ -192,11 +192,11 @@ function OrderDetailPanel({
       description={
         order ? (
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="font-mono font-medium tracking-wider text-brand-700">{order.tracking_code}</span>
+            <span className="serial">{order.tracking_code}</span>
             {isOwner && (
               <Link
                 href={`/dasbor/log?q=${encodeURIComponent(order.tracking_code)}`}
-                className="inline-flex items-center gap-1 rounded text-[13px] font-medium text-ink-2 underline-offset-4 hover:text-brand-700 hover:underline"
+                className="inline-flex items-center gap-1 rounded text-xs font-medium text-ink-2 underline-offset-4 hover:text-brand-700 hover:underline"
               >
                 <IconHistory size={14} />
                 Lihat log pesanan
@@ -216,18 +216,18 @@ function OrderDetailPanel({
             {!cancelled && (
               <div className="grid grid-cols-2 gap-2">
                 <ButtonLink
-                  variant="whatsapp"
+                  variant="secondary"
                   href={receipt?.whatsapp_link}
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-disabled={!receipt}
                 >
-                  <IconChat size={18} />
+                  <IconChat size={16} className="text-ok-600" />
                   Kirim ulang WA
                 </ButtonLink>
                 <ButtonLink variant="secondary" href={`/nota/${order.id}`} target="_blank" rel="noopener">
-                  <IconPrinter size={18} />
-                  Cetak Nota
+                  <IconPrinter size={16} />
+                  Cetak nota
                 </ButtonLink>
               </div>
             )}
@@ -239,7 +239,7 @@ function OrderDetailPanel({
       {!order ? (
         !error && <Loading rows={4} />
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-5">
           {cancelled && (
             <Alert tone="danger">
               Dibatalkan {formatDateTime(order.cancelled_at)}
@@ -247,13 +247,13 @@ function OrderDetailPanel({
             </Alert>
           )}
 
-          <section className="rounded-2xl bg-subtle p-4">
+          <section className="rounded-xl bg-subtle p-4 ring-1 ring-inset ring-line">
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge status={order.status} />
               {order.is_express && <ExpressBadge />}
               {!cancelled && <PaymentBadge paid={order.is_paid} />}
               {order.needs_followup && (
-                <span className="rounded-full bg-warn-50 px-2 py-0.5 text-xs font-medium text-warn-700">
+                <span className="rounded-sm bg-warn-50 px-2 py-0.5 text-xs font-medium text-warn-700">
                   Perlu tindak lanjut
                 </span>
               )}
@@ -304,7 +304,7 @@ function OrderDetailPanel({
               <div>
                 <p className="text-sm text-muted">Pembayaran</p>
                 <p className="tabular text-lg font-semibold text-ink">{formatRupiah(order.price_total)}</p>
-                <p className="text-[13px] text-ink-2">
+                <p className="text-xs text-ink-2">
                   {paymentLabel(order)}
                   {order.paid_at && ` · ${formatDateTime(order.paid_at)}`}
                 </p>
@@ -312,8 +312,9 @@ function OrderDetailPanel({
               {order.is_paid ? (
                 isOwner && (
                   <Button
-                    variant="ghost"
+                    variant="secondary"
                     size="sm"
+                    className="text-danger-700! ring-1 ring-danger-600/30 hover:bg-danger-50!"
                     onClick={() => {
                       setConfirmError(null);
                       setConfirm("void");
@@ -334,7 +335,8 @@ function OrderDetailPanel({
             <div className="mb-2 flex items-center justify-between gap-3">
               <h3 className="text-sm font-semibold text-ink">Catatan</h3>
               {!cancelled && (
-                <Button variant="ghost" size="sm" onClick={() => setEditingDetails(true)}>
+                <Button variant="secondary" size="sm" onClick={() => setEditingDetails(true)}>
+                  <IconEdit size={14} className="text-brand-600" />
                   Ubah catatan & rak
                 </Button>
               )}
@@ -348,8 +350,9 @@ function OrderDetailPanel({
             <div className="mb-2 flex items-center justify-between gap-3">
               <h3 className="text-sm font-semibold text-ink">Isi pesanan · {speedLabel(order.is_express)}</h3>
               {editable && (
-                <Button variant="ghost" size="sm" onClick={() => setMode("items")}>
-                  Koreksi
+                <Button variant="secondary" size="sm" onClick={() => setMode("items")}>
+                  <IconEdit size={14} className="text-brand-600" />
+                  Koreksi isi
                 </Button>
               )}
             </div>
@@ -358,7 +361,7 @@ function OrderDetailPanel({
                 <li key={i} className="flex items-start justify-between gap-4 rounded-xl bg-surface p-3 shadow-tile">
                   <div className="min-w-0">
                     <p className="font-medium text-ink">{item.name}</p>
-                    <p className="text-[13px] text-muted">
+                    <p className="text-xs text-muted">
                       {[
                         item.weight_kg !== null ? `${item.weight_kg} kg` : null,
                         item.qty_pcs ? `${item.qty_pcs} pcs` : null,
@@ -373,9 +376,11 @@ function OrderDetailPanel({
               ))}
             </ul>
             {!editable && !cancelled && (order.status === "RECEIVED" || order.status === "PROCESSING") && (
-              <p className="mt-2 text-xs text-muted">
-                Pesanan sudah lunas, jadi isinya tidak bisa dikoreksi.
-                {isOwner ? " Batalkan catatan bayar dulu bila perlu." : " Hubungi pemilik bila perlu."}
+              <p className="mt-2 rounded-lg bg-subtle px-3 py-2 text-sm text-ink-2">
+                Sudah lunas, isi pesanan dikunci.
+                {isOwner
+                  ? " Untuk mengoreksi, tekan “Batalkan catatan bayar” di bagian Pembayaran, lalu terima pembayaran lagi setelah diperbaiki."
+                  : " Minta pemilik membatalkan catatan bayar bila ada salah input."}
               </p>
             )}
           </section>
@@ -404,7 +409,7 @@ function OrderDetailPanel({
           <section>
             <h3 className="mb-2 text-sm font-semibold text-ink">Notifikasi WhatsApp</h3>
             {notifs.length === 0 ? (
-              <p className="text-sm text-muted">Belum ada notifikasi otomatis untuk pesanan ini.</p>
+              <p className="text-sm text-muted">Belum ada notifikasi.</p>
             ) : (
               <ul className="space-y-1.5 text-sm">
                 {notifs.map((n) => (
@@ -423,7 +428,7 @@ function OrderDetailPanel({
           {editable && (
             <section className="rounded-2xl bg-danger-50/60 p-4">
               <h3 className="text-sm font-semibold text-danger-700">Batalkan pesanan</h3>
-              <p className="mt-1 text-[13px] text-ink-2">
+              <p className="mt-1 text-xs text-ink-2">
                 Untuk pesanan yang batal dititipkan atau salah dibuat. Pesanan keluar dari antrean dan tidak
                 dihitung sebagai pendapatan.
               </p>
@@ -520,13 +525,13 @@ function ItemsCorrection({
 
   const diff = editor.quote ? editor.quote.total - order.price_total : 0;
   return (
-    <form id={ITEMS_FORM} onSubmit={submit} className="space-y-6">
+    <form id={ITEMS_FORM} onSubmit={submit} className="space-y-5">
       {editor.unavailable && (
         <Alert tone="warn">Ada layanan yang sudah nonaktif. Pilih layanan pengganti sebelum menyimpan.</Alert>
       )}
       <ItemLines editor={editor} />
       <SpeedField editor={editor} />
-      <div className="flex items-baseline justify-between rounded-2xl bg-subtle p-4">
+      <div className="flex items-baseline justify-between border-t border-line pt-3">
         <span className="text-sm text-muted">
           Total baru
           {editor.quote && diff !== 0 && (
@@ -598,7 +603,7 @@ function DetailsModal({
           }
         }}
       >
-        <Field label="Catatan" hint="Kondisi barang atau permintaan pelanggan.">
+        <Field label="Catatan">
           <textarea
             className={textareaClass}
             rows={3}

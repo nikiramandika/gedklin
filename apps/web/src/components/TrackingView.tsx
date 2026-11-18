@@ -8,16 +8,16 @@ import { STATUS_LABEL, describeItem, etaState, formatDateTime, relativeEta, spee
 import type { OrderStatus, Tracking } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 
-import { BrandMark, IconArrowLeft, IconCheck, IconPackageCheck, IconRefresh, IconSearch } from "./icons";
+import { BrandMark, IconArrowLeft, IconCheck, IconRefresh, IconSearch } from "./icons";
 import { Alert, Button, ExpressBadge, buttonClass } from "./ui";
 
 const REFRESH_MS = 60_000;
 
 const STEPS: { status: OrderStatus; hint: string }[] = [
-  { status: "RECEIVED", hint: "Cucian dicatat di kasir" },
-  { status: "PROCESSING", hint: "Sedang dicuci, dikeringkan, atau disetrika" },
-  { status: "READY", hint: "Sudah dikemas, bisa diambil" },
-  { status: "PICKED_UP", hint: "Sudah diambil" },
+  { status: "RECEIVED", hint: "Dicatat di kasir" },
+  { status: "PROCESSING", hint: "Dicuci, dikeringkan, disetrika" },
+  { status: "READY", hint: "Bisa diambil" },
+  { status: "PICKED_UP", hint: "Selesai" },
 ];
 
 export function TrackingView({ code }: { code: string }) {
@@ -37,7 +37,7 @@ export function TrackingView({ code }: { code: string }) {
         .catch((err: Error) =>
           setError(
             err instanceof ApiError && err.status === 404
-              ? "Kode tidak ditemukan. Periksa kembali kode di nota Anda; huruf O dan angka 0 tidak dipakai."
+              ? "Kode tidak ditemukan. Cek lagi kode di nota (tanpa huruf O dan angka 0)."
               : err.message,
           ),
         )
@@ -58,13 +58,13 @@ export function TrackingView({ code }: { code: string }) {
           <Link
             href="/lacak"
             aria-label="Lacak kode lain"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-nav-ink hover:bg-nav-2 hover:text-white"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-md text-nav-ink hover:bg-nav-2 hover:text-white"
           >
             <IconArrowLeft size={20} />
           </Link>
           <BrandMark size={28} />
-          <p className="flex-1 text-[15px] font-semibold">Gedklin Laundry</p>
-          <span className="pr-2 font-mono text-[13px] tracking-wider text-nav-ink">{code}</span>
+          <p className="flex-1 text-base font-semibold">Gedklin</p>
+          <span className="pr-2 font-mono text-sm font-semibold tracking-wider text-nav-ink">{code}</span>
         </div>
       </header>
 
@@ -112,135 +112,120 @@ function TrackingBody({ order, now }: { order: Tracking; now: number }) {
   const done = order.status === "PICKED_UP";
   const cancelled = order.status === "CANCELLED";
   const timing = etaState(order, now);
+  const stampTone = ready ? "text-ok-700" : cancelled ? "text-danger-600" : done ? "text-faint" : "text-brand-600";
 
   return (
     <>
-      <section
-        className={`overflow-hidden rounded-2xl p-5 text-white shadow-pop ${
-          ready ? "bg-ok-700" : done || cancelled ? "bg-ink-2" : "bg-brand-700"
-        }`}
-        aria-live="polite"
-      >
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm font-medium text-white/80">Status saat ini</p>
-          {order.is_express && <ExpressBadge className="ring-0" />}
-        </div>
-        <p className="mt-1 flex items-center gap-2 text-[26px] font-semibold tracking-tight">
-          {(ready || done) && <IconPackageCheck size={26} />}
-          {STATUS_LABEL[order.status]}
-        </p>
+      <section className="rounded-2xl bg-surface shadow-card" aria-live="polite">
+        <div className="px-5 pb-5 pt-5">
+          <div className="flex items-center justify-between gap-3">
+            <p className={`display flex items-center gap-3 text-2xl animate-stamp ${stampTone}`}>
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
+              {STATUS_LABEL[order.status]}
+            </p>
+            {order.is_express && <ExpressBadge />}
+          </div>
 
-        <div className="mt-4 rounded-xl bg-white/10 p-4">
-          {cancelled ? (
-            <p className="text-[15px]">
-              Pesanan ini sudah dibatalkan. Hubungi Gedklin Laundry bila ada pertanyaan.
-            </p>
-          ) : ready ? (
-            <p className="text-[15px]">
-              Cucian sudah siap sejak <strong className="font-semibold">{formatDateTime(order.ready_at)}</strong>.
-              Silakan datang ke outlet dan tunjukkan kode lacak ini.
-            </p>
-          ) : done ? (
-            <p className="text-[15px]">
-              Diambil pada <strong className="font-semibold">{formatDateTime(order.picked_up_at)}</strong>. Terima
-              kasih sudah mencuci di Gedklin!
-            </p>
-          ) : timing === "late" ? (
-            <>
-              <p className="text-[13px] text-white/75">Melewati janji standar</p>
-              <p className="tabular mt-0.5 text-xl font-semibold">{formatDateTime(order.promised_ready_at)}</p>
-              <p className="mt-1 text-sm text-white/80">
-                Mohon maaf, cucian Anda sedang kami selesaikan secepatnya. Kami kirim WhatsApp begitu siap
-                diambil.
+          <div className="mt-5 border-t border-dashed border-field/60 pt-4 text-ink-2">
+            {cancelled ? (
+              <p className="text-base">Pesanan dibatalkan. Hubungi Gedklin Laundry bila ada pertanyaan.</p>
+            ) : ready ? (
+              <p className="text-base">
+                Siap sejak <strong className="font-semibold text-ink">{formatDateTime(order.ready_at)}</strong>. Tunjukkan
+                kode ini di outlet.
               </p>
-            </>
-          ) : timing === "due" ? (
-            <>
-              <p className="text-[13px] text-white/75">Perkiraan siap diambil</p>
-              <p className="mt-0.5 text-xl font-semibold">Segera siap</p>
-              <p className="text-sm text-white/80">
-                Cucian sedang diselesaikan. Kami kirim WhatsApp begitu siap diambil.
+            ) : done ? (
+              <p className="text-base">
+                Diambil <strong className="font-semibold text-ink">{formatDateTime(order.picked_up_at)}</strong>. Terima
+                kasih!
               </p>
-              {order.promised_ready_at && (
-                <p className="mt-2 text-xs text-white/70">
-                  Janji standar: {formatDateTime(order.promised_ready_at)}
-                </p>
-              )}
-            </>
-          ) : (
-            <>
-              <p className="text-[13px] text-white/75">Perkiraan siap diambil</p>
-              <p className="tabular mt-0.5 text-xl font-semibold">{formatDateTime(order.predicted_ready_at)}</p>
-              {now > 0 && <p className="text-sm text-white/80">{relativeEta(order.predicted_ready_at, now)}</p>}
-              {order.promised_ready_at && order.promised_ready_at !== order.predicted_ready_at && (
-                <p className="mt-2 text-xs text-white/70">
-                  Janji standar: {formatDateTime(order.promised_ready_at)}
-                </p>
-              )}
-            </>
-          )}
+            ) : timing === "late" ? (
+              <>
+                <p className="label-caps text-danger-700">Melewati janji standar</p>
+                <p className="tabular display mt-1 text-2xl text-ink">{formatDateTime(order.promised_ready_at)}</p>
+                <p className="mt-2 text-sm text-muted">Sedang kami selesaikan. Kabar via WhatsApp begitu siap.</p>
+              </>
+            ) : timing === "due" ? (
+              <>
+                <p className="label-caps text-muted">Perkiraan siap diambil</p>
+                <p className="display mt-1 text-2xl text-ink">Segera siap</p>
+                <p className="mt-1 text-sm text-muted">Kabar via WhatsApp begitu siap.</p>
+                {order.promised_ready_at && (
+                  <p className="mt-2 text-xs text-faint">Janji standar: {formatDateTime(order.promised_ready_at)}</p>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="label-caps text-muted">Perkiraan siap diambil</p>
+                <p className="tabular display mt-1 text-2xl text-ink">{formatDateTime(order.predicted_ready_at)}</p>
+                {now > 0 && <p className="mt-1 text-base text-muted">{relativeEta(order.predicted_ready_at, now)}</p>}
+                {order.promised_ready_at && order.promised_ready_at !== order.predicted_ready_at && (
+                  <p className="mt-2 text-xs text-faint">Janji standar: {formatDateTime(order.promised_ready_at)}</p>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </section>
 
       {!cancelled && (
-      <section className="rounded-2xl bg-surface p-5 shadow-card">
-        <h2 className="text-base font-semibold text-ink">Perjalanan cucian</h2>
-        <ol className="mt-4">
-          {STEPS.map((s, i) => {
-            const isDone = i <= currentIndex;
-            const isCurrent = i === currentIndex;
-            const last = i === STEPS.length - 1;
-            return (
-              <li key={s.status} className="relative flex gap-3 pb-5 last:pb-0">
-                {!last && (
+        <section className="rounded-lg bg-surface p-5 shadow-card">
+          <h2 className="label-caps text-muted">Riwayat</h2>
+          <ol className="mt-4">
+            {STEPS.map((s, i) => {
+              const isDone = i <= currentIndex;
+              const isCurrent = i === currentIndex;
+              const last = i === STEPS.length - 1;
+              return (
+                <li key={s.status} className="relative flex gap-3 pb-5 last:pb-0">
+                  {!last && (
+                    <span
+                      aria-hidden="true"
+                      className={`absolute left-[13px] top-7 h-[calc(100%-24px)] w-0.5 ${
+                        i < currentIndex ? "bg-brand-600" : "border-l-2 border-dashed border-line-strong"
+                      }`}
+                    />
+                  )}
                   <span
-                    aria-hidden="true"
-                    className={`absolute left-[13px] top-7 h-[calc(100%-24px)] w-0.5 rounded-full ${
-                      i < currentIndex ? "bg-brand-500" : "bg-line"
-                    }`}
-                  />
-                )}
-                <span
-                  className={`relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
-                    isDone
-                      ? "bg-brand-600 text-white"
-                      : "bg-surface text-transparent ring-2 ring-inset ring-line-strong"
-                  } ${isCurrent && !done ? "ring-4 ring-brand-100" : ""}`}
-                >
-                  <IconCheck size={14} strokeWidth={3} />
-                </span>
-                <div className="min-w-0 flex-1 pt-0.5">
-                  <p className={isDone ? "font-medium text-ink" : "text-faint"}>{STATUS_LABEL[s.status]}</p>
-                  <p className="text-[13px] text-muted">
-                    {reached.get(s.status) ? formatDateTime(reached.get(s.status)) : s.hint}
-                  </p>
-                </div>
-              </li>
-            );
-          })}
-        </ol>
-      </section>
+                    className={`relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
+                      isDone
+                        ? "bg-brand-600 text-white"
+                        : "bg-surface text-transparent ring-2 ring-inset ring-line-strong"
+                    } ${isCurrent && !done ? "ring-4 ring-brand-100" : ""}`}
+                  >
+                    <IconCheck size={14} strokeWidth={3} />
+                  </span>
+                  <div className="min-w-0 flex-1 pt-0.5">
+                    <p className={isDone ? "font-semibold text-ink" : "text-faint"}>{STATUS_LABEL[s.status]}</p>
+                    <p className="text-sm text-muted">
+                      {reached.get(s.status) ? formatDateTime(reached.get(s.status)) : s.hint}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
       )}
 
-      <section className="rounded-2xl bg-surface p-5 shadow-card">
+      <section className="rounded-lg bg-surface p-5 shadow-card">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-ink">Isi pesanan</h2>
-          <span className="text-sm text-muted">{speedLabel(order.is_express)}</span>
+          <h2 className="label-caps text-muted">Isi pesanan</h2>
+          <span className="text-sm font-semibold text-ink-2">{speedLabel(order.is_express)}</span>
         </div>
-        <ul className="mt-3 space-y-2">
+        <ul className="mt-2 divide-y divide-dashed divide-field/50">
           {order.items.map((item, i) => (
-            <li key={i} className="rounded-xl bg-subtle px-3 py-2.5 text-sm text-ink-2">
+            <li key={i} className="py-2.5 text-base text-ink">
               {describeItem(item)}
             </li>
           ))}
         </ul>
-        <p className="mt-3 text-xs text-muted">Masuk {formatDateTime(order.received_at)}</p>
+        <p className="mt-2 text-xs text-muted">Masuk {formatDateTime(order.received_at)}</p>
       </section>
 
       {!ready && !done && (
-        <p className="px-2 text-center text-[13px] text-muted text-pretty">
-          Perkiraan dihitung otomatis dari kondisi antrean dan bisa berubah saat ramai. Kami akan mengabari lewat
-          WhatsApp saat cucian siap diambil.
+        <p className="px-2 text-center text-xs text-muted text-pretty">
+          Perkiraan bisa berubah saat ramai. Kabar via WhatsApp saat siap.
         </p>
       )}
     </>
@@ -251,8 +236,8 @@ function TrackingSkeleton() {
   return (
     <div className="space-y-4" aria-busy="true">
       <span className="sr-only">Memuat status...</span>
-      <div className="skeleton h-48 rounded-2xl" />
-      <div className="skeleton h-64 rounded-2xl" />
+      <div className="skeleton h-48 rounded-lg" />
+      <div className="skeleton h-64 rounded-lg" />
     </div>
   );
 }

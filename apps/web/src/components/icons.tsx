@@ -205,12 +205,12 @@ export function BrandMark({ size = 32, className = "" }: { size?: number; classN
       focusable="false"
       className={className}
     >
-      <rect width="32" height="32" rx="8" fill="#2450e6" />
+      <rect width="32" height="32" rx="5" fill="#2a3f8f" />
       <circle cx="16" cy="17" r="9" fill="#fff" />
-      <circle cx="16" cy="17" r="6.25" fill="#dce6fe" />
+      <circle cx="16" cy="17" r="6.25" fill="#dde3f3" />
       <path
         d="M10.6 18.2c1.8-1.7 3.6-1.7 5.4 0s3.6 1.7 5.4 0"
-        stroke="#2450e6"
+        stroke="#2a3f8f"
         strokeWidth="1.8"
         fill="none"
         strokeLinecap="round"
@@ -220,6 +220,13 @@ export function BrandMark({ size = 32, className = "" }: { size?: number; classN
     </svg>
   );
 }
+export const IconEdit = make(
+  <>
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+  </>,
+  "IconEdit",
+);
 export const IconHistory = make(
   <>
     <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />

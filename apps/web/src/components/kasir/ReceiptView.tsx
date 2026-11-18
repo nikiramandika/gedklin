@@ -46,13 +46,13 @@ export function ReceiptView({ id }: { id: string }) {
           </div>
         ) : (
           <>
-            <article className="rounded-xl bg-white px-5 py-6 font-mono text-[13px] leading-relaxed text-black shadow-raise ring-1 ring-line print:rounded-none print:px-0 print:py-0 print:shadow-none print:ring-0">
+            <article className="rounded-xl bg-white px-5 py-6 font-mono text-xs leading-relaxed text-black shadow-raise ring-1 ring-line print:rounded-none print:px-0 print:py-0 print:shadow-none print:ring-0">
               <div className="text-center">
-                <p className="text-base font-bold tracking-wide">GEDKLIN LAUNDRY</p>
+                <p className="text-base font-semibold tracking-wide">GEDKLIN LAUNDRY</p>
                 <p className="text-xs">Medan</p>
               </div>
               {receipt.order.status === "CANCELLED" && (
-                <p className="mt-2 border border-black py-1 text-center font-bold">PESANAN DIBATALKAN</p>
+                <p className="mt-2 border border-black py-1 text-center font-semibold">PESANAN DIBATALKAN</p>
               )}
               <Divider />
               <Row label="Kode" value={receipt.order.tracking_code} bold />
@@ -80,7 +80,7 @@ export function ReceiptView({ id }: { id: string }) {
               )}
               <Divider />
               <p className="text-xs">Perkiraan siap diambil:</p>
-              <p className="font-bold">{formatDateTime(receipt.order.predicted_ready_at)}</p>
+              <p className="font-semibold">{formatDateTime(receipt.order.predicted_ready_at)}</p>
               {receipt.order.promised_ready_at &&
                 receipt.order.promised_ready_at !== receipt.order.predicted_ready_at && (
                   <p className="text-xs">Janji standar layanan: {formatDateTime(receipt.order.promised_ready_at)}</p>
@@ -96,7 +96,7 @@ export function ReceiptView({ id }: { id: string }) {
                 Cetak
               </Button>
               <ButtonLink
-                variant="whatsapp"
+                variant="secondary"
                 size="lg"
                 href={receipt.whatsapp_link}
                 target="_blank"
@@ -121,7 +121,7 @@ function Row({ label, value, bold }: { label: string; value: string; bold?: bool
   return (
     <div className="flex justify-between gap-3">
       <span>{label}</span>
-      <span className={`text-right tabular ${bold ? "font-bold" : ""}`}>{value}</span>
+      <span className={`text-right tabular ${bold ? "font-semibold" : ""}`}>{value}</span>
     </div>
   );
 }

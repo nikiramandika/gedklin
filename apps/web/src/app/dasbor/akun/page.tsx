@@ -23,9 +23,9 @@ import type { Role, User } from "@/lib/types";
 const ROLES: Role[] = ["owner"];
 const ROLE_LABEL: Record<Role, string> = { owner: "Pemilik", admin: "Admin", cashier: "Kasir" };
 const ROLE_STYLE: Record<Role, string> = {
-  owner: "bg-nav text-white",
-  admin: "bg-warn-50 text-warn-700",
-  cashier: "bg-brand-50 text-brand-700",
+  owner: "text-ink",
+  admin: "text-warn-700",
+  cashier: "text-brand-600",
 };
 const EMPTY = { name: "", username: "", password: "", role: "cashier" as Role };
 const CREATE_FORM = "create-user-form";
@@ -74,7 +74,7 @@ export default function AkunPage() {
     <AppShell roles={ROLES}>
       <PageHeader
         title="Akun Petugas"
-        description="Kasir mencatat pesanan dan mengubah status. Admin hanya melihat daftar tindak lanjut."
+        description="Kasir: catat pesanan & status. Admin: tindak lanjut."
         actions={
           <Button onClick={() => setCreating(true)}>
             <IconPlus size={18} />
@@ -158,29 +158,20 @@ function UserRow({
   onToggle: () => void;
 }) {
   return (
-    <li className={`${tileClass} flex flex-wrap items-center gap-3 p-4`}>
-      <span
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
-          u.is_active ? "bg-canvas text-ink-2" : "bg-canvas text-faint"
-        }`}
-      >
-        {u.name
-          .split(/\s+/)
-          .slice(0, 2)
-          .map((w) => w[0]?.toUpperCase())
-          .join("")}
-      </span>
+    <li className={`${tileClass} flex flex-wrap items-center gap-3 px-4 py-3`}>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <p className={`font-semibold ${u.is_active ? "text-ink" : "text-faint"}`}>{u.name}</p>
-          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${ROLE_STYLE[u.role]}`}>
+          <p className={`text-base font-semibold ${u.is_active ? "text-ink" : "text-faint"}`}>{u.name}</p>
+          <span className={`label-caps rounded-md bg-subtle px-2 py-1 leading-none ring-1 ring-inset ring-line ${ROLE_STYLE[u.role]}`}>
             {ROLE_LABEL[u.role]}
           </span>
           {!u.is_active && (
-            <span className="rounded-full bg-canvas px-2 py-0.5 text-xs font-medium text-muted">Nonaktif</span>
+            <span className="label-caps rounded-md bg-subtle px-2 py-1 leading-none ring-1 ring-inset ring-line text-faint">
+              Nonaktif
+            </span>
           )}
         </div>
-        <p className="font-mono text-[13px] text-muted">@{u.username}</p>
+        <p className="font-mono text-sm text-muted">@{u.username}</p>
       </div>
       <div className="flex w-full gap-2 sm:w-auto">
         <Button variant="secondary" size="sm" className="flex-1 sm:flex-none" onClick={onReset}>
@@ -226,7 +217,7 @@ function CreateUserModal({
       open={open}
       onClose={close}
       title="Tambah akun"
-      description="Petugas masuk dengan username dan password ini."
+      description="Untuk masuk aplikasi."
       footer={
         <>
           <Button variant="ghost" onClick={close} disabled={busy}>
@@ -276,7 +267,7 @@ function CreateUserModal({
             required
           />
         </Field>
-        <Field label="Username" hint="Minimal 3 karakter, dipakai untuk masuk.">
+        <Field label="Username" hint="Minimal 3 karakter.">
           <input
             className={inputClass}
             autoCapitalize="none"
@@ -359,7 +350,7 @@ function ResetPasswordModal({
           }
         }}
       >
-        <Field label="Password baru" hint="Minimal 8 karakter. Sampaikan langsung ke petugasnya.">
+        <Field label="Password baru" hint="Minimal 8 karakter.">
           <input
             className={inputClass}
             type="password"

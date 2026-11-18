@@ -8,8 +8,8 @@ export function GET() {
       start_url: "/lacak",
       scope: "/",
       display: "standalone",
-      background_color: "#eef1f6",
-      theme_color: "#0e1730",
+      background_color: "#e9ebf1",
+      theme_color: "#16233f",
       lang: "id",
       icons: [
         { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },

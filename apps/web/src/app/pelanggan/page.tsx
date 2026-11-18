@@ -22,7 +22,7 @@ import {
   tileListClass,
 } from "@/components/ui";
 import { api } from "@/lib/api";
-import { formatDateTime, formatRupiah, initials, summarizeItems } from "@/lib/format";
+import { formatDateTime, formatRupiah, summarizeItems } from "@/lib/format";
 import type { CustomerDetail, CustomerSummary, Role } from "@/lib/types";
 
 const ROLES: Role[] = ["owner", "cashier"];
@@ -96,7 +96,6 @@ export default function PelangganPage() {
     <AppShell roles={ROLES}>
       <PageHeader
         title="Pelanggan"
-        description="Riwayat pesanan, total belanja, dan tagihan yang belum lunas per pelanggan."
       />
       <Card flush>
         <div className="flex flex-wrap items-center gap-3 p-3 sm:p-4">
@@ -139,10 +138,10 @@ export default function PelangganPage() {
         ) : rows.length === 0 ? (
           <EmptyState icon={IconUser} title={q || filter === "unpaid" ? "Tidak ditemukan" : "Belum ada pelanggan"}>
             {filter === "unpaid"
-              ? "Tidak ada pelanggan dengan tagihan belum lunas."
+              ? "Semua tagihan sudah lunas."
               : q
-                ? "Periksa ejaan nama atau nomor WhatsApp."
-                : "Pelanggan tercatat otomatis saat kasir membuat pesanan."}
+                ? "Cek ejaan nama atau nomor WA."
+                : "Tercatat otomatis saat kasir membuat nota."}
           </EmptyState>
         ) : (
           <ul className={tileListClass}>
@@ -151,25 +150,22 @@ export default function PelangganPage() {
                 <button
                   type="button"
                   onClick={() => setOpenId(c.id)}
-                  className={`${tileClass} flex w-full flex-wrap items-center gap-3 p-4 text-left`}
+                  className={`${tileClass} flex w-full flex-wrap items-center gap-3 px-4 py-4 text-left sm:px-5`}
                 >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-canvas text-sm font-semibold text-ink-2">
-                    {initials(c.name)}
-                  </span>
-                  <span className="min-w-0 flex-1">
+                  <span className="min-w-0 basis-full sm:flex-1 sm:basis-0">
                     <span className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-ink">{c.name}</span>
+                      <span className="text-base font-semibold text-ink">{c.name}</span>
                       {c.unpaid_total > 0 && (
-                        <span className="rounded-full bg-warn-50 px-2 py-0.5 text-xs font-semibold text-warn-700 ring-1 ring-inset ring-warn-600/20">
-                          Belum lunas {formatRupiah(c.unpaid_total)}
+                        <span className="label-caps inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-subtle px-2 py-1 leading-none ring-1 ring-inset ring-line text-warn-700">
+                          Belum lunas <span className="tabular normal-case">{formatRupiah(c.unpaid_total)}</span>
                         </span>
                       )}
                     </span>
-                    <span className="tabular block text-[13px] text-muted">{displayPhone(c.phone_wa)}</span>
+                    <span className="tabular block text-sm text-muted">{displayPhone(c.phone_wa)}</span>
                   </span>
-                  <span className="text-right">
-                    <span className="tabular block font-semibold text-ink">{formatRupiah(c.total_spent)}</span>
-                    <span className="block text-xs text-muted">
+                  <span className="flex w-full items-baseline justify-between gap-3 sm:block sm:w-auto sm:text-right">
+                    <span className="tabular order-2 block text-base font-semibold text-ink sm:order-none">{formatRupiah(c.total_spent)}</span>
+                    <span className="block text-sm text-muted">
                       {c.order_count} pesanan
                       {c.last_order_at && ` · terakhir ${formatDateTime(c.last_order_at)}`}
                     </span>
@@ -236,15 +232,15 @@ function CustomerDrawer({ id, onClose, onChanged }: { id: number; onClose: () =>
       {!customer ? (
         !error && <Loading rows={4} />
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-5">
           <dl className="grid grid-cols-3 gap-2">
             {[
               ["Pesanan", String(customer.order_count)],
               ["Total belanja", formatRupiah(customer.total_spent)],
               ["Belum lunas", formatRupiah(customer.unpaid_total)],
             ].map(([label, value]) => (
-              <div key={label} className="rounded-xl bg-subtle p-3">
-                <dt className="text-xs text-muted">{label}</dt>
+              <div key={label} className="border-l border-line pl-3 first:border-l-0 first:pl-0">
+                <dt className="label-caps text-muted">{label}</dt>
                 <dd
                   className={`tabular mt-0.5 truncate font-semibold ${
                     label === "Belum lunas" && customer.unpaid_total > 0 ? "text-warn-700" : "text-ink"
@@ -261,18 +257,18 @@ function CustomerDrawer({ id, onClose, onChanged }: { id: number; onClose: () =>
             {customer.orders.length === 0 ? (
               <p className="text-sm text-muted">Belum ada pesanan.</p>
             ) : (
-              <ul className="space-y-2">
+              <ul className="divide-y divide-dashed divide-field/50">
                 {customer.orders.map((o) => (
-                  <li key={o.id} className="rounded-xl bg-surface p-3 shadow-tile">
+                  <li key={o.id} className="py-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-[13px] font-medium tracking-wider text-brand-700">
+                      <span className="serial text-sm">
                         {o.tracking_code}
                       </span>
                       <StatusBadge status={o.status} />
                       {o.status !== "CANCELLED" && <PaymentBadge paid={o.is_paid} />}
                       <span className="tabular ml-auto font-semibold text-ink">{formatRupiah(o.price_total)}</span>
                     </div>
-                    <p className="mt-1 line-clamp-2 text-[13px] text-ink-2">{summarizeItems(o.items)}</p>
+                    <p className="mt-1 line-clamp-2 text-xs text-ink-2">{summarizeItems(o.items)}</p>
                     <div className="mt-1 flex items-center justify-between gap-3 text-xs text-muted">
                       <span>{formatDateTime(o.received_at)}</span>
                       <a
@@ -332,7 +328,7 @@ function EditCustomerModal({
       open={open}
       onClose={onClose}
       title="Ubah data pelanggan"
-      description="Nomor WhatsApp dipakai untuk nota dan notifikasi siap diambil."
+      description="Untuk nota dan WA siap diambil."
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={busy}>

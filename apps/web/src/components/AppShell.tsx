@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, type ComponentType, type ReactNode, type SVGProps } from "react";
+import { useEffect, useRef, useState, type ComponentType, type ReactNode, type SVGProps } from "react";
 
 import { useAuth, useRequireRole } from "@/lib/auth";
 import { initials } from "@/lib/format";
@@ -106,11 +106,11 @@ export function AppShell({
 
   return (
     <div className="flex min-h-dvh bg-canvas">
-      <aside className="sticky top-0 hidden h-dvh shrink-0 flex-col bg-nav text-nav-ink print:hidden lg:flex lg:w-[76px] xl:w-[248px]">
-        <div className="flex h-16 items-center gap-2.5 px-5 lg:justify-center xl:justify-start">
-          <BrandMark size={32} />
+      <aside className="sticky top-0 hidden h-dvh shrink-0 flex-col bg-nav text-nav-ink print:hidden lg:flex lg:w-[64px] xl:w-[232px]">
+        <div className="flex h-14 items-center gap-2.5 px-4 lg:justify-center xl:justify-start">
+          <BrandMark size={26} />
           <div className="hidden leading-tight xl:block">
-            <p className="text-[15px] font-semibold text-white">Gedklin</p>
+            <p className="text-base font-semibold text-white">Gedklin</p>
             <p className="text-xs text-nav-faint">Laundry · Medan</p>
           </div>
         </div>
@@ -119,23 +119,23 @@ export function AppShell({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="pt-safe sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur print:hidden lg:hidden">
-          <div className="flex h-14 items-center gap-2 px-2 sm:px-4">
+        <header className="pt-safe sticky top-0 z-30 border-b border-line bg-surface print:hidden lg:hidden">
+          <div className="flex h-12 items-center gap-2 px-2 sm:px-4">
             <button
               type="button"
-              className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-ink-2 hover:bg-canvas"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-md text-ink-2 hover:bg-subtle"
               aria-label="Buka menu"
               aria-expanded={drawerOpen}
               onClick={() => setDrawerOpen(true)}
             >
-              <IconMenu size={22} />
+              <IconMenu size={20} />
             </button>
-            <BrandMark size={28} />
-            <p className="min-w-0 flex-1 truncate text-[15px] font-semibold text-ink">
+            <BrandMark size={24} />
+            <p className="min-w-0 flex-1 truncate text-base font-semibold text-ink">
               {current?.label ?? "Gedklin"}
             </p>
             <span
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-50 text-[13px] font-semibold text-brand-700"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-subtle text-xs font-semibold text-ink-2 ring-1 ring-line"
               title={`${user.name} (${ROLE_LABEL[user.role]})`}
             >
               {initials(user.name)}
@@ -146,16 +146,16 @@ export function AppShell({
         {!online && (
           <div
             role="status"
-            className="flex items-center justify-center gap-2 bg-warn-50 px-4 py-2 text-[13px] font-medium text-warn-700 print:hidden"
+            className="flex items-center justify-center gap-2 bg-warn-50 px-4 py-2 text-xs font-medium text-warn-700 print:hidden"
           >
             <IconWifiOff size={16} />
-            Perangkat sedang offline. Data tidak bisa disimpan sampai koneksi kembali.
+            Offline. Perubahan belum bisa disimpan.
           </div>
         )}
 
         <main
-          className={`mx-auto w-full max-w-[1440px] flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-8 ${
-            bottomBar ? "pb-28 lg:pb-8" : ""
+          className={`mx-auto w-full max-w-[1440px] flex-1 px-4 py-4 sm:px-6 lg:px-8 lg:py-6 ${
+            bottomBar ? "pb-24 lg:pb-6" : ""
           }`}
         >
           {children}
@@ -165,31 +165,31 @@ export function AppShell({
       {bottomBar && (
         <nav
           aria-label="Navigasi kasir"
-          className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 backdrop-blur print:hidden lg:hidden"
+          className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface print:hidden lg:hidden"
         >
           {bottomBar}
         </nav>
       )}
 
       {drawerOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu">
+        <div className="fixed inset-x-0 top-0 z-50 h-dvh lg:hidden" role="dialog" aria-modal="true" aria-label="Menu">
           <button
             type="button"
             aria-label="Tutup menu"
-            className="absolute inset-0 bg-nav/50 animate-[fade-in_150ms_ease-out]"
+            className="absolute inset-0 bg-nav/40 animate-[fade-in_150ms_ease-out]"
             onClick={() => setDrawerOpen(false)}
           />
-          <div className="pt-safe pb-safe relative flex h-full w-[288px] max-w-[85vw] flex-col bg-nav text-nav-ink shadow-pop animate-[drawer-in_200ms_cubic-bezier(0.16,1,0.3,1)]">
-            <div className="flex h-16 items-center gap-2.5 pl-5 pr-2">
-              <BrandMark size={32} />
+          <div className="pt-safe pb-safe relative flex h-dvh w-[280px] max-w-[85vw] flex-col bg-nav text-nav-ink shadow-pop animate-[drawer-in_200ms_cubic-bezier(0.16,1,0.3,1)]">
+            <div className="flex h-14 items-center gap-2.5 pl-4 pr-2">
+              <BrandMark size={26} />
               <div className="flex-1 leading-tight">
-                <p className="text-[15px] font-semibold text-white">Gedklin</p>
+                <p className="text-base font-semibold text-white">Gedklin</p>
                 <p className="text-xs text-nav-faint">Laundry · Medan</p>
               </div>
               <button
                 type="button"
                 aria-label="Tutup menu"
-                className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-nav-ink hover:bg-nav-2"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-md text-nav-ink hover:bg-nav-2"
                 onClick={() => setDrawerOpen(false)}
               >
                 <IconX size={20} />
@@ -221,18 +221,48 @@ function NavList({
   onNavigate?: () => void;
 }) {
   const rail = variant === "sidebar";
+  const navRef = useRef<HTMLElement>(null);
+  const scrollKey = `gedklin_nav_scroll_${variant}`;
+
+  // Tiap halaman memasang AppShell baru, jadi posisi gulir menu dipulihkan; menu aktif selalu terlihat.
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    try {
+      nav.scrollTop = Number(sessionStorage.getItem(scrollKey)) || 0;
+    } catch {}
+    // Geser hanya daftar menu (bukan halaman) sampai menu aktif terlihat; ulangi bila ukuran menu berubah.
+    const revealActive = () => {
+      const active = nav.querySelector<HTMLElement>('[aria-current="page"]');
+      if (!active) return;
+      const box = nav.getBoundingClientRect();
+      const item = active.getBoundingClientRect();
+      if (item.top < box.top) nav.scrollTop -= box.top - item.top + 8;
+      else if (item.bottom > box.bottom) nav.scrollTop += item.bottom - box.bottom + 8;
+    };
+    revealActive();
+    const observer = new ResizeObserver(revealActive);
+    observer.observe(nav);
+    return () => observer.disconnect();
+  }, [pathname, scrollKey]);
+
   return (
-    <nav aria-label="Navigasi utama" className="flex-1 overflow-y-auto px-3 py-2">
+    <nav
+      ref={navRef}
+      aria-label="Navigasi utama"
+      className="flex-1 overflow-y-auto overscroll-contain px-2.5 py-2"
+      onScroll={(e) => {
+        try {
+          sessionStorage.setItem(scrollKey, String(e.currentTarget.scrollTop));
+        } catch {}
+      }}
+    >
       {groups.map((g) => (
-        <div key={g.label} className="mb-5">
-          <p
-            className={`mb-1.5 px-3 text-[11px] font-medium uppercase tracking-wider text-nav-faint ${
-              rail ? "hidden xl:block" : ""
-            }`}
-          >
+        <div key={g.label} className="mb-4">
+          <p className={`mb-1 px-2.5 text-xs font-medium text-nav-faint ${rail ? "hidden xl:block" : ""}`}>
             {g.label}
           </p>
-          {rail && <div className="mx-auto mb-2 h-px w-8 bg-nav-2 xl:hidden" aria-hidden="true" />}
+          {rail && <div className="mx-auto mb-2 h-px w-6 bg-nav-2 xl:hidden" aria-hidden="true" />}
           <ul className="space-y-0.5">
             {g.items.map((n) => {
               const active = isActive(pathname, n.href);
@@ -244,15 +274,11 @@ function NavList({
                     onClick={onNavigate}
                     aria-current={active ? "page" : undefined}
                     title={rail ? n.label : undefined}
-                    className={`group flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors duration-150 ${
+                    className={`group flex h-10 items-center gap-3 rounded-lg px-3 text-base font-medium transition-colors duration-150 pointer-coarse:h-11 ${
                       rail ? "lg:justify-center xl:justify-start" : ""
-                    } ${
-                      active
-                        ? "bg-brand-600 text-white"
-                        : "text-nav-ink hover:bg-nav-2 hover:text-white"
-                    }`}
+                    } ${active ? "bg-brand-600 text-white" : "text-nav-ink hover:bg-nav-2 hover:text-white"}`}
                   >
-                    <Icon size={20} className="shrink-0" />
+                    <Icon size={18} className="shrink-0" />
                     <span className={rail ? "hidden xl:inline" : ""}>{n.label}</span>
                   </Link>
                 </li>
@@ -273,26 +299,26 @@ function SidebarFooter({ user, expanded = false }: { user: User; expanded?: bool
   const wide = expanded ? "" : "hidden xl:block";
 
   return (
-    <div className="border-t border-nav-2 p-3">
+    <div className="border-t border-nav-2 p-2.5">
       {canInstall && (
         <button
           type="button"
           onClick={install}
           title="Pasang aplikasi"
           aria-label="Pasang aplikasi"
-          className={`mb-2 flex h-11 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium text-nav-ink hover:bg-nav-2 hover:text-white ${
+          className={`mb-1 flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-base font-medium text-nav-ink hover:bg-nav-2 hover:text-white pointer-coarse:h-11 ${
             expanded ? "" : "lg:justify-center xl:justify-start"
           }`}
         >
-          <IconDownload size={20} className="shrink-0" />
+          <IconDownload size={17} className="shrink-0" />
           <span className={wide}>Pasang aplikasi</span>
         </button>
       )}
       <div
-        className={`flex items-center gap-3 ${expanded ? "" : "lg:flex-col lg:gap-2 xl:flex-row xl:gap-3"}`}
+        className={`flex items-center gap-2 px-1 ${expanded ? "" : "lg:flex-col lg:gap-1.5 xl:flex-row xl:gap-2"}`}
       >
         <span
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-nav-2 text-[13px] font-semibold text-white"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-nav-2 text-xs font-semibold text-white"
           title={`${user.name} (${ROLE_LABEL[user.role]})`}
         >
           {initials(user.name)}
@@ -305,22 +331,22 @@ function SidebarFooter({ user, expanded = false }: { user: User; expanded?: bool
           type="button"
           aria-label="Ganti password"
           title="Ganti password"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-nav-faint hover:bg-nav-2 hover:text-white"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-nav-faint hover:bg-nav-2 hover:text-white pointer-coarse:h-11 pointer-coarse:w-11"
           onClick={() => setChangingPassword(true)}
         >
-          <IconKey size={18} />
+          <IconKey size={16} />
         </button>
         <button
           type="button"
           aria-label="Keluar"
           title="Keluar"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-nav-faint hover:bg-nav-2 hover:text-white"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-nav-faint hover:bg-nav-2 hover:text-white pointer-coarse:h-11 pointer-coarse:w-11"
           onClick={() => {
             logout();
             router.replace("/login");
           }}
         >
-          <IconLogOut size={18} />
+          <IconLogOut size={16} />
         </button>
       </div>
       <ChangePasswordModal open={changingPassword} onClose={() => setChangingPassword(false)} />
@@ -332,7 +358,7 @@ function ShellSkeleton() {
   return (
     <div className="flex min-h-dvh bg-canvas" aria-busy="true">
       <span className="sr-only">Memuat...</span>
-      <div className="hidden h-dvh bg-nav lg:block lg:w-[76px] xl:w-[248px]" />
+      <div className="hidden h-dvh bg-nav lg:block lg:w-[64px] xl:w-[232px]" />
       <div className="flex-1 space-y-4 p-8">
         <div className="skeleton h-7 w-48" />
         <div className="skeleton h-4 w-80 max-w-full" />

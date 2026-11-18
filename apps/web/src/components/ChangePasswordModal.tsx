@@ -30,7 +30,7 @@ export function ChangePasswordModal({ open, onClose }: { open: boolean; onClose:
       open={open}
       onClose={close}
       title="Ganti password"
-      description="Gunakan minimal 8 karakter dan jangan dibagikan ke petugas lain."
+      description="Minimal 8 karakter."
       footer={
         <>
           <Button variant="ghost" onClick={close} disabled={busy}>

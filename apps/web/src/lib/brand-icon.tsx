@@ -10,16 +10,16 @@ export function Mark({ size, maskable }: { size: number; maskable: boolean }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "#2450e6",
-        borderRadius: maskable ? 0 : size * 0.22,
+        background: "#2a3f8f",
+        borderRadius: maskable ? 0 : size * 0.16,
       }}
     >
       <svg width={inner} height={inner} viewBox="0 0 32 32">
         <circle cx="16" cy="17" r="9" fill="#ffffff" />
-        <circle cx="16" cy="17" r="6.25" fill="#dce6fe" />
+        <circle cx="16" cy="17" r="6.25" fill="#dde3f3" />
         <path
           d="M10.6 18.2c1.8-1.7 3.6-1.7 5.4 0s3.6 1.7 5.4 0"
-          stroke="#2450e6"
+          stroke="#2a3f8f"
           strokeWidth="1.8"
           fill="none"
           strokeLinecap="round"

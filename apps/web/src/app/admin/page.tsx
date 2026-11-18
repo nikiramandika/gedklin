@@ -57,14 +57,14 @@ export default function AdminPage() {
     <AppShell roles={ROLES}>
       <PageHeader
         title="Tindak Lanjut"
-        description="Cucian yang sudah siap lebih dari 3 hari tetapi belum diambil. Sistem tidak mengirim WA otomatis untuk ini; hubungi pelanggan secara manual."
+        description="Siap lebih dari 3 hari, belum diambil. Hubungi pelanggan langsung."
       />
       <Card
         flush
         icon={IconAlert}
         tone="warn"
         title={sorted ? `${sorted.length} pesanan menunggu` : "Pesanan menunggu"}
-        description="Diurutkan dari yang paling lama"
+        description="Paling lama di atas"
         action={<IconButton label="Muat ulang" icon={IconRefresh} size={18} onClick={load} />}
       >
         {error && (
@@ -75,8 +75,8 @@ export default function AdminPage() {
         {!sorted ? (
           <Loading rows={4} />
         ) : sorted.length === 0 ? (
-          <EmptyState icon={IconPackageCheck} title="Tidak ada yang perlu ditindaklanjuti">
-            Semua cucian yang siap sudah diambil dalam 3 hari. Daftar diperbarui otomatis setiap hari.
+          <EmptyState icon={IconPackageCheck} title="Semua beres">
+            Tidak ada cucian yang menunggu lebih dari 3 hari.
           </EmptyState>
         ) : (
           <ul className={tileListClass}>
@@ -85,33 +85,32 @@ export default function AdminPage() {
               return (
                 <li
                   key={o.id}
-                  className={`${tileClass} grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center`}
+                  className={`${tileClass} grid gap-3 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-5`}
                 >
                   <div className="flex min-w-0 gap-4">
-                    <div className="flex w-14 shrink-0 flex-col items-center justify-center rounded-lg bg-warn-50 py-2 text-warn-700 ring-1 ring-inset ring-warn-600/15">
-                      <span className="tabular text-xl font-semibold leading-none">{days}</span>
-                      <span className="mt-1 text-[11px] font-medium">hari</span>
+                    <div className="flex w-14 shrink-0 flex-col items-center pt-0.5 text-warn-700">
+                      <span className="tabular display text-2xl leading-none">{days}</span>
+                      <span className="label-caps mt-1">hari</span>
                     </div>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold text-ink">{o.customer.name}</p>
+                        <p className="text-base font-semibold text-ink">{o.customer.name}</p>
                         {o.is_express && <ExpressBadge />}
                         <PaymentBadge paid={o.is_paid} />
                         {o.rack_location && (
-                          <span className="rounded-full bg-canvas px-2 py-0.5 font-mono text-xs font-semibold text-ink-2">
-                            Rak {o.rack_location}
+                          <span className="inline-flex items-baseline gap-1 rounded-sm bg-ink px-1.5 py-0.5 leading-none text-white">
+                            <span className="label-caps">Rak</span>
+                            <span className="font-mono text-sm font-semibold">{o.rack_location}</span>
                           </span>
                         )}
                       </div>
-                      <p className="mt-0.5 text-[13px] text-muted">
-                        <span className="font-mono font-medium tracking-wider text-ink-2">
-                          {o.tracking_code}
-                        </span>{" "}
+                      <p className="mt-0.5 text-sm text-muted">
+                        <span className="serial">{o.tracking_code}</span>{" "}
                         · <span className="tabular">+{o.customer.phone_wa}</span> ·{" "}
                         <span className="tabular">{formatRupiah(o.price_total)}</span>
                       </p>
-                      <p className="mt-1 line-clamp-2 text-[13px] text-ink-2">{summarizeItems(o.items)}</p>
-                      <p className="mt-1 text-xs text-muted">Siap sejak {formatDateTime(o.ready_at)}</p>
+                      <p className="mt-1 line-clamp-2 text-sm text-ink-2">{summarizeItems(o.items)}</p>
+                      <p className="mt-1 text-sm text-muted">Siap sejak {formatDateTime(o.ready_at)}</p>
                     </div>
                   </div>
                   <ButtonLink
@@ -122,7 +121,7 @@ export default function AdminPage() {
                     className="w-full sm:w-auto"
                   >
                     <IconChat size={18} />
-                    Hubungi via WA
+                    Hubungi WA
                   </ButtonLink>
                 </li>
               );

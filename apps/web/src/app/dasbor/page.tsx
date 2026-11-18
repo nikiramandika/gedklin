@@ -9,10 +9,8 @@ import {
   IconChart,
   IconChevronRight,
   IconClock,
-  IconList,
   IconPackageCheck,
   IconReceipt,
-  IconWallet,
 } from "@/components/icons";
 import {
   Alert,
@@ -21,8 +19,6 @@ import {
   PageHeader,
   Segmented,
   buttonClass,
-  cardClass,
-  type CardTone,
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { STATUS_LABEL, formatDate, formatRupiah } from "@/lib/format";
@@ -67,7 +63,7 @@ function DashboardContent() {
     <>
       <PageHeader
         title="Dasbor"
-        description="Ringkasan hari ini dan tujuh hari terakhir. Diperbarui setiap menit."
+        description="Diperbarui tiap menit."
         actions={
           <Link href="/kasir" className={buttonClass("primary", "md")}>
             <IconReceipt size={18} />
@@ -76,7 +72,7 @@ function DashboardContent() {
         }
       />
       {error && (
-        <div className="mb-6">
+        <div className="mb-5">
           <ErrorText message={error} />
         </div>
       )}
@@ -87,7 +83,7 @@ function DashboardContent() {
 
 function DashboardBody({ data }: { data: Dashboard }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {data.needs_followup > 0 && (
         <Alert
           tone="warn"
@@ -101,74 +97,61 @@ function DashboardBody({ data }: { data: Dashboard }) {
             </Link>
           }
         >
-          <strong className="font-semibold">{data.needs_followup} cucian</strong> sudah siap lebih
-          dari 3 hari dan belum diambil. Hubungi pelanggan dari halaman Tindak Lanjut.
+          <strong className="font-semibold">{data.needs_followup} cucian</strong> siap lebih dari 3 hari, belum diambil.
         </Alert>
       )}
 
-      <section aria-label="Angka hari ini" className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      <section
+        aria-label="Angka hari ini"
+        className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4"
+      >
         <Kpi
-          icon={IconReceipt}
-          tone="brand"
           label="Pesanan hari ini"
           value={String(data.today_orders)}
           sub={`${data.today_kg} kg masuk`}
         />
-        <Kpi icon={IconWallet} tone="ok" label="Pendapatan hari ini" value={formatRupiah(data.today_revenue)} />
+        <Kpi label="Pendapatan hari ini" value={formatRupiah(data.today_revenue)} />
         <Kpi
-          icon={IconList}
-          tone="neutral"
           label="Dalam antrean"
           value={String(data.active_orders)}
           sub={`${data.active_loads} load belum siap`}
         />
         <Kpi
-          icon={IconPackageCheck}
-          tone={data.needs_followup > 0 ? "warn" : "ok"}
           label="Siap, belum diambil"
           value={String(data.ready_not_picked)}
-          sub={data.needs_followup > 0 ? `${data.needs_followup} lewat 3 hari` : "Semua masih wajar"}
+          sub={data.needs_followup > 0 ? `${data.needs_followup} lewat 3 hari` : "Semua wajar"}
           warn={data.needs_followup > 0}
         />
       </section>
 
-      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]">
-        <WeekChart days={data.last_7_days} />
-        <div className="space-y-6">
-          <AccuracyCard data={data} />
+      <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]">
+        <div className="space-y-5">
+          <WeekChart days={data.last_7_days} />
           <StatusCard counts={data.status_counts} />
         </div>
+        <AccuracyCard data={data} />
       </div>
     </div>
   );
 }
 
 function Kpi({
-  icon: Icon,
-  tone,
   label,
   value,
   sub,
   warn,
 }: {
-  icon: typeof IconReceipt;
-  tone: CardTone;
   label: string;
   value: string;
   sub?: string;
   warn?: boolean;
 }) {
   return (
-    <div className={`${cardClass} p-4 sm:p-5`}>
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-[13px] font-medium text-muted">{label}</p>
-        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1 ring-inset ${KPI_TONE[tone]}`}>
-          <Icon size={18} />
-        </span>
-      </div>
-      <p className="tabular mt-2 truncate text-2xl font-semibold tracking-tight text-ink sm:text-[28px]">{value}</p>
+    <div className="rounded-2xl bg-surface p-4 shadow-card sm:p-5">
+      <p className="label-caps text-muted">{label}</p>
+      <p className="tabular display mt-1 truncate text-2xl text-ink">{value}</p>
       {sub && (
-        <p className={`mt-1 flex items-center gap-1 text-xs ${warn ? "font-medium text-warn-700" : "text-muted"}`}>
+        <p className={`mt-1 flex items-center gap-1 text-sm ${warn ? "font-semibold text-warn-700" : "text-muted"}`}>
           {warn && <IconAlert size={13} />}
           {sub}
         </p>
@@ -176,13 +159,6 @@ function Kpi({
     </div>
   );
 }
-
-const KPI_TONE: Record<CardTone, string> = {
-  brand: "bg-brand-50 text-brand-600 ring-brand-100",
-  ok: "bg-ok-50 text-ok-700 ring-ok-600/15",
-  warn: "bg-warn-50 text-warn-700 ring-warn-600/15",
-  neutral: "bg-canvas text-ink-2 ring-line",
-};
 
 type Measure = "orders" | "revenue";
 
@@ -281,41 +257,37 @@ function AccuracyCard({ data }: { data: Dashboard }) {
       description={`7 hari terakhir · ${data.eta_samples_7d} pesanan selesai`}
     >
       {model === null ? (
-        <p className="text-sm text-muted">
-          Belum ada pesanan yang selesai dalam 7 hari terakhir, jadi akurasi belum bisa dihitung.
-        </p>
+        <p className="text-sm text-muted">Belum ada pesanan selesai dalam 7 hari.</p>
       ) : (
         <div className="space-y-5">
           <div>
-            <p className="tabular text-[28px] font-semibold tracking-tight text-ink">
+            <p className="tabular display text-3xl text-ink">
               {data.eta_within_tolerance_pct_7d ?? "–"}
-              <span className="text-lg text-muted">%</span>
+              <span className="text-xl text-muted">%</span>
             </p>
-            <p className="text-[13px] text-muted">
-              perkiraan di nota meleset kurang dari {data.eta_tolerance_hours} jam
-            </p>
+            <p className="text-sm text-muted">meleset kurang dari {data.eta_tolerance_hours} jam</p>
           </div>
-          <p className="text-[13px] text-ink-2">
+          <p className="text-sm text-ink-2">
             <span className="tabular font-semibold">{data.late_vs_promise_7d}</span> dari {data.eta_samples_7d}{" "}
-            pesanan selesai setelah janji standar
+            selesai lewat janji standar
             {data.overdue_active > 0 && (
               <>
                 {" "}
                 ·{" "}
                 <span className="font-medium text-danger-600">
-                  {data.overdue_active} pesanan aktif sudah lewat janji
+                  {data.overdue_active} aktif lewat janji
                 </span>
               </>
             )}
           </p>
           <div className="space-y-3">
-            <p className="text-[13px] font-medium text-ink-2">Rata-rata selisih (makin pendek makin baik)</p>
+            <p className="label-caps text-muted">Rata-rata selisih</p>
             <ErrorBar label="Perkiraan sistem" hours={model} scale={scale} strong />
             {promise !== null && <ErrorBar label="Janji standar" hours={promise} scale={scale} />}
           </div>
         </div>
       )}
-      <p className="mt-4 rounded-lg bg-subtle px-3 py-2 text-xs text-muted">Model: {data.model_version}</p>
+      <p className="mt-4 border-t border-dashed border-field/50 pt-3 font-mono text-xs text-faint">{data.model_version}</p>
     </Card>
   );
 }
@@ -323,7 +295,7 @@ function AccuracyCard({ data }: { data: Dashboard }) {
 function ErrorBar({ label, hours, scale, strong }: { label: string; hours: number; scale: number; strong?: boolean }) {
   return (
     <div>
-      <div className="mb-1 flex justify-between text-[13px]">
+      <div className="mb-1 flex justify-between text-sm">
         <span className={strong ? "font-medium text-ink" : "text-muted"}>{label}</span>
         <span className="tabular font-medium text-ink">±{hours.toFixed(1)} jam</span>
       </div>
@@ -367,12 +339,12 @@ function StatusCard({ counts }: { counts: Record<string, number> }) {
 
 function DashboardSkeleton() {
   return (
-    <div className="space-y-6" aria-busy="true">
+    <div className="space-y-5" aria-busy="true">
       <span className="sr-only">Memuat dasbor...</span>
-      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">{[0, 1, 2, 3].map((i) => <div key={i} className="skeleton h-32 rounded-2xl" />)}</div>
-      <div className="grid gap-6 xl:grid-cols-[1.7fr_1fr]">
+      <div className="skeleton h-32 rounded-lg" />
+      <div className="grid gap-5 xl:grid-cols-[1.7fr_1fr]">
         <div className="skeleton h-80 rounded-2xl" />
-        <div className="space-y-6">
+        <div className="space-y-5">
           <div className="skeleton h-48 rounded-2xl" />
           <div className="skeleton h-40 rounded-2xl" />
         </div>

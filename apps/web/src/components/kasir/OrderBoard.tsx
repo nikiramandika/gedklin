@@ -13,7 +13,6 @@ import {
   IconClock,
   IconList,
   IconPackageCheck,
-  IconReceipt,
   IconRefresh,
   IconSearch,
 } from "../icons";
@@ -33,10 +32,17 @@ import {
 import { OrderActionDialog, type OrderDialog } from "./OrderActions";
 import { OrderDetailDrawer } from "./OrderDetailDrawer";
 
-export type BoardTab = "queue" | "ready" | "search";
+// Papan dibagi per tahap kerja: setiap tab hanya punya satu jenis aksi, jadi kasir bisa menyelesaikan satu tahap sekaligus.
+export type BoardTab = "received" | "processing" | "ready";
 
 const REFRESH_MS = 30_000;
 const DAY_MS = 86_400_000;
+
+export const BOARD_TABS: { key: BoardTab; label: string; short: string }[] = [
+  { key: "received", label: "Belum diproses", short: "Masuk" },
+  { key: "processing", label: "Diproses", short: "Proses" },
+  { key: "ready", label: "Siap diambil", short: "Siap" },
+];
 
 export function useBoardData(refreshKey: number) {
   const [queue, setQueue] = useState<Order[] | null>(null);
@@ -64,26 +70,32 @@ export function useBoardData(refreshKey: number) {
     return () => clearInterval(id);
   }, [reload, refreshKey]);
 
-  return { queue, ready, error, reload };
+  // Urutan antrean dari server (PROCESSING dulu, Express, eskalasi Reguler, FIFO) dipertahankan di tiap tab.
+  const received = queue?.filter((o) => o.status === "RECEIVED") ?? null;
+  const processing = queue?.filter((o) => o.status === "PROCESSING") ?? null;
+
+  return { queue, received, processing, ready, error, reload };
+}
+
+export function boardCount(board: ReturnType<typeof useBoardData>, tab: BoardTab): number | undefined {
+  const list = tab === "received" ? board.received : tab === "processing" ? board.processing : board.ready;
+  return list?.length;
 }
 
 export function OrderBoard({
   tab,
   onTabChange,
-  queue,
-  ready,
-  error,
-  reload,
+  board,
+  highlightId,
   onStatusChanged,
 }: {
   tab: BoardTab;
   onTabChange: (tab: BoardTab) => void;
-  queue: Order[] | null;
-  ready: Order[] | null;
-  error: string | null;
-  reload: () => Promise<void>;
+  board: ReturnType<typeof useBoardData>;
+  highlightId: number | null;
   onStatusChanged: (message: string) => void;
 }) {
+  const { error, reload } = board;
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Order[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -92,10 +104,12 @@ export function OrderBoard({
   const [detailId, setDetailId] = useState<number | null>(null);
   const [detailVersion, setDetailVersion] = useState(0);
   const [dialog, setDialog] = useState<OrderDialog>(null);
+  const [shownQuery, setShownQuery] = useState("");
   const lastQuery = useRef("");
 
   const runSearch = useCallback(async (q: string) => {
     lastQuery.current = q;
+    setShownQuery(q.trim());
     if (!q.trim()) {
       setResults(null);
       return;
@@ -111,10 +125,17 @@ export function OrderBoard({
     }
   }, []);
 
+  function clearSearch() {
+    setQuery("");
+    lastQuery.current = "";
+    setShownQuery("");
+    setResults(null);
+  }
+
   async function refresh() {
     setRefreshing(true);
     await reload();
-    if (tab === "search" && lastQuery.current) await runSearch(lastQuery.current);
+    if (lastQuery.current) await runSearch(lastQuery.current);
     setRefreshing(false);
   }
 
@@ -122,7 +143,7 @@ export function OrderBoard({
     onStatusChanged(message);
     setDetailVersion((v) => v + 1);
     await reload();
-    if (tab === "search" && lastQuery.current) await runSearch(lastQuery.current);
+    if (lastQuery.current) await runSearch(lastQuery.current);
   }
 
   async function advance(order: Order) {
@@ -141,87 +162,99 @@ export function OrderBoard({
     }
   }
 
-  const tabs: { key: BoardTab; label: string; count?: number; icon: typeof IconList }[] = [
-    { key: "queue", label: "Antrean", count: queue?.length, icon: IconList },
-    { key: "ready", label: "Siap Diambil", count: ready?.length, icon: IconPackageCheck },
-    { key: "search", label: "Cari", icon: IconSearch },
-  ];
-
-  const list = tab === "queue" ? queue : tab === "ready" ? ready : results;
+  const searchMode = results !== null || searching;
+  const list = searchMode
+    ? results
+    : tab === "received"
+      ? board.received
+      : tab === "processing"
+        ? board.processing
+        : board.ready;
 
   return (
-    <section className="flex min-h-0 flex-col rounded-2xl bg-surface shadow-card">
-      <header className="flex items-center gap-2 rounded-t-2xl bg-gradient-to-b from-tint to-surface px-3 py-3 sm:px-4">
-        <div role="tablist" aria-label="Daftar pesanan" className="hidden gap-1 rounded-xl bg-canvas p-1 lg:flex">
-          {tabs.map((t) => {
-            const active = tab === t.key;
+    <section className="@container flex min-h-0 flex-col rounded-2xl bg-surface shadow-card">
+      <h2 className="px-4 pt-4 text-base font-semibold text-ink lg:hidden">
+        {searchMode ? "Hasil pencarian" : BOARD_TABS.find((t) => t.key === tab)?.label}
+      </h2>
+      <header className="hidden px-3 pt-3 sm:px-4 lg:block">
+        <div role="tablist" aria-label="Tahap pesanan" className="flex gap-1 overflow-x-auto rounded-xl bg-canvas p-1">
+          {BOARD_TABS.map((t) => {
+            const active = !searchMode && tab === t.key;
+            const count = boardCount(board, t.key);
             return (
               <button
                 key={t.key}
                 role="tab"
                 aria-selected={active}
-                onClick={() => onTabChange(t.key)}
-                className={`inline-flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors duration-150 ${
+                onClick={() => {
+                  clearSearch();
+                  onTabChange(t.key);
+                }}
+                className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors duration-150 pointer-coarse:h-11 ${
                   active ? "bg-surface text-brand-700 shadow-tile" : "text-muted hover:bg-surface/70 hover:text-ink"
                 }`}
               >
                 {t.label}
-                {t.count !== undefined && (
+                {count !== undefined && (
                   <span
-                    className={`tabular min-w-6 rounded-full px-1.5 text-center text-xs font-semibold leading-5 ${
-                      active ? "bg-brand-600 text-white" : "bg-canvas text-muted"
+                    className={`tabular rounded-full px-1.5 text-xs font-medium leading-5 ${
+                      active ? "bg-brand-600 text-white" : "bg-surface text-muted"
                     }`}
                   >
-                    {t.count}
+                    {count}
                   </span>
                 )}
               </button>
             );
           })}
         </div>
-        <h2 className="flex-1 px-1 text-[15px] font-semibold text-ink lg:hidden">
-          {tabs.find((t) => t.key === tab)?.label}
-          {tab !== "search" && list && (
-            <span className="tabular ml-2 text-sm font-normal text-muted">{list.length} pesanan</span>
-          )}
-        </h2>
+      </header>
+
+      <form
+        className="flex items-center gap-2 px-3 py-3 sm:px-4"
+        role="search"
+        onSubmit={(e) => {
+          e.preventDefault();
+          runSearch(query);
+        }}
+      >
+        <div className="relative flex-1">
+          <IconSearch size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+          <input
+            className={`${inputClass} pl-9`}
+            type="search"
+            enterKeyHint="search"
+            placeholder="Kode, nama, atau WA"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              if (!e.target.value) clearSearch();
+            }}
+            aria-label="Cari pesanan"
+          />
+        </div>
+        <Button type="submit" variant="secondary" loading={searching} disabled={!query.trim()}>
+          Cari
+        </Button>
         <IconButton
           label="Muat ulang"
           icon={IconRefresh}
-          size={18}
+          size={16}
           onClick={refresh}
-          className={`ml-auto ${refreshing ? "[&_svg]:animate-spin" : ""}`}
+          className={refreshing ? "[&_svg]:animate-spin" : ""}
         />
-      </header>
+      </form>
 
-      {tab === "search" && (
-        <form
-          className="flex gap-2 px-3 pb-2 sm:px-4"
-          role="search"
-          onSubmit={(e) => {
-            e.preventDefault();
-            runSearch(query);
-          }}
-        >
-          <div className="relative flex-1">
-            <IconSearch
-              size={18}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint"
-            />
-            <input
-              className={`${inputClass} pl-10`}
-              type="search"
-              enterKeyHint="search"
-              placeholder="Nama, nomor WA, atau kode"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              aria-label="Cari pesanan"
-            />
-          </div>
-          <Button type="submit" loading={searching}>
-            Cari
-          </Button>
-        </form>
+      {searchMode && (
+        <div className="mx-3 mb-2 flex items-center justify-between gap-3 rounded-lg bg-subtle px-3 py-2 text-sm sm:mx-4">
+          <span className="text-muted">
+            Hasil untuk <span className="font-medium text-ink">“{shownQuery}”</span>
+            {results && <span className="tabular"> · {results.length}</span>}
+          </span>
+          <button type="button" onClick={clearSearch} className="font-medium text-brand-600 hover:text-brand-700">
+            Tutup pencarian
+          </button>
+        </div>
       )}
 
       {(error || actionError) && (
@@ -231,21 +264,25 @@ export function OrderBoard({
         </div>
       )}
 
-      {tab === "search" && results === null && !searching ? (
-        <EmptyState icon={IconSearch} title="Cari pesanan">
-          Ketik nama pelanggan, nomor WhatsApp, atau kode lacak di nota.
-        </EmptyState>
-      ) : list === null ? (
+      {list === null ? (
         <Loading rows={5} />
       ) : list.length === 0 ? (
-        <EmptyBoard tab={tab} />
+        searchMode ? (
+          <EmptyState icon={IconSearch} title="Tidak ditemukan">
+            Cek ejaan nama, nomor WA, atau kode.
+          </EmptyState>
+        ) : (
+          <EmptyBoard tab={tab} />
+        )
       ) : (
         <ul className={tileListClass}>
           {list.map((o) => (
             <OrderRow
               key={o.id}
               order={o}
-              showPosition={tab === "queue"}
+              showPosition={!searchMode && tab !== "ready"}
+              showStatus={searchMode}
+              highlight={o.id === highlightId}
               onAdvance={advance}
               onOpen={() => setDetailId(o.id)}
             />
@@ -280,21 +317,21 @@ const STATUS_DONE: Record<string, string> = {
 };
 
 function EmptyBoard({ tab }: { tab: BoardTab }) {
-  if (tab === "queue")
+  if (tab === "received")
     return (
-      <EmptyState icon={IconList} title="Antrean kosong">
-        Semua cucian sudah selesai. Pesanan baru akan muncul di sini: yang sedang diproses dan Express paling atas.
+      <EmptyState icon={IconList} title="Tidak ada cucian baru">
+        Nota yang baru disimpan muncul di sini.
       </EmptyState>
     );
-  if (tab === "ready")
+  if (tab === "processing")
     return (
-      <EmptyState icon={IconPackageCheck} title="Tidak ada cucian menunggu">
-        Pesanan yang ditandai siap akan muncul di sini sampai diambil pelanggan.
+      <EmptyState icon={IconClock} title="Tidak ada yang sedang diproses">
+        Tekan “Mulai Proses” saat cucian masuk mesin.
       </EmptyState>
     );
   return (
-    <EmptyState icon={IconSearch} title="Tidak ditemukan">
-      Periksa ejaan nama, nomor WA, atau kode lacak.
+    <EmptyState icon={IconPackageCheck} title="Rak kosong">
+      Belum ada cucian yang menunggu diambil.
     </EmptyState>
   );
 }
@@ -302,16 +339,27 @@ function EmptyBoard({ tab }: { tab: BoardTab }) {
 function OrderRow({
   order: o,
   showPosition,
+  showStatus,
+  highlight,
   onAdvance,
   onOpen,
 }: {
   order: Order;
   showPosition: boolean;
+  showStatus: boolean;
+  highlight: boolean;
   onAdvance: (o: Order) => Promise<void>;
   onOpen: () => void;
 }) {
   const now = useNow();
   const [busy, setBusy] = useState(false);
+  // Stempel status "menjejak" hanya saat status berubah, bukan setiap kali daftar dimuat.
+  const [shownStatus, setShownStatus] = useState(o.status);
+  const [stampKey, setStampKey] = useState(0);
+  if (shownStatus !== o.status) {
+    setShownStatus(o.status);
+    setStampKey((k) => k + 1);
+  }
 
   // Terlambat diukur dari janji standar di nota, bukan dari perkiraan.
   const timing = etaState(o, now);
@@ -324,108 +372,108 @@ function OrderRow({
     setBusy(false);
   }
 
+  // Di tab Siap diambil, kata "Siap" berulang; cukup tanggalnya. Di hasil cari, labelnya tetap perlu.
+  const eta = o.ready_at
+    ? {
+        main: showStatus ? `Siap ${formatDateTime(o.ready_at)}` : formatDateTime(o.ready_at),
+        sub: waitingDays > 0 ? `menunggu ${waitingDays} hari` : "siap hari ini",
+      }
+    : overdue
+      ? { main: "Terlambat", sub: `janji ${formatDateTime(o.promised_ready_at)}` }
+      : timing === "due"
+        ? { main: "Segera siap", sub: formatDateTime(o.predicted_ready_at) }
+        : {
+            main: formatDateTime(o.predicted_ready_at),
+            sub: now > 0 ? relativeEta(o.predicted_ready_at, now) : null,
+          };
+  const etaTone = overdue ? "text-danger-700" : waitingDays >= 3 ? "text-warn-700" : "text-ink";
+  const restCol = showPosition ? "col-start-2" : "col-start-1";
+
   return (
     <li
-      className={`${tileClass} grid grid-cols-[1fr] gap-3 p-3.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:p-4 ${
-        overdue ? "ring-1 ring-inset ring-danger-600/25" : o.is_express && !o.ready_at ? "ring-1 ring-inset ring-warn-600/20" : ""
+      // Seluruh kartu membuka detail; tombol aksi dan link nota di dalamnya tetap bekerja sendiri.
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest("a, button:not([data-open-detail])")) return;
+        onOpen();
+      }}
+      className={`${tileClass} grid cursor-pointer items-start gap-x-3 gap-y-2 px-4 py-3 active:scale-[0.995] ${
+        showPosition
+          ? "grid-cols-[1.25rem_minmax(0,1fr)] @xl:grid-cols-[1.25rem_minmax(0,1fr)_9.5rem_8rem]"
+          : showStatus
+            ? "grid-cols-[minmax(0,1fr)] @xl:grid-cols-[minmax(0,1fr)_9.5rem_6.5rem_8rem]"
+            : "grid-cols-[minmax(0,1fr)] @xl:grid-cols-[minmax(0,1fr)_9.5rem_8rem]"
+      } @xl:items-center ${
+        overdue ? "bg-danger-50/50 hover:bg-danger-50" : highlight ? "bg-brand-50 animate-[fade-in_600ms_ease-out]" : ""
       }`}
     >
-      <div className="flex min-w-0 gap-3">
-        {showPosition && (
-          <span
-            className={`tabular flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-semibold ${
-              o.is_express ? "bg-warn-50 text-warn-700" : "bg-canvas text-muted"
-            }`}
-            aria-label={`Urutan ${o.queue_position}`}
-          >
-            {o.queue_position}
-          </span>
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <button
-              type="button"
-              onClick={onOpen}
-              className="truncate rounded text-left font-semibold text-ink underline-offset-4 hover:text-brand-700 hover:underline"
-              title="Lihat detail pesanan"
-            >
-              {o.customer.name}
-            </button>
-            {o.is_express && <ExpressBadge />}
-            {o.ready_at && <PaymentBadge paid={o.is_paid} />}
-            {o.rack_location && (
-              <span className="rounded-full bg-canvas px-2 py-0.5 font-mono text-xs font-semibold text-ink-2">
-                Rak {o.rack_location}
-              </span>
-            )}
-            <span className="sm:hidden">
-              <StatusBadge status={o.status} />
-            </span>
-          </div>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[13px] text-muted">
-            <Link
-              href={`/nota/${o.id}`}
-              target="_blank"
-              className="inline-flex items-center gap-1 font-mono font-medium tracking-wider text-brand-700 hover:underline"
-              title="Buka nota"
-            >
-              <IconReceipt size={13} />
-              {o.tracking_code}
-            </Link>
-            <span aria-hidden="true">·</span>
-            <span className="tabular">{formatRupiah(o.price_total)}</span>
-          </p>
+      {showPosition && (
+        <span
+          className={`tabular pt-0.5 text-right text-sm font-medium @xl:pt-0 ${o.is_express ? "text-danger-700" : "text-faint"}`}
+          aria-label={`Urutan ${o.queue_position}`}
+        >
+          {o.queue_position}
+        </span>
+      )}
+
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <button
             type="button"
             onClick={onOpen}
-            tabIndex={-1}
-            className="mt-1 line-clamp-2 text-left text-[13px] text-ink-2"
+            className="truncate rounded text-left text-base font-medium text-ink underline-offset-4 hover:text-brand-700 hover:underline"
+            title="Lihat detail pesanan"
           >
-            {summarizeItems(o.items)}
+            {o.customer.name}
           </button>
-          <p
-            className={`mt-1.5 flex flex-wrap items-center gap-1.5 text-[13px] ${
-              overdue ? "font-medium text-danger-600" : waitingDays >= 3 ? "font-medium text-warn-700" : "text-muted"
-            }`}
-          >
-            {overdue ? <IconAlert size={14} /> : <IconClock size={14} />}
-            {o.ready_at ? (
-              <>
-                Siap sejak {formatDateTime(o.ready_at)}
-                {waitingDays > 0 && <span>· menunggu {waitingDays} hari</span>}
-              </>
-            ) : (
-              <>
-                {overdue ? (
-                  <>
-                    Terlambat · janji {formatDateTime(o.promised_ready_at)}
-                    <span className="opacity-80">({relativeEta(o.promised_ready_at, now)})</span>
-                  </>
-                ) : timing === "due" ? (
-                  <>
-                    Segera siap · perkiraan {formatDateTime(o.predicted_ready_at)}
-                    <span className="opacity-80">(janji {formatDateTime(o.promised_ready_at)})</span>
-                  </>
-                ) : (
-                  <>
-                    Perkiraan {formatDateTime(o.predicted_ready_at)}
-                    {now > 0 && <span className="opacity-80">({relativeEta(o.predicted_ready_at, now)})</span>}
-                  </>
-                )}
-              </>
-            )}
-          </p>
+          {o.is_express && <ExpressBadge />}
+          {o.ready_at && <PaymentBadge paid={o.is_paid} />}
+          {o.rack_location && (
+            <span className="inline-flex items-center gap-1 rounded bg-subtle px-1.5 py-0.5 text-xs text-muted ring-1 ring-inset ring-line">
+              Rak <span className="font-mono font-semibold text-ink">{o.rack_location}</span>
+            </span>
+          )}
+          {showStatus && (
+            <span className="@xl:hidden">
+              <StatusBadge status={o.status} />
+            </span>
+          )}
         </div>
+        <button
+          type="button"
+          onClick={onOpen}
+          tabIndex={-1}
+          className="mt-0.5 line-clamp-2 text-left text-sm text-ink-2"
+        >
+          {summarizeItems(o.items)}
+        </button>
+        <p className="mt-0.5 flex items-center gap-x-1.5 text-xs text-muted">
+          <Link href={`/nota/${o.id}`} target="_blank" className="serial hover:underline" title="Buka nota">
+            {o.tracking_code}
+          </Link>
+          <span aria-hidden="true">·</span>
+          <span className="tabular">{formatRupiah(o.price_total)}</span>
+        </p>
       </div>
 
-      <div className="flex items-center gap-3 sm:justify-end">
-        <span className="hidden sm:inline-flex">
+      <div className={`${restCol} flex items-center gap-1.5 text-sm @xl:col-start-auto @xl:block @xl:text-right ${etaTone}`}>
+        {overdue && <IconAlert size={14} className="shrink-0 @xl:hidden" />}
+        {!overdue && <IconClock size={14} className="shrink-0 text-faint @xl:hidden" />}
+        <span className="tabular font-medium @xl:block">{eta.main}</span>
+        {eta.sub && <span className="tabular text-muted @xl:block @xl:text-xs">· {eta.sub}</span>}
+      </div>
+
+      {showStatus && (
+        <span key={stampKey} className={`hidden @xl:inline-flex ${stampKey ? "animate-stamp" : ""}`}>
           <StatusBadge status={o.status} />
         </span>
+      )}
+
+      <div className={`${restCol} @xl:col-start-auto`}>
         {o.next_status && (
           <Button
             variant={o.next_status === "READY" ? "primary" : "secondary"}
-            className="w-full sm:w-40"
+            size="sm"
+            className="w-full"
             loading={busy}
             onClick={run}
           >

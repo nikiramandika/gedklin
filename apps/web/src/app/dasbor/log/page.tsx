@@ -27,6 +27,7 @@ import {
   PageHeader,
   Select,
   inputClass,
+  tabClass,
   tileClass,
 } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -49,13 +50,13 @@ const CATEGORIES: { key: ActivityEntity | "all"; label: string }[] = [
 ];
 
 const ENTITY_STYLE: Record<ActivityEntity, { icon: typeof IconTag; tone: string }> = {
-  order: { icon: IconReceipt, tone: "bg-brand-50 text-brand-600 ring-brand-100" },
-  customer: { icon: IconUser, tone: "bg-brand-50 text-brand-600 ring-brand-100" },
-  catalog: { icon: IconTag, tone: "bg-ok-50 text-ok-700 ring-ok-600/15" },
-  user: { icon: IconUsers, tone: "bg-canvas text-ink-2 ring-line" },
-  settings: { icon: IconBolt, tone: "bg-warn-50 text-warn-700 ring-warn-600/15" },
-  operation: { icon: IconCalendar, tone: "bg-canvas text-ink-2 ring-line" },
-  auth: { icon: IconKey, tone: "bg-canvas text-muted ring-line" },
+  order: { icon: IconReceipt, tone: "text-brand-600" },
+  customer: { icon: IconUser, tone: "text-brand-600" },
+  catalog: { icon: IconTag, tone: "text-ok-700" },
+  user: { icon: IconUsers, tone: "text-ink-2" },
+  settings: { icon: IconBolt, tone: "text-warn-700" },
+  operation: { icon: IconCalendar, tone: "text-ink-2" },
+  auth: { icon: IconKey, tone: "text-muted" },
 };
 
 const FIELD_LABEL: Record<string, string> = {
@@ -139,7 +140,7 @@ export default function LogPage() {
     <AppShell roles={ROLES}>
       <PageHeader
         title="Log Aktivitas"
-        description="Siapa melakukan apa dan kapan: pesanan, perubahan layanan dan harga, akun, pengaturan, dan login."
+        description="Pesanan, harga, akun, pengaturan, login."
       />
       {/* useSearchParams perlu Suspense agar halaman tetap bisa di-prerender. */}
       <Suspense
@@ -282,7 +283,7 @@ function LogContent() {
           <div
             role="tablist"
             aria-label="Jenis aktivitas"
-            className="flex min-w-0 flex-1 gap-1 overflow-x-auto rounded-xl bg-canvas p-1"
+            className="flex min-w-0 flex-1 gap-5 overflow-x-auto border-b border-line"
           >
             {CATEGORIES.map((c) => {
               const active = c.key === category;
@@ -295,9 +296,7 @@ function LogContent() {
                     setEntries(null);
                     setCategory(c.key);
                   }}
-                  className={`inline-flex h-10 shrink-0 items-center rounded-lg px-3 text-sm font-medium transition-colors duration-150 ${
-                    active ? "bg-surface text-brand-700 shadow-tile" : "text-muted hover:bg-surface/70 hover:text-ink"
-                  }`}
+                  className={tabClass(active)}
                 >
                   {c.label}
                 </button>
@@ -350,10 +349,10 @@ function LogContent() {
           </EmptyState>
         )
       ) : (
-        <div className="space-y-6 px-3 pb-4 sm:px-4">
+        <div className="space-y-5 px-3 pb-4 sm:px-4">
           {groups.map((g) => (
             <section key={g.key}>
-              <h2 className="mb-2 px-1 text-[13px] font-semibold text-muted">{dayLabel(g.key)}</h2>
+              <h2 className="mb-2 px-1 text-xs font-semibold text-muted">{dayLabel(g.key)}</h2>
               <ol className="space-y-2">
                 {g.items.map((e) => (
                   <LogEntry key={e.id} entry={e} />
@@ -379,16 +378,14 @@ function LogEntry({ entry: e }: { entry: ActivityLog }) {
   const changes = e.changes ? Object.entries(e.changes) : [];
 
   return (
-    <li className={`${tileClass} p-3.5`}>
+    <li className={`${tileClass} px-4 py-3`}>
       <div className="flex items-start gap-3">
-        <span
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset ${style.tone}`}
-        >
+        <span className={`mt-0.5 flex shrink-0 ${style.tone}`} aria-hidden="true">
           <Icon size={18} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[15px] text-ink text-pretty">{e.summary}</p>
-          <p className="mt-0.5 text-[13px] text-muted">
+          <p className="text-base text-ink text-pretty">{e.summary}</p>
+          <p className="mt-0.5 text-sm text-muted">
             <span className="font-medium text-ink-2">{e.user_name ?? "Sistem"}</span>
             {" · "}
             <time dateTime={e.created_at} className="tabular">
@@ -401,7 +398,7 @@ function LogEntry({ entry: e }: { entry: ActivityLog }) {
             type="button"
             aria-expanded={open}
             onClick={() => setOpen((v) => !v)}
-            className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-2.5 text-[13px] font-medium text-brand-700 transition-colors duration-150 hover:bg-brand-50"
+            className="inline-flex h-11 shrink-0 items-center gap-1 rounded-md px-2.5 text-sm font-semibold text-brand-600 transition-colors duration-150 hover:bg-brand-50"
           >
             {open ? "Tutup" : `${changes.length} perubahan`}
             <IconChevronRight
@@ -412,7 +409,7 @@ function LogEntry({ entry: e }: { entry: ActivityLog }) {
         )}
       </div>
       {open && (
-        <dl className="mt-3 space-y-1.5 rounded-xl bg-subtle p-3 text-sm sm:ml-12">
+        <dl className="mt-3 space-y-1.5 border-t border-dashed border-field/60 pt-3 text-sm sm:ml-8">
           {changes.map(([field, [before, after]]) => (
             <div key={field} className="grid gap-x-4 gap-y-0.5 sm:grid-cols-[180px_minmax(0,1fr)]">
               <dt className="text-muted">{FIELD_LABEL[field] ?? field}</dt>

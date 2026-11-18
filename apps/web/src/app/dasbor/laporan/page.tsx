@@ -176,7 +176,7 @@ export default function LaporanPage() {
     <AppShell roles={ROLES}>
       <PageHeader
         title="Laporan"
-        description="Pendapatan dihitung dari pesanan yang diterima pada periode ini, tanpa pesanan yang dibatalkan."
+        description="Pesanan batal tidak dihitung."
         actions={
           <Button variant="secondary" onClick={download} loading={downloading} disabled={!range}>
             <IconDownload size={18} />
@@ -185,7 +185,7 @@ export default function LaporanPage() {
         }
       />
 
-      <div className={`${cardClass} mb-6 space-y-3 p-3 sm:p-4`}>
+      <div className={`${cardClass} mb-5 space-y-3 p-3 sm:p-4`}>
         <div className="overflow-x-auto">
           <div className="min-w-[560px]">
             <Segmented<Preset>
@@ -229,7 +229,7 @@ export default function LaporanPage() {
       </div>
 
       {error && (
-        <div className="mb-6">
+        <div className="mb-5">
           <ErrorText message={error} />
         </div>
       )}
@@ -249,12 +249,12 @@ export default function LaporanPage() {
 
 function ReportBody({ report: r }: { report: Report }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <Kpi
           label="Pendapatan"
           value={formatRupiah(r.revenue)}
-          sub={r.orders ? `Rata-rata ${formatRupiah(r.avg_order_value)} per pesanan` : undefined}
+          sub={r.orders ? `±${formatRupiah(r.avg_order_value)}/pesanan` : undefined}
         />
         <Kpi
           label="Pesanan"
@@ -267,14 +267,14 @@ function ReportBody({ report: r }: { report: Report }) {
         <Kpi
           label="Belum lunas"
           value={formatRupiah(r.unpaid_total)}
-          sub={r.unpaid_orders ? `${r.unpaid_orders} pesanan, ditagih saat diambil` : "Semua pesanan sudah lunas"}
+          sub={r.unpaid_orders ? `${r.unpaid_orders} pesanan, ditagih saat ambil` : "Semua lunas"}
           warn={r.unpaid_total > 0}
         />
       </div>
 
       <RevenueChart report={r} />
 
-      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-3">
+      <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-3">
         <BreakdownCard
           icon={IconTag}
           title="Per layanan"
@@ -295,10 +295,10 @@ function ReportBody({ report: r }: { report: Report }) {
 
 function Kpi({ label, value, sub, warn }: { label: string; value: string; sub?: string; warn?: boolean }) {
   return (
-    <div className={`${cardClass} p-4 sm:p-5`}>
-      <p className="text-[13px] font-medium text-muted">{label}</p>
-      <p className="tabular mt-1.5 truncate text-xl font-semibold tracking-tight text-ink sm:text-2xl">{value}</p>
-      {sub && <p className={`mt-1 text-xs ${warn ? "font-medium text-warn-700" : "text-muted"}`}>{sub}</p>}
+    <div className="rounded-2xl bg-surface p-4 shadow-card sm:p-5">
+      <p className="label-caps text-muted">{label}</p>
+      <p className="tabular display mt-1 truncate text-2xl text-ink">{value}</p>
+      {sub && <p className={`mt-1 text-sm ${warn ? "font-semibold text-warn-700" : "text-muted"}`}>{sub}</p>}
     </div>
   );
 }
@@ -348,7 +348,7 @@ function RevenueChart({ report }: { report: Report }) {
         </div>
       ) : (
         <div className="flex gap-3">
-          <div className="tabular flex h-56 w-14 shrink-0 flex-col justify-between pt-6 text-right text-[11px] text-muted" aria-hidden="true">
+          <div className="tabular flex h-56 w-14 shrink-0 flex-col justify-between pt-6 text-right text-xs text-muted" aria-hidden="true">
             <span>{compactRupiah(max)}</span>
             <span>{compactRupiah(max / 2)}</span>
             <span>0</span>
@@ -401,7 +401,7 @@ function RevenueChart({ report }: { report: Report }) {
             </ul>
             <ul className="mt-2 flex gap-0.5" aria-hidden="true">
               {items.map((b, i) => (
-                <li key={b.key} className="min-w-0 flex-1 overflow-visible text-center text-[11px] text-muted">
+                <li key={b.key} className="min-w-0 flex-1 overflow-visible text-center text-xs text-muted">
                   <span className={i % every === 0 ? "whitespace-nowrap" : "invisible"}>{b.label}</span>
                 </li>
               ))}

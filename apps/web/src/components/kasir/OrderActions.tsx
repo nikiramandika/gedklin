@@ -16,13 +16,13 @@ const FORM_ID = "order-action-form";
 
 function Summary({ order }: { order: Order }) {
   return (
-    <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-subtle p-3">
+    <div className="mb-4 flex items-center justify-between gap-3 border-y border-dashed border-field/60 py-3">
       <div className="min-w-0">
-        <p className="truncate font-medium text-ink">{order.customer.name}</p>
-        <p className="font-mono text-[13px] tracking-wider text-brand-700">{order.tracking_code}</p>
+        <p className="truncate text-base font-semibold text-ink">{order.customer.name}</p>
+        <p className="serial text-sm">{order.tracking_code}</p>
       </div>
-      <div className="text-right">
-        <p className="tabular font-semibold text-ink">{formatRupiah(order.price_total)}</p>
+      <div className="flex flex-col items-end gap-1.5">
+        <p className="tabular text-lg font-semibold text-ink">{formatRupiah(order.price_total)}</p>
         <PaymentBadge paid={order.is_paid} />
       </div>
     </div>
@@ -125,9 +125,9 @@ function ActionModal({
       title={title}
       description={
         dialog?.kind === "ready"
-          ? "Pelanggan akan menerima WhatsApp bahwa cucian siap diambil."
+          ? "Pelanggan dapat WhatsApp otomatis."
           : dialog?.kind === "pickup"
-            ? "Pastikan cucian yang diserahkan sesuai kode pada nota."
+            ? "Cocokkan kode di nota."
             : undefined
       }
       footer={
@@ -150,7 +150,7 @@ function ActionModal({
         <form id={FORM_ID} onSubmit={submit}>
           <Summary order={order} />
           {dialog?.kind === "ready" && (
-            <Field label="Lokasi rak" hint="Opsional. Mis. A1 atau B3, supaya cucian cepat ditemukan saat diambil.">
+            <Field label="Lokasi rak (opsional)">
               <input
                 className={`${inputClass} font-mono uppercase`}
                 value={rack}
@@ -163,17 +163,17 @@ function ActionModal({
             </Field>
           )}
           {dialog?.kind === "pickup" && order.rack_location && (
-            <p className="mb-4 text-sm text-ink-2">
-              Ambil di rak <span className="font-mono font-semibold text-ink">{order.rack_location}</span>.
+            <p className="mb-4 flex items-baseline gap-2 text-ink-2">
+              <span className="label-caps">Ambil di rak</span>
+              <span className="font-mono text-2xl font-semibold text-ink">{order.rack_location}</span>
             </p>
           )}
           {needsPayment && (
             <>
               {dialog?.kind === "pickup" && (
                 <p className="mb-3 text-sm text-ink-2">
-                  Pesanan belum lunas. Terima pembayaran{" "}
-                  <span className="tabular font-semibold text-ink">{formatRupiah(order.price_total)}</span> sebelum
-                  cucian diserahkan.
+                  Belum lunas. Terima{" "}
+                  <span className="tabular font-semibold text-ink">{formatRupiah(order.price_total)}</span> dulu.
                 </p>
               )}
               <MethodPicker value={method} onChange={setMethod} />

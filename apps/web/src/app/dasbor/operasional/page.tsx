@@ -102,10 +102,10 @@ function OperasionalContent() {
     <>
       <PageHeader
         title="Operasional Harian"
-        description="Jumlah petugas, mesin yang bisa dipakai, dan jam buka ikut menentukan perkiraan waktu siap. Isi setiap hari, terutama saat ada mesin rusak atau petugas izin."
+        description="Dipakai untuk perkiraan waktu siap."
       />
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(340px,420px)_minmax(0,1fr)]">
-        <Card icon={IconCalendar} title="Isi atau ubah data" description="Data tanggal yang sama akan ditimpa.">
+      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(340px,420px)_minmax(0,1fr)]">
+        <Card icon={IconCalendar} title="Isi data hari" description="Tanggal sama akan ditimpa.">
           <form
             className="space-y-5"
             onSubmit={async (e) => {
@@ -146,7 +146,7 @@ function OperasionalContent() {
             </Field>
             <Switch
               label="Buka pada tanggal ini"
-              description={form.is_open ? "Outlet beroperasi" : "Outlet tutup, pesanan bergeser ke hari berikutnya"}
+              description={form.is_open ? "Outlet buka" : "Tutup · pesanan bergeser ke besok"}
               checked={form.is_open}
               onChange={(v) => set("is_open", v)}
             />
@@ -190,7 +190,7 @@ function OperasionalContent() {
                 />
               </Field>
             </div>
-            <Field label="Catatan kendala mesin" hint="Opsional, mis. pengering 2 rusak sejak pagi.">
+            <Field label="Catatan kendala mesin" hint="Mis. pengering 2 rusak.">
               <textarea
                 className={textareaClass}
                 rows={2}
@@ -208,12 +208,12 @@ function OperasionalContent() {
           </form>
         </Card>
 
-        <Card flush icon={IconList} tone="neutral" title="30 hari terakhir" description="Ketuk Ubah untuk mengisi ulang form.">
+        <Card flush icon={IconList} tone="neutral" title="30 hari terakhir">
           {!rows ? (
             <Loading rows={5} />
           ) : rows.length === 0 ? (
             <EmptyState icon={IconCalendar} title="Belum ada data harian">
-              Simpan data hari ini lewat form di samping. Tanpa data, perkiraan memakai kapasitas normal.
+              Tanpa data, perkiraan pakai kapasitas normal.
             </EmptyState>
           ) : (
             <div className="overflow-x-auto px-3 pb-3 sm:px-4 sm:pb-4">

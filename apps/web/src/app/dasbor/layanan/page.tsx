@@ -18,6 +18,8 @@ import {
   Select,
   Switch,
   inputClass,
+  tabClass,
+  tabListClass,
   tileClass,
   tileListClass,
 } from "@/components/ui";
@@ -96,7 +98,7 @@ export default function LayananPage() {
     <AppShell roles={ROLES}>
       <PageHeader
         title="Layanan & Harga"
-        description="Kelola layanan sesuai price list mitra. Perubahan langsung dipakai kasir untuk pesanan berikutnya."
+        description="Perubahan langsung dipakai kasir."
         actions={
           <Button onClick={() => setEditor({})}>
             <IconPlus size={18} />
@@ -104,12 +106,12 @@ export default function LayananPage() {
           </Button>
         }
       />
-      <div className="grid grid-cols-1 items-start gap-6 2xl:grid-cols-[minmax(0,1fr)_400px]">
+      <div className="grid grid-cols-1 items-start gap-5 2xl:grid-cols-[minmax(0,1fr)_400px]">
         <Card flush>
           <div
             role="tablist"
             aria-label="Kelompok layanan"
-            className="m-3 flex gap-1 overflow-x-auto rounded-xl bg-canvas p-1 sm:m-4"
+            className={tabListClass}
           >
             {GROUPS.map((g) => {
               const active = g === group;
@@ -120,12 +122,10 @@ export default function LayananPage() {
                   role="tab"
                   aria-selected={active}
                   onClick={() => setGroup(g)}
-                  className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors duration-150 ${
-                    active ? "bg-surface text-brand-700 shadow-tile" : "text-muted hover:bg-surface/70 hover:text-ink"
-                  }`}
+                  className={tabClass(active)}
                 >
                   {GROUP_LABEL[g]}
-                  {n !== undefined && <span className="tabular text-xs opacity-70">{n}</span>}
+                  {n !== undefined && <span className="tabular text-sm font-medium text-faint">{n}</span>}
                 </button>
               );
             })}
@@ -162,7 +162,7 @@ export default function LayananPage() {
             </ul>
           )}
         </Card>
-        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2 2xl:grid-cols-1">
+        <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2 2xl:grid-cols-1">
           <SettingsCard />
           <PromiseCard />
         </div>
@@ -235,24 +235,24 @@ function CatalogRow({
     <li className={`${tileClass} flex flex-wrap items-center gap-x-4 gap-y-3 p-4`}>
       <button type="button" onClick={onEdit} className="min-w-0 flex-1 rounded-lg text-left">
         <span className="flex flex-wrap items-center gap-2">
-          <span className={`font-medium ${item.is_active ? "text-ink" : "text-faint"}`}>{item.name}</span>
+          <span className={`text-base font-semibold ${item.is_active ? "text-ink" : "text-faint"}`}>{item.name}</span>
           {item.express_eligible && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-warn-50 px-2 py-0.5 text-xs font-medium text-warn-700">
-              <IconBolt size={12} />
-              Bisa Express
+            <span className="label-caps inline-flex items-center gap-0.5 text-serial">
+              <IconBolt size={12} className="fill-current" />
+              Express
             </span>
           )}
           {!item.is_active && (
-            <span className="rounded-full bg-canvas px-2 py-0.5 text-xs font-medium text-muted">
+            <span className="label-caps rounded-md bg-subtle px-2 py-1 leading-none ring-1 ring-inset ring-line text-faint">
               {noPrice ? "Belum ada harga" : "Nonaktif"}
             </span>
           )}
         </span>
-        <span className="mt-0.5 block text-[13px] text-muted">
-          <span className="font-mono">{item.code}</span> · {PROCESS_LABEL[item.process]} · {priceRule(item)}
+        <span className="mt-0.5 block text-sm text-muted">
+          <span className="font-mono font-semibold text-ink-2">{item.code}</span> · {PROCESS_LABEL[item.process]} · {priceRule(item)}
         </span>
       </button>
-      <p className="tabular text-right text-[15px] font-semibold text-ink">
+      <p className="tabular text-right text-base font-semibold text-ink">
         {noPrice ? "–" : formatRupiah(item.price ?? 0)}
       </p>
       <div className="flex w-full items-center justify-end gap-1 sm:w-auto">
@@ -481,7 +481,7 @@ function ServiceForm({
   );
 
   return (
-    <form id={FORM_ID} onSubmit={submit} className="space-y-6">
+    <form id={FORM_ID} onSubmit={submit} className="space-y-5">
       <section className="space-y-3">
         <h3 className="text-sm font-semibold text-ink">Identitas</h3>
         <Field label="Nama layanan">
@@ -498,7 +498,7 @@ function ServiceForm({
         </Field>
         <Field
           label="Kode"
-          hint={editing ? "Kode tidak bisa diubah karena dipakai di nota lama." : "Huruf besar, angka, dan garis bawah."}
+          hint={editing ? "Tidak bisa diubah (dipakai di nota lama)." : "Huruf besar, angka, garis bawah."}
         >
           <input
             className={`${inputClass} font-mono uppercase`}
@@ -539,7 +539,7 @@ function ServiceForm({
         </div>
       </section>
 
-      <section className="space-y-3 rounded-2xl bg-subtle p-4">
+      <section className="space-y-3 rounded-md border border-dashed border-field/60 p-4">
         <h3 className="text-sm font-semibold text-ink">Harga</h3>
         <Field label="Satuan harga">
           <Select
@@ -608,14 +608,14 @@ function ServiceForm({
         {form.unit === "KILOAN_7KG" && (
           <Switch
             label="Bisa Express"
-            description="Harga Express = harga Reguler × pengali Express. Menurut mitra hanya CKL dan CKS."
+            description="Harga = Reguler × pengali."
             checked={form.express}
             onChange={(express) => set({ express })}
           />
         )}
         <Switch
           label="Aktif"
-          description={noPrice ? "Isi harga dulu agar layanan bisa dipesan." : "Tampil di daftar layanan kasir."}
+          description={noPrice ? "Isi harga dulu." : "Tampil di kasir."}
           checked={form.active && !noPrice}
           onChange={(active) => set({ active })}
         />
@@ -678,7 +678,7 @@ function SettingsCard() {
       >
         <Field
           label="Pengali harga Express"
-          hint="Hanya untuk layanan bertanda Bisa Express. Harga Express = harga Reguler × pengali ini."
+          hint="Harga Express = Reguler × pengali."
         >
           <div className="relative">
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted">×</span>
@@ -692,7 +692,7 @@ function SettingsCard() {
         </Field>
         <Field
           label="Kapasitas mesin cuci (kg)"
-          hint="Dipakai menghitung jumlah load mesin untuk perkiraan waktu, bukan untuk harga."
+          hint="Untuk perkiraan waktu, bukan harga."
         >
           <input
             className={`${inputClass} tabular`}
@@ -701,7 +701,7 @@ function SettingsCard() {
             onChange={(e) => setForm({ ...form, capacity: e.target.value })}
           />
         </Field>
-        <Field label="Janji default (jam)" hint="Dipakai bila layanan belum punya janji waktu sendiri.">
+        <Field label="Janji default (jam)" hint="Bila layanan belum punya janji sendiri.">
           <input
             className={`${inputClass} tabular`}
             type="number"
@@ -744,10 +744,10 @@ function PromiseCard() {
       icon={IconClock}
       tone="neutral"
       title="Janji waktu standar"
-      description="Dalam jam (1 hari = 24 jam). Kosongkan bila belum diketahui."
+      description="Dalam jam. Kosongkan bila belum tahu."
     >
-      <p className="mb-4 text-[13px] text-muted">
-        Dipakai sebagai janji di nota dan cadangan perkiraan bila model belum tersedia.
+      <p className="mb-4 text-xs text-muted">
+        Janji di nota dan cadangan bila model belum ada.
       </p>
       {!rows ? (
         error ? <ErrorText message={error} /> : <Loading rows={4} />
@@ -786,7 +786,7 @@ function PromiseCard() {
           <ul className="space-y-2">
             {rows.map((r, i) => (
               <li key={r.process} className="grid grid-cols-[minmax(0,1fr)_84px_84px] items-center gap-2">
-                <span className="text-[13px] text-ink-2">{PROCESS_LABEL[r.process]}</span>
+                <span className="text-xs text-ink-2">{PROCESS_LABEL[r.process]}</span>
                 <input
                   className={`${inputClass} tabular px-2.5 text-center`}
                   type="number"

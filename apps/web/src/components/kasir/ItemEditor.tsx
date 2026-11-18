@@ -144,7 +144,7 @@ export function ItemLines({ editor }: { editor: ItemEditor }) {
   const { lines, byCode, catalog, quote } = editor;
   return (
     <fieldset>
-      <legend className="mb-3 text-sm font-semibold text-ink">Item cucian</legend>
+      <legend className="label-caps mb-2">Item cucian</legend>
       <ul className="space-y-3">
         {lines.map((line, idx) => {
           const item = byCode.get(line.code);
@@ -172,7 +172,7 @@ export function ItemLines({ editor }: { editor: ItemEditor }) {
                       </optgroup>
                     ))}
                   </Select>
-                  {item && <p className="mt-1.5 text-xs text-muted">{priceRule(item)}</p>}
+                  {item && <p className="mt-1.5 text-xs text-faint">{priceRule(item)}</p>}
                 </div>
                 <IconButton
                   label={`Hapus item ${idx + 1}`}
@@ -211,8 +211,8 @@ export function ItemLines({ editor }: { editor: ItemEditor }) {
                     />
                   </Field>
                 )}
-                <div className="ml-auto pb-2.5 text-right">
-                  <p className="tabular text-[15px] font-semibold text-ink">
+                <div className="ml-auto pb-3 text-right">
+                  <p className="tabular text-base font-semibold text-ink">
                     {priced ? formatRupiah(priced.subtotal) : "–"}
                   </p>
                   {priced && lineDetail(priced) && <p className="text-xs text-muted">{lineDetail(priced)}</p>}
@@ -226,7 +226,7 @@ export function ItemLines({ editor }: { editor: ItemEditor }) {
         type="button"
         disabled={catalog.length === 0}
         onClick={editor.addLine}
-        className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-brand-50 text-sm font-semibold text-brand-700 transition-colors duration-150 hover:bg-brand-100 disabled:bg-canvas disabled:text-faint"
+        className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-brand-50 text-sm font-semibold pointer-coarse:h-11 text-brand-700 transition-colors duration-150 hover:bg-brand-100 disabled:bg-canvas disabled:text-faint"
       >
         <IconPlus size={18} />
         Tambah item
@@ -239,7 +239,7 @@ export function SpeedField({ editor }: { editor: ItemEditor }) {
   const { express, expressAvailable, expressNames, quote } = editor;
   return (
     <fieldset>
-      <legend className="mb-3 text-sm font-semibold text-ink">Kecepatan</legend>
+      <legend className="label-caps mb-2">Kecepatan</legend>
       <Segmented<Speed>
         label="Kecepatan layanan"
         size="lg"
@@ -264,12 +264,10 @@ export function SpeedField({ editor }: { editor: ItemEditor }) {
         ]}
       />
       {express ? (
-        <p className="mt-2 text-xs text-muted">
-          Diproses lebih dulu di antrean. Hanya item {expressNames} yang ikut harga Express.
-        </p>
+        <p className="mt-2 text-xs text-muted">Didahulukan di antrean · harga Express hanya untuk {expressNames}.</p>
       ) : (
         !expressAvailable &&
-        expressNames && <p className="mt-2 text-xs text-muted">Express hanya tersedia untuk {expressNames}.</p>
+        expressNames && <p className="mt-2 text-xs text-muted">Express hanya untuk {expressNames}.</p>
       )}
     </fieldset>
   );

@@ -34,9 +34,9 @@ function DialogHeader({
   onClose: () => void;
 }) {
   return (
-    <header className="flex items-start gap-3 px-5 pb-4 pt-5">
+    <header className="mb-4 flex items-start gap-3 border-b border-line px-5 py-3.5">
       <div className="min-w-0 flex-1">
-        <h2 className="text-lg font-semibold tracking-tight text-ink text-balance">{title}</h2>
+        <h2 className="text-lg font-semibold text-ink text-balance">{title}</h2>
         {description && <p className="mt-1 text-sm text-muted text-pretty">{description}</p>}
       </div>
       <IconButton label="Tutup" icon={IconX} onClick={onClose} className="-mr-2 -mt-2" />
@@ -45,7 +45,7 @@ function DialogHeader({
 }
 
 const backdropClass =
-  "backdrop:bg-nav/45 backdrop:backdrop-blur-[2px] backdrop:animate-[fade-in_200ms_ease-out]";
+  "backdrop:bg-nav/45 backdrop:animate-[fade-in_200ms_ease-out]";
 
 export function Drawer({
   open,
@@ -75,12 +75,12 @@ export function Drawer({
     >
       {open && (
         <>
-          <div className="pt-safe bg-gradient-to-b from-tint to-surface sm:rounded-tl-2xl">
+          <div className="pt-safe sm:rounded-tl-2xl">
             <DialogHeader title={title} description={description} onClose={onClose} />
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-6">{children}</div>
           {footer && (
-            <footer className="pb-safe flex flex-wrap items-center justify-end gap-2 bg-surface px-5 py-4 shadow-[0_-8px_16px_-12px_rgb(16_24_40/0.18)] sm:rounded-bl-2xl">
+            <footer className="pb-safe flex flex-wrap items-center justify-end gap-2 bg-surface px-5 py-4 border-t border-line sm:rounded-bl-2xl">
               {footer}
             </footer>
           )}
@@ -121,7 +121,7 @@ export function Modal({
           <DialogHeader title={title} description={description} onClose={onClose} />
           <div className="px-5 pb-5">{children}</div>
           {footer && (
-            <footer className="flex flex-wrap items-center justify-end gap-2 rounded-b-2xl bg-subtle px-5 py-4">
+            <footer className="flex flex-wrap items-center justify-end gap-2 rounded-b-2xl border-t border-line bg-subtle px-5 py-4">
               {footer}
             </footer>
           )}
@@ -132,9 +132,9 @@ export function Modal({
 }
 
 const CONFIRM_TONE = {
-  danger: { icon: IconAlert, badge: "bg-danger-50 text-danger-600 ring-danger-600/15", button: "danger" },
-  warn: { icon: IconAlert, badge: "bg-warn-50 text-warn-700 ring-warn-600/20", button: "dark" },
-  brand: { icon: IconInfo, badge: "bg-brand-50 text-brand-600 ring-brand-100", button: "primary" },
+  danger: { icon: IconAlert, badge: "text-danger-600", button: "danger" },
+  warn: { icon: IconAlert, badge: "text-warn-700", button: "dark" },
+  brand: { icon: IconInfo, badge: "text-brand-600", button: "primary" },
 } as const;
 
 export function ConfirmDialog({
@@ -173,10 +173,10 @@ export function ConfirmDialog({
     >
       {open && (
         <div className="p-5">
-          <span className={`mb-4 flex h-11 w-11 items-center justify-center rounded-xl ring-1 ring-inset ${t.badge}`}>
-            <Icon size={22} />
+          <span className={`mb-3 flex ${t.badge}`}>
+            <Icon size={28} />
           </span>
-          <h2 className="text-lg font-semibold tracking-tight text-ink">{title}</h2>
+          <h2 className="text-lg font-semibold text-ink">{title}</h2>
           <div className="mt-1.5 text-sm text-muted text-pretty">{children}</div>
           {error && (
             <div className="mt-4">
@@ -227,7 +227,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <p
             key={toast.id}
             role={toast.tone === "error" ? "alert" : "status"}
-            className="flex max-w-md items-center gap-2 rounded-xl bg-ink px-4 py-3 text-sm font-medium text-white shadow-pop animate-[enter-up_200ms_cubic-bezier(0.16,1,0.3,1)]"
+            className="flex max-w-md items-center gap-2 rounded-md bg-ink px-4 py-3 text-sm font-medium text-white shadow-pop animate-[enter-up_200ms_cubic-bezier(0.16,1,0.3,1)]"
           >
             {toast.tone === "error" ? (
               <IconAlert size={16} className="shrink-0 text-danger-50" />

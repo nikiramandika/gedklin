@@ -21,22 +21,16 @@ export default function LoginPage() {
   }, [ready, user, router]);
 
   return (
-    <main className="relative flex min-h-dvh flex-1 flex-col items-center justify-center overflow-hidden bg-nav px-4 py-10">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -top-40 left-1/2 h-[520px] w-[820px] -translate-x-1/2 rounded-full bg-brand-600/30 blur-3xl"
-      />
-      <div className="relative w-full max-w-[400px]">
-        <div className="mb-6 flex items-center justify-center gap-3 text-white">
-          <BrandMark size={44} />
-          <div className="leading-tight">
-            <p className="text-xl font-semibold">Gedklin</p>
-            <p className="text-sm text-nav-faint">Laundry · Medan</p>
-          </div>
+    <main className="flex min-h-dvh flex-1 flex-col items-center justify-center bg-canvas px-4 py-10">
+      <div className="w-full max-w-[360px]">
+        <div className="mb-5 flex flex-col items-center text-center">
+          <BrandMark size={40} />
+          <h1 className="mt-4 text-xl font-semibold text-ink">Masuk ke Gedklin</h1>
+          <p className="mt-1 text-sm text-muted">Kasir, admin, dan pemilik</p>
         </div>
 
         <form
-          className="space-y-4 rounded-2xl bg-surface p-6 shadow-pop sm:p-8"
+          className="space-y-4 rounded-lg bg-surface p-5 shadow-card"
           onSubmit={async (e) => {
             e.preventDefault();
             setBusy(true);
@@ -51,10 +45,6 @@ export default function LoginPage() {
             }
           }}
         >
-          <div className="mb-2">
-            <h1 className="text-xl font-semibold tracking-tight text-ink">Masuk petugas</h1>
-            <p className="mt-1 text-sm text-muted">Untuk kasir, admin, dan pemilik.</p>
-          </div>
           <Field label="Username">
             <input
               className={inputClass}
@@ -76,17 +66,17 @@ export default function LoginPage() {
             />
           </Field>
           <ErrorText message={error} />
-          <Button type="submit" size="lg" className="w-full" loading={busy}>
+          <Button type="submit" className="w-full" loading={busy}>
             {busy ? "Memproses..." : "Masuk"}
           </Button>
         </form>
 
         <Link
           href="/lacak"
-          className="mt-6 flex h-11 items-center justify-center gap-2 text-sm font-medium text-nav-ink hover:text-white"
+          className="mt-5 flex h-10 items-center justify-center gap-1.5 text-sm font-medium text-muted hover:text-ink"
         >
-          <IconSearch size={16} />
-          Pelanggan? Lacak cucian di sini
+          <IconSearch size={14} />
+          Pelanggan? Lacak cucian
         </Link>
       </div>
     </main>
