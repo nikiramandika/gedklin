@@ -76,6 +76,7 @@ def create_order(
             db,
             customer_name=data.customer_name,
             customer_phone=data.customer_phone,
+            customer_has_whatsapp=data.customer_has_whatsapp,
             is_express=data.is_express,
             items=to_requests(data.items),
             user=user,
@@ -89,7 +90,7 @@ def create_order(
 
 @router.get("/queue", response_model=list[OrderOut])
 def queue(db: Session = Depends(get_db), _: User = Depends(staff)) -> list[OrderOut]:
-    """Antrean aktif: yang sedang diproses, Express, Reguler mendekati janji, lalu FIFO."""
+    """Antrean aktif: yang sedang diproses, Express + Reguler mepet janji (FIFO), lalu Reguler."""
     return [to_out(o, i) for i, o in enumerate(active_orders(db), start=1)]
 
 
@@ -121,7 +122,7 @@ def lookup_customer(
     phone: str, db: Session = Depends(get_db), _: User = Depends(staff)
 ) -> Customer | None:
     try:
-        normalized = order_service.normalize_phone(phone)
+        normalized = order_service.normalize_phone(phone, mobile_only=False)
     except order_service.OrderError:
         return None
     return db.scalar(select(Customer).where(Customer.phone_wa == normalized))

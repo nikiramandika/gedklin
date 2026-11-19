@@ -25,7 +25,7 @@ export function TrackingForm({ initial = "" }: { initial?: string }) {
       <label className="block">
         <span className="label-caps mb-1.5 block">Kode lacak</span>
         <input
-          className={`${inputClass.replace("h-12", "h-14").replace("text-base", "text-2xl")} text-center font-mono font-semibold uppercase tracking-[0.2em] text-serial placeholder:font-sans placeholder:text-base placeholder:font-normal placeholder:normal-case placeholder:tracking-normal`}
+          className={`${inputClass} h-14! text-center font-mono text-2xl! font-semibold uppercase tracking-[0.18em] text-serial placeholder:font-sans placeholder:text-base placeholder:font-normal placeholder:normal-case placeholder:tracking-normal`}
           placeholder="Mis. K7Q2MXH4PA"
           value={code}
           onChange={(e) => setCode(e.target.value)}

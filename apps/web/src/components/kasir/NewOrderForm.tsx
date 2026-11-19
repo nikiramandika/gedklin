@@ -3,7 +3,15 @@
 import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
-import { PAYMENT_LABEL, formatDateTime, formatRupiah, paymentLabel, relativeEta } from "@/lib/format";
+import {
+  PAYMENT_LABEL,
+  cleanPhoneInput,
+  formatDateTime,
+  formatRupiah,
+  paymentLabel,
+  phoneError,
+  relativeEta,
+} from "@/lib/format";
 import type { Customer, Order, PaymentMethod, Receipt } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 
@@ -17,6 +25,7 @@ import {
   Field,
   PaymentBadge,
   Segmented,
+  Switch,
   inputClass,
   textareaClass,
 } from "../ui";
@@ -32,6 +41,9 @@ const LOOKUP_DELAY_MS = 400;
 export function NewOrderForm({ onCreated }: { onCreated: (order: Order) => void }) {
   const editor = useItemEditor();
   const [phone, setPhone] = useState("");
+  const [phoneTouched, setPhoneTouched] = useState(false);
+  // Bawaan mati: kasir menanyakan dulu apakah nomornya aktif WhatsApp, baru dinyalakan.
+  const [whatsapp, setWhatsapp] = useState(false);
   const [name, setName] = useState("");
   const [knownCustomer, setKnownCustomer] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
@@ -42,7 +54,9 @@ export function NewOrderForm({ onCreated }: { onCreated: (order: Order) => void 
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const now = useNow();
 
-  const canSubmit = editor.ready && !busy;
+  const phoneProblem = phoneError(phone, whatsapp);
+  const shownPhoneProblem = phoneTouched ? phoneProblem : null;
+  const canSubmit = editor.ready && !busy && !phoneProblem && name.trim() !== "";
   const paidNow = pay !== "later";
 
   // Cari pelanggan lama begitu nomor terlihat lengkap, tanpa menunggu kasir pindah kolom.
@@ -52,7 +66,10 @@ export function NewOrderForm({ onCreated }: { onCreated: (order: Order) => void 
       api<Customer | null>(`/orders/customers/lookup?phone=${encodeURIComponent(phone)}`)
         .then((c) => {
           setKnownCustomer(c ? c.name : null);
-          if (c) setName((n) => n || c.name);
+          if (c) {
+            setName((n) => n || c.name);
+            setWhatsapp(c.has_whatsapp);
+          }
         })
         .catch(() => {});
     }, LOOKUP_DELAY_MS);
@@ -65,6 +82,8 @@ export function NewOrderForm({ onCreated }: { onCreated: (order: Order) => void 
 
   function reset() {
     setPhone("");
+    setPhoneTouched(false);
+    setWhatsapp(false);
     setName("");
     setKnownCustomer(null);
     setNotes("");
@@ -75,6 +94,7 @@ export function NewOrderForm({ onCreated }: { onCreated: (order: Order) => void 
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    setPhoneTouched(true);
     if (!canSubmit) return;
     setBusy(true);
     setError(null);
@@ -84,6 +104,7 @@ export function NewOrderForm({ onCreated }: { onCreated: (order: Order) => void 
         body: {
           customer_name: name,
           customer_phone: phone,
+          customer_has_whatsapp: whatsapp,
           is_express: editor.express,
           items: editor.items,
           notes: notes.trim() || null,
@@ -108,31 +129,50 @@ export function NewOrderForm({ onCreated }: { onCreated: (order: Order) => void 
       <form onSubmit={submit} className="rounded-2xl bg-surface shadow-card" aria-label="Pesanan baru">
         <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
           <h2 className="text-base font-semibold text-ink">Nota baru</h2>
-          <span className="text-xs text-muted">Harga dari price list</span>
         </header>
 
         <div className="space-y-5 p-4">
           <fieldset className="space-y-3">
             <legend className="label-caps mb-2">1 · Pelanggan</legend>
-            <Field label="No. WhatsApp">
+            <Field label={whatsapp ? "No. WhatsApp" : "No. HP / telepon"}>
               <input
                 className={inputClass}
                 type="tel"
                 inputMode="tel"
                 autoComplete="off"
                 placeholder="08xx xxxx xxxx"
+                maxLength={20}
                 value={phone}
+                aria-invalid={shownPhoneProblem ? true : undefined}
+                aria-describedby={shownPhoneProblem ? "phone-error" : undefined}
                 onChange={(e) => {
-                  setPhone(e.target.value);
+                  setPhone(cleanPhoneInput(e.target.value));
                   setKnownCustomer(null);
                 }}
+                onBlur={() => setPhoneTouched(phone.trim() !== "")}
                 required
               />
             </Field>
+            {shownPhoneProblem && (
+              <p id="phone-error" className="-mt-1 text-sm text-danger-700">
+                {shownPhoneProblem}
+              </p>
+            )}
+            <Switch
+              label="Pakai WhatsApp"
+              description={
+                whatsapp
+                  ? "Nota dan kabar siap diambil dikirim lewat WA."
+                  : "Nyalakan bila nomornya aktif WA."
+              }
+              checked={whatsapp}
+              onChange={setWhatsapp}
+            />
             {knownCustomer && (
               <p className="flex items-center gap-1.5 text-sm text-ok-700" role="status">
                 <IconCheck size={14} />
                 Pelanggan lama · {knownCustomer}
+                {!whatsapp && " · tanpa WhatsApp"}
               </p>
             )}
             <Field label="Nama">
@@ -239,12 +279,15 @@ export function NewOrderForm({ onCreated }: { onCreated: (order: Order) => void 
 // Setelah simpan: formulir sudah kosong untuk pelanggan berikutnya; kode lacak dan aksi nota muncul di dialog.
 function SavedDialog({ receipt, now, onClose }: { receipt: Receipt | null; now: number; onClose: () => void }) {
   const o = receipt?.order;
+  const wa = o?.customer.has_whatsapp ?? true;
   return (
     <Modal
       open={receipt !== null}
       onClose={onClose}
       title="Nota tersimpan"
-      description="Masuk antrean · WhatsApp terkirim otomatis"
+      description={
+        wa ? "Masuk antrean · WhatsApp terkirim otomatis" : "Masuk antrean · pelanggan tanpa WhatsApp"
+      }
       footer={
         <Button size="lg" className="w-full" onClick={onClose} autoFocus>
           <IconPlus size={16} />
@@ -275,16 +318,26 @@ function SavedDialog({ receipt, now, onClose }: { receipt: Receipt | null; now: 
               {now > 0 && <span className="block text-xs text-muted">{relativeEta(o.predicted_ready_at, now)}</span>}
             </dd>
           </dl>
-          <div className="grid grid-cols-2 gap-2">
-            <ButtonLink variant="secondary" href={receipt.whatsapp_link} target="_blank" rel="noopener noreferrer">
-              <IconChat size={16} className="text-ok-600" />
-              Kirim ulang WA
-            </ButtonLink>
-            <ButtonLink variant="secondary" href={`/nota/${o.id}`} target="_blank" rel="noopener">
-              <IconPrinter size={16} />
-              Cetak nota
-            </ButtonLink>
-          </div>
+          {wa ? (
+            <div className="grid grid-cols-2 gap-2">
+              <ButtonLink variant="secondary" href={receipt.whatsapp_link} target="_blank" rel="noopener noreferrer">
+                <IconChat size={16} className="text-ok-600" />
+                Kirim ulang WA
+              </ButtonLink>
+              <ButtonLink variant="secondary" href={`/nota/${o.id}`} target="_blank" rel="noopener">
+                <IconPrinter size={16} />
+                Cetak nota
+              </ButtonLink>
+            </div>
+          ) : (
+            <>
+              <Alert tone="info">Cetak nota dan berikan ke pelanggan. Kode lacaknya untuk cek status di web.</Alert>
+              <ButtonLink variant="secondary" className="w-full" href={`/nota/${o.id}`} target="_blank" rel="noopener">
+                <IconPrinter size={16} />
+                Cetak nota
+              </ButtonLink>
+            </>
+          )}
         </div>
       )}
     </Modal>

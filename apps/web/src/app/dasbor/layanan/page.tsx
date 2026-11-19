@@ -10,6 +10,7 @@ import {
   Card,
   EmptyState,
   ErrorText,
+  ExpressBadge,
   Field,
   IconButton,
   Loading,
@@ -136,7 +137,7 @@ export default function LayananPage() {
             </div>
           )}
           {!items ? (
-            <Loading rows={5} />
+            !error && <Loading rows={5} />
           ) : items.length === 0 ? (
             <EmptyState
               icon={IconTag}
@@ -236,12 +237,7 @@ function CatalogRow({
       <button type="button" onClick={onEdit} className="min-w-0 flex-1 rounded-lg text-left">
         <span className="flex flex-wrap items-center gap-2">
           <span className={`text-base font-semibold ${item.is_active ? "text-ink" : "text-faint"}`}>{item.name}</span>
-          {item.express_eligible && (
-            <span className="label-caps inline-flex items-center gap-0.5 text-serial">
-              <IconBolt size={12} className="fill-current" />
-              Express
-            </span>
-          )}
+          {item.express_eligible && <ExpressBadge />}
           {!item.is_active && (
             <span className="label-caps rounded-md bg-subtle px-2 py-1 leading-none ring-1 ring-inset ring-line text-faint">
               {noPrice ? "Belum ada harga" : "Nonaktif"}
@@ -249,7 +245,8 @@ function CatalogRow({
           )}
         </span>
         <span className="mt-0.5 block text-sm text-muted">
-          <span className="font-mono font-semibold text-ink-2">{item.code}</span> · {PROCESS_LABEL[item.process]} · {priceRule(item)}
+          <span className="font-mono font-semibold text-ink-2">{item.code}</span>
+          {PROCESS_LABEL[item.process] !== item.name && ` · ${PROCESS_LABEL[item.process]}`} · {priceRule(item)}
         </span>
       </button>
       <p className="tabular text-right text-base font-semibold text-ink">

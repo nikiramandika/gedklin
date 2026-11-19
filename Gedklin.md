@@ -25,7 +25,7 @@ Solusi inti:
 - Satu model regresi: prediksi `duration_hours` = `ready_at - received_at` (dalam jam) per pesanan.
 - Perbandingan algoritma: baseline median vs Linear Regression vs Random Forest vs XGBoost.
 - Pilihan kecepatan: **Reguler** atau **Express** (Express tidak tercetak di price list, tapi ada menurut mitra).
-- Urutan antrean berbasis aturan: **yang sudah diproses tidak disela, Express dulu, Reguler yang mendekati janji, lalu FIFO** berdasarkan waktu masuk (detail di "Logika antrean dan ETA").
+- Urutan antrean berbasis aturan: **yang sudah diproses tidak disela, lalu Express bersama Reguler yang mendekati janji, lalu Reguler lain; FIFO di tiap kelompok** berdasarkan waktu masuk (detail di "Logika antrean dan ETA").
 - Aturan notifikasi WhatsApp (lihat bagian "Aturan notifikasi").
 
 **Di luar scope**, jangan diimplementasikan:
@@ -190,9 +190,9 @@ Simpan waktu dalam UTC di database, tampilkan dalam **Asia/Jakarta**.
 
 1. Urutan antrean untuk pesanan yang belum `READY` (`app/services/queue.py`):
    1. `PROCESSING` sebelum `RECEIVED`: cucian yang sudah di mesin/setrika tidak disela.
-   2. Express.
-   3. Reguler yang janjinya tinggal ≤ `REGULAR_ESCALATION_HOURS` (default 8 jam, menunggu kesepakatan mitra) atau sudah lewat, supaya janji Reguler tetap terkejar.
-   4. FIFO berdasarkan `received_at`.
+   2. Kelompok prioritas: Express **dan** Reguler yang janjinya tinggal ≤ `REGULAR_ESCALATION_HOURS` (default 8 jam, menunggu kesepakatan mitra) atau sudah lewat. Keduanya diurutkan FIFO bersama, jadi Express yang datang belakangan tidak menyalip Reguler yang mepet.
+   3. Reguler lainnya.
+   4. Di dalam tiap kelompok: FIFO berdasarkan `received_at`.
 2. Fitur dihitung **saat pesanan masuk** (tidak boleh memakai info masa depan):
 
    | Kelompok | Fitur |

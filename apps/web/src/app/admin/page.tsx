@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
-import { IconAlert, IconChat, IconPackageCheck, IconRefresh } from "@/components/icons";
+import { IconAlert, IconChat, IconPackageCheck, IconPhone, IconRefresh } from "@/components/icons";
 import {
   ButtonLink,
   Card,
@@ -18,11 +18,25 @@ import {
   tileListClass,
 } from "@/components/ui";
 import { api } from "@/lib/api";
-import { formatDateTime, formatRupiah, summarizeItems } from "@/lib/format";
+import { displayPhone, formatDateTime, formatRupiah, summarizeItems } from "@/lib/format";
 import type { Order, Role } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 
 const ROLES: Role[] = ["admin", "owner"];
+const readyDate = new Intl.DateTimeFormat("id-ID", {
+  timeZone: "Asia/Jakarta",
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+});
+
+// Pesan pembuka untuk admin; tetap bisa diubah di WhatsApp sebelum dikirim.
+function reminderLink(o: Order): string {
+  const since = o.ready_at ? ` sejak ${readyDate.format(new Date(o.ready_at))}` : "";
+  const bill = o.is_paid ? "" : ` Total tagihan ${formatRupiah(o.price_total)}, bisa dibayar saat ambil.`;
+  const text = `Halo ${o.customer.name}, cucian Anda di Gedklin Laundry (kode ${o.tracking_code}) sudah siap diambil${since}.${bill} Terima kasih.`;
+  return `https://wa.me/${o.customer.phone_wa}?text=${encodeURIComponent(text)}`;
+}
 
 function daysSince(iso: string | null, now: number): number {
   if (!iso || !now) return 0;
@@ -32,6 +46,7 @@ function daysSince(iso: string | null, now: number): number {
 export default function AdminPage() {
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const now = useNow();
 
   const load = useCallback(
@@ -49,6 +64,12 @@ export default function AdminPage() {
     load();
   }, [load]);
 
+  async function refresh() {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }
+
   const sorted = orders
     ? [...orders].sort((a, b) => daysSince(b.ready_at, now) - daysSince(a.ready_at, now))
     : null;
@@ -65,7 +86,16 @@ export default function AdminPage() {
         tone="warn"
         title={sorted ? `${sorted.length} pesanan menunggu` : "Pesanan menunggu"}
         description="Paling lama di atas"
-        action={<IconButton label="Muat ulang" icon={IconRefresh} size={18} onClick={load} />}
+        action={
+          <IconButton
+            label="Muat ulang"
+            icon={IconRefresh}
+            size={18}
+            onClick={refresh}
+            disabled={refreshing}
+            className={refreshing ? "[&_svg]:animate-spin" : ""}
+          />
+        }
       >
         {error && (
           <div className="p-4">
@@ -73,7 +103,7 @@ export default function AdminPage() {
           </div>
         )}
         {!sorted ? (
-          <Loading rows={4} />
+          !error && <Loading rows={4} />
         ) : sorted.length === 0 ? (
           <EmptyState icon={IconPackageCheck} title="Semua beres">
             Tidak ada cucian yang menunggu lebih dari 3 hari.
@@ -98,31 +128,38 @@ export default function AdminPage() {
                         {o.is_express && <ExpressBadge />}
                         <PaymentBadge paid={o.is_paid} />
                         {o.rack_location && (
-                          <span className="inline-flex items-baseline gap-1 rounded-sm bg-ink px-1.5 py-0.5 leading-none text-white">
-                            <span className="label-caps">Rak</span>
-                            <span className="font-mono text-sm font-semibold">{o.rack_location}</span>
+                          <span className="inline-flex items-center gap-1 rounded bg-subtle px-1.5 py-0.5 text-xs text-muted ring-1 ring-inset ring-line">
+                            Rak <span className="font-mono font-semibold text-ink">{o.rack_location}</span>
                           </span>
                         )}
                       </div>
                       <p className="mt-0.5 text-sm text-muted">
                         <span className="serial">{o.tracking_code}</span>{" "}
-                        · <span className="tabular">+{o.customer.phone_wa}</span> ·{" "}
+                        · <span className="tabular">{displayPhone(o.customer.phone_wa)}</span>
+                        {!o.customer.has_whatsapp && " (tanpa WA)"} ·{" "}
                         <span className="tabular">{formatRupiah(o.price_total)}</span>
                       </p>
                       <p className="mt-1 line-clamp-2 text-sm text-ink-2">{summarizeItems(o.items)}</p>
                       <p className="mt-1 text-sm text-muted">Siap sejak {formatDateTime(o.ready_at)}</p>
                     </div>
                   </div>
-                  <ButtonLink
-                    variant="whatsapp"
-                    href={`https://wa.me/${o.customer.phone_wa}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full sm:w-auto"
-                  >
-                    <IconChat size={18} />
-                    Hubungi WA
-                  </ButtonLink>
+                  {o.customer.has_whatsapp ? (
+                    <ButtonLink
+                      variant="whatsapp"
+                      href={reminderLink(o)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full sm:w-auto"
+                    >
+                      <IconChat size={18} />
+                      Hubungi WA
+                    </ButtonLink>
+                  ) : (
+                    <ButtonLink href={`tel:+${o.customer.phone_wa}`} className="w-full sm:w-auto">
+                      <IconPhone size={18} />
+                      Telepon
+                    </ButtonLink>
+                  )}
                 </li>
               );
             })}

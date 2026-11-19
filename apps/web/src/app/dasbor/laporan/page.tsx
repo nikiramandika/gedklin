@@ -23,8 +23,8 @@ import type { Report, ReportRow, Role } from "@/lib/types";
 
 const ROLES: Role[] = ["owner"];
 function compactRupiah(v: number): string {
-  if (v >= 1_000_000) return `Rp${(v / 1_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} jt`;
-  if (v >= 1_000) return `Rp${Math.round(v / 1_000).toLocaleString("id-ID")} rb`;
+  if (v >= 1_000_000) return `Rp\u00a0${(v / 1_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })}\u00a0jt`;
+  if (v >= 1_000) return `Rp\u00a0${Math.round(v / 1_000).toLocaleString("id-ID")}\u00a0rb`;
   return formatRupiah(v);
 }
 
@@ -224,8 +224,9 @@ function RevenueChart({ report }: { report: Report }) {
   const [hover, setHover] = useState<number | null>(null);
   const [showTable, setShowTable] = useState(false);
   const max = Math.max(...items.map((b) => b.revenue), 1);
-  // Label sumbu-x paling banyak ±8 supaya tidak bertumpuk.
+  // Label sumbu-x paling banyak ±8 (±4 di HP) supaya tidak bertumpuk; label HP selalu bagian dari label desktop.
   const every = Math.max(1, Math.ceil(items.length / 8));
+  const everyNarrow = every * Math.max(1, Math.ceil(Math.ceil(items.length / 4) / every));
   const active = hover ?? null;
 
   return (
@@ -264,7 +265,7 @@ function RevenueChart({ report }: { report: Report }) {
         </div>
       ) : (
         <div className="flex gap-3">
-          <div className="tabular flex h-56 w-14 shrink-0 flex-col justify-between pt-6 text-right text-xs text-muted" aria-hidden="true">
+          <div className="tabular flex h-56 w-16 shrink-0 flex-col justify-between pt-6 text-right text-xs text-muted" aria-hidden="true">
             <span>{compactRupiah(max)}</span>
             <span>{compactRupiah(max / 2)}</span>
             <span>0</span>
@@ -318,7 +319,17 @@ function RevenueChart({ report }: { report: Report }) {
             <ul className="mt-2 flex gap-0.5" aria-hidden="true">
               {items.map((b, i) => (
                 <li key={b.key} className="min-w-0 flex-1 overflow-visible text-center text-xs text-muted">
-                  <span className={i % every === 0 ? "whitespace-nowrap" : "invisible"}>{b.label}</span>
+                  <span
+                    className={
+                      i % everyNarrow === 0
+                        ? "whitespace-nowrap"
+                        : i % every === 0
+                          ? "invisible whitespace-nowrap sm:visible"
+                          : "invisible"
+                    }
+                  >
+                    {b.label}
+                  </span>
                 </li>
               ))}
             </ul>

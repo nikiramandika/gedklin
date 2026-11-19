@@ -78,14 +78,30 @@ class OrderError(ValueError):
     pass
 
 
-def normalize_phone(raw: str) -> str:
+# Nomor HP Indonesia: 08xx dengan total 10-13 digit, disimpan sebagai 628xx. Pelanggan tanpa
+# WhatsApp boleh memakai nomor rumah (mis. 021-555-1234): kode area 02x-07x atau 09x,
+# karena 08x selalu nomor HP dan tetap wajib lolos aturan HP.
+PHONE_ALLOWED = re.compile(r"^\+?[\d\s().-]+$")
+PHONE_MOBILE = re.compile(r"^628\d{8,11}$")
+PHONE_LANDLINE = re.compile(r"^62[2-79]\d{6,11}$")
+
+
+def normalize_phone(raw: str, *, mobile_only: bool = True) -> str:
+    if not PHONE_ALLOWED.match(raw.strip()):
+        raise OrderError("Nomor WhatsApp hanya boleh berisi angka")
     digits = re.sub(r"\D", "", raw)
     if digits.startswith("0"):
         digits = "62" + digits[1:]
     elif digits.startswith("8"):
         digits = "62" + digits
-    if not digits.startswith("62") or not 10 <= len(digits) <= 15:
-        raise OrderError("Nomor WhatsApp tidak valid")
+    if not mobile_only and not PHONE_MOBILE.match(digits):
+        if PHONE_LANDLINE.match(digits):
+            return digits
+        raise OrderError("Nomor telepon tidak valid. Mis. 0812-3456-7890 atau 021-555-1234")
+    if not PHONE_MOBILE.match(digits):
+        raise OrderError(
+            "Nomor WhatsApp tidak valid. Pakai nomor HP, mis. 0812-3456-7890 (10-13 digit)"
+        )
     return digits
 
 
@@ -222,6 +238,10 @@ def recompute_etas(db: Session, now: datetime | None = None) -> list[int]:
             # Model diganti: ETA bergeser bukan karena antrean, jadi tanpa WA.
             order.last_notified_eta = eta
             continue
+        if not order.customer.has_whatsapp:
+            # Tanpa WhatsApp tidak ada kabar mundur; ETA tetap dicatat agar tidak menumpuk.
+            order.last_notified_eta = eta
+            continue
         if should_send_delay(order, eta):
             order.last_notified_eta = eta
             order.delay_notif_count += 1
@@ -234,14 +254,19 @@ def recompute_etas(db: Session, now: datetime | None = None) -> list[int]:
     return [n.order_id for n in delay_notifications]
 
 
-def upsert_customer(db: Session, name: str, phone_raw: str) -> Customer:
-    phone = normalize_phone(phone_raw)
+def upsert_customer(
+    db: Session, name: str, phone_raw: str, has_whatsapp: bool = True
+) -> Customer:
+    phone = normalize_phone(phone_raw, mobile_only=has_whatsapp)
     customer = db.scalar(select(Customer).where(Customer.phone_wa == phone))
     if customer is None:
-        customer = Customer(name=name.strip(), phone_wa=phone)
+        customer = Customer(name=name.strip(), phone_wa=phone, has_whatsapp=has_whatsapp)
         db.add(customer)
-    elif name.strip() and customer.name != name.strip():
-        customer.name = name.strip()
+    else:
+        if name.strip() and customer.name != name.strip():
+            customer.name = name.strip()
+        # Pilihan kasir di nota terbaru yang berlaku, mis. pelanggan baru saja pasang WhatsApp.
+        customer.has_whatsapp = has_whatsapp
     db.flush()
     return customer
 
@@ -273,10 +298,11 @@ def create_order(
     notes: str | None = None,
     payment_method: PaymentMethod | None = None,
     now: datetime | None = None,
+    customer_has_whatsapp: bool = True,
 ) -> Order:
     now = now or utcnow()
     quote = quote_order(db, items, is_express)
-    customer = upsert_customer(db, customer_name, customer_phone)
+    customer = upsert_customer(db, customer_name, customer_phone, customer_has_whatsapp)
     order = Order(
         tracking_code=generate_tracking_code(db),
         customer=customer,
@@ -318,10 +344,13 @@ def create_order(
     # ETA awal sudah tertulis di nota, jadi dianggap sudah diberitahukan.
     order.last_notified_eta = predict_eta(db, order, ctx)
     order.initial_predicted_ready_at = order.last_notified_eta
-    receipt_notif = Notification(order_id=order.id, type=NotificationType.RECEIPT)
-    db.add(receipt_notif)
+    receipt_notif = None
+    if customer.has_whatsapp:
+        receipt_notif = Notification(order_id=order.id, type=NotificationType.RECEIPT)
+        db.add(receipt_notif)
     db.commit()
-    enqueue_notification(receipt_notif.id)
+    if receipt_notif is not None:
+        enqueue_notification(receipt_notif.id)
     recompute_etas(db, now)
     db.refresh(order)
     return order
@@ -365,7 +394,7 @@ def change_status(
                 Notification.order_id == order.id, Notification.type == NotificationType.READY
             )
         )
-        if exists is None:
+        if exists is None and order.customer.has_whatsapp:
             ready_notif = Notification(order_id=order.id, type=NotificationType.READY)
             db.add(ready_notif)
     elif to_status == OrderStatus.PICKED_UP:

@@ -132,7 +132,8 @@ export function useItemEditor(initial?: { items: OrderItem[]; isExpress: boolean
     },
     reset() {
       setSpeed("regular");
-      setLines(byCode.has(DEFAULT_CODE) ? [newLine(DEFAULT_CODE)] : []);
+      const first = byCode.has(DEFAULT_CODE) ? DEFAULT_CODE : catalog[0]?.code;
+      setLines(first ? [newLine(first)] : []);
       setQuote(null);
     },
   };

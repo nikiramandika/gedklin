@@ -64,7 +64,7 @@ def test_processing_order_is_not_overtaken_by_express(db: Session) -> None:
     assert _codes(db, now) == ["REGPROC", "EXPREC"]
 
 
-def test_express_first_then_regular_near_promise_then_fifo(db: Session) -> None:
+def test_regular_near_promise_joins_express_tier_in_fifo_order(db: Session) -> None:
     now = utcnow()
     _order(
         db,
@@ -78,7 +78,7 @@ def test_express_first_then_regular_near_promise_then_fifo(db: Session) -> None:
         received_at=now - timedelta(hours=5),
         promised_ready_at=now + timedelta(hours=6),
     )
-    _order(
+    express = _order(
         db,
         "EXP",
         express=True,
@@ -86,7 +86,27 @@ def test_express_first_then_regular_near_promise_then_fifo(db: Session) -> None:
         promised_ready_at=now + timedelta(hours=23),
     )
     assert is_escalated(near, now)
-    assert _codes(db, now) == ["EXP", "REGDEKAT", "REGJAUH"]
+    # REGDEKAT masuk lebih dulu daripada EXP, jadi tidak tersalip; REGJAUH tetap di belakang.
+    assert is_ahead(near, express, now)
+    assert _codes(db, now) == ["REGDEKAT", "EXP", "REGJAUH"]
+
+
+def test_express_still_ahead_of_escalated_regular_that_arrived_later(db: Session) -> None:
+    now = utcnow()
+    _order(
+        db,
+        "EXPAWAL",
+        express=True,
+        received_at=now - timedelta(hours=6),
+        promised_ready_at=now + timedelta(hours=18),
+    )
+    _order(
+        db,
+        "REGDEKAT",
+        received_at=now - timedelta(hours=2),
+        promised_ready_at=now + timedelta(hours=4),
+    )
+    assert _codes(db, now) == ["EXPAWAL", "REGDEKAT"]
 
 
 def test_regular_past_promise_stays_escalated(db: Session) -> None:

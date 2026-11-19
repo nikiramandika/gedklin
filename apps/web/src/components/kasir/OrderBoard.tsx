@@ -13,6 +13,7 @@ import {
   IconClock,
   IconList,
   IconPackageCheck,
+  IconPhone,
   IconRefresh,
   IconSearch,
 } from "../icons";
@@ -70,7 +71,7 @@ export function useBoardData(refreshKey: number) {
     return () => clearInterval(id);
   }, [reload, refreshKey]);
 
-  // Urutan antrean dari server (PROCESSING dulu, Express, eskalasi Reguler, FIFO) dipertahankan di tiap tab.
+  // Urutan antrean dari server (PROCESSING dulu, Express + Reguler mepet janji, lalu Reguler; FIFO) dipertahankan di tiap tab.
   const received = queue?.filter((o) => o.status === "RECEIVED") ?? null;
   const processing = queue?.filter((o) => o.status === "PROCESSING") ?? null;
 
@@ -427,6 +428,12 @@ function OrderRow({
           </button>
           {o.is_express && <ExpressBadge />}
           {o.ready_at && <PaymentBadge paid={o.is_paid} />}
+          {!o.customer.has_whatsapp && (
+            <span className="inline-flex items-center gap-1 rounded bg-subtle px-1.5 py-0.5 text-xs text-muted ring-1 ring-inset ring-line">
+              <IconPhone size={11} />
+              Tanpa WA
+            </span>
+          )}
           {o.rack_location && (
             <span className="inline-flex items-center gap-1 rounded bg-subtle px-1.5 py-0.5 text-xs text-muted ring-1 ring-inset ring-line">
               Rak <span className="font-mono font-semibold text-ink">{o.rack_location}</span>
@@ -459,7 +466,14 @@ function OrderRow({
         {overdue && <IconAlert size={14} className="shrink-0 @xl:hidden" />}
         {!overdue && <IconClock size={14} className="shrink-0 text-faint @xl:hidden" />}
         <span className="tabular font-medium @xl:block">{eta.main}</span>
-        {eta.sub && <span className="tabular text-muted @xl:block @xl:text-xs">· {eta.sub}</span>}
+        {eta.sub && (
+          <span className="tabular text-muted @xl:block @xl:text-xs">
+            <span aria-hidden="true" className="@xl:hidden">
+              ·{" "}
+            </span>
+            {eta.sub}
+          </span>
+        )}
       </div>
 
       {showStatus && (

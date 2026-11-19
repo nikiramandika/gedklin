@@ -23,6 +23,7 @@ export interface Customer {
   id: number;
   name: string;
   phone_wa: string;
+  has_whatsapp: boolean;
 }
 
 export interface CatalogItem {
@@ -219,6 +220,7 @@ export interface CustomerSummary {
   id: number;
   name: string;
   phone_wa: string;
+  has_whatsapp: boolean;
   created_at: string;
   order_count: number;
   total_spent: number;

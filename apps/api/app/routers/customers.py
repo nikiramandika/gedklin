@@ -41,6 +41,7 @@ def _summary(c: Customer, order_count: int, spent: int, unpaid: int, last: datet
         "id": c.id,
         "name": c.name,
         "phone_wa": c.phone_wa,
+        "has_whatsapp": c.has_whatsapp,
         "created_at": c.created_at,
         "order_count": int(order_count or 0),
         "total_spent": int(spent or 0),
@@ -112,12 +113,18 @@ def update_customer(
     user: User = Depends(staff),
 ) -> dict:
     customer = _get_or_404(db, customer_id)
-    before = {"nama": customer.name, "no_wa": customer.phone_wa}
+    before = {
+        "nama": customer.name,
+        "no_wa": customer.phone_wa,
+        "whatsapp": customer.has_whatsapp,
+    }
     if data.name is not None:
         customer.name = data.name.strip()
-    if data.phone_wa is not None:
+    wa = customer.has_whatsapp if data.has_whatsapp is None else data.has_whatsapp
+    # Nomor dicek ulang bila WhatsApp dinyalakan: nomor rumah tidak bisa menerima WA.
+    if data.phone_wa is not None or (wa and not customer.has_whatsapp):
         try:
-            phone = normalize_phone(data.phone_wa)
+            phone = normalize_phone(data.phone_wa or customer.phone_wa, mobile_only=wa)
         except OrderError as exc:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
         taken = db.scalar(
@@ -126,7 +133,11 @@ def update_customer(
         if taken:
             raise HTTPException(status.HTTP_409_CONFLICT, "Nomor WA sudah dipakai pelanggan lain")
         customer.phone_wa = phone
-    changed = diff(before, {"nama": customer.name, "no_wa": customer.phone_wa})
+    customer.has_whatsapp = wa
+    changed = diff(
+        before,
+        {"nama": customer.name, "no_wa": customer.phone_wa, "whatsapp": customer.has_whatsapp},
+    )
     if changed:
         log_activity(
             db,

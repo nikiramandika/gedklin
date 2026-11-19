@@ -123,6 +123,8 @@ services:
       # Pemanasan nomor: kuota harian naik bertahap (20, 40, 80, ...); lewat batas -> HTTP 429.
       SEND_PACING_ENABLED: "true"
       SIMULATE_TYPING: "true"
+      # Dashboard dibuka lewat SSH tunnel (http://localhost), bukan HTTPS; tanpa ini tampil kosong.
+      CSP_UPGRADE_INSECURE_REQUESTS: "false"
     ports:
       - "127.0.0.1:2785:2785"
     volumes:

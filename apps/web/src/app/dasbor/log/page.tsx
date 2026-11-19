@@ -74,6 +74,7 @@ const FIELD_LABEL: Record<string, string> = {
   total: "Total",
   nama: "Nama",
   no_wa: "No. WhatsApp",
+  whatsapp: "Pakai WhatsApp",
   name: "Nama",
   group: "Kelompok",
   process: "Proses",
@@ -385,7 +386,8 @@ function LogEntry({ entry: e }: { entry: ActivityLog }) {
 
   return (
     <li className={`${tileClass} px-4 py-3`}>
-      <div className="flex items-start gap-3">
+      {/* Di HP tombol perubahan turun ke bawah meta supaya ringkasan tidak terjepit. */}
+      <div className="flex flex-wrap items-start gap-x-3">
         <span className={`mt-0.5 flex shrink-0 ${style.tone}`} aria-hidden="true">
           <Icon size={18} />
         </span>
@@ -400,18 +402,20 @@ function LogEntry({ entry: e }: { entry: ActivityLog }) {
           </p>
         </div>
         {changes.length > 0 && (
-          <button
-            type="button"
-            aria-expanded={open}
-            onClick={() => setOpen((v) => !v)}
-            className="inline-flex h-11 shrink-0 items-center gap-1 rounded-md px-2.5 text-sm font-semibold text-brand-600 transition-colors duration-150 hover:bg-brand-50"
-          >
-            {open ? "Tutup" : `${changes.length} perubahan`}
-            <IconChevronRight
-              size={16}
-              className={`transition-transform duration-150 ${open ? "-rotate-90" : "rotate-90"}`}
-            />
-          </button>
+          <div className="basis-full pl-5 sm:basis-auto sm:pl-0">
+            <button
+              type="button"
+              aria-expanded={open}
+              onClick={() => setOpen((v) => !v)}
+              className="-mb-1.5 mt-1 inline-flex h-9 shrink-0 items-center gap-1 rounded-md px-2.5 text-sm font-semibold text-brand-600 transition-colors duration-150 hover:bg-brand-50 pointer-coarse:h-11 sm:my-0 sm:h-11"
+            >
+              {open ? "Tutup" : `${changes.length} perubahan`}
+              <IconChevronRight
+                size={16}
+                className={`transition-transform duration-150 ${open ? "-rotate-90" : "rotate-90"}`}
+              />
+            </button>
+          </div>
         )}
       </div>
       {open && (

@@ -47,14 +47,18 @@ function OperasionalContent() {
     machine_issue_note: "",
   });
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(
     () =>
       api<DailyOperation[]>("/daily-operations?days=30")
-        .then(setRows)
-        .catch((e: Error) => setError(e.message)),
+        .then((r) => {
+          setRows(r);
+          setLoadError(null);
+        })
+        .catch((e: Error) => setLoadError(e.message)),
     [],
   );
 
@@ -80,7 +84,7 @@ function OperasionalContent() {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
-  function edit(row: DailyOperation) {
+  function edit(row: DailyOperation, scroll = true) {
     setSaved(false);
     setForm({
       date: row.date,
@@ -92,7 +96,14 @@ function OperasionalContent() {
       close_time: row.close_time.slice(0, 5),
       machine_issue_note: row.machine_issue_note ?? "",
     });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (scroll) window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // Tanggal yang sudah punya data langsung dimuat, supaya simpan tidak menimpa dengan angka lama di formulir.
+  function pickDate(date: string) {
+    const row = rows?.find((r) => r.date === date);
+    if (row) edit(row, false);
+    else set("date", date);
   }
 
   const below = (value: string, normal: number | undefined) =>
@@ -140,7 +151,7 @@ function OperasionalContent() {
                 className={inputClass}
                 type="date"
                 value={form.date}
-                onChange={(e) => set("date", e.target.value)}
+                onChange={(e) => pickDate(e.target.value)}
                 required
               />
             </Field>
@@ -209,7 +220,11 @@ function OperasionalContent() {
         </Card>
 
         <Card flush icon={IconList} tone="neutral" title="30 hari terakhir">
-          {!rows ? (
+          {loadError ? (
+            <div className="px-4 pb-5 sm:px-5">
+              <ErrorText message={loadError} />
+            </div>
+          ) : !rows ? (
             <Loading rows={5} />
           ) : rows.length === 0 ? (
             <EmptyState icon={IconCalendar} title="Belum ada data harian">

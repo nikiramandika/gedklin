@@ -8,8 +8,9 @@ import { STATUS_LABEL, describeItem, etaState, formatDateTime, relativeEta, spee
 import type { OrderStatus, Tracking } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 
-import { BrandMark, IconArrowLeft, IconCheck, IconRefresh, IconSearch } from "./icons";
-import { Alert, Button, ExpressBadge, buttonClass } from "./ui";
+import { DrumRings } from "./brand";
+import { BrandMark, IconAlert, IconArrowLeft, IconCheck, IconRefresh, IconSearch } from "./icons";
+import { Alert, Button, EmptyState, ExpressBadge, buttonClass } from "./ui";
 
 const REFRESH_MS = 60_000;
 
@@ -23,6 +24,7 @@ const STEPS: { status: OrderStatus; hint: string }[] = [
 export function TrackingView({ code }: { code: string }) {
   const [order, setOrder] = useState<Tracking | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const now = useNow();
@@ -33,14 +35,13 @@ export function TrackingView({ code }: { code: string }) {
         .then((data) => {
           setOrder(data);
           setError(null);
+          setNotFound(false);
         })
-        .catch((err: Error) =>
-          setError(
-            err instanceof ApiError && err.status === 404
-              ? "Kode tidak ditemukan. Cek lagi kode di nota (tanpa huruf O dan angka 0)."
-              : err.message,
-          ),
-        )
+        .catch((err: Error) => {
+          const missing = err instanceof ApiError && err.status === 404;
+          setNotFound(missing);
+          setError(missing ? "Kode tidak ditemukan." : err.message);
+        })
         .finally(() => setLoading(false)),
     [code],
   );
@@ -51,53 +52,76 @@ export function TrackingView({ code }: { code: string }) {
     return () => clearInterval(id);
   }, [load]);
 
+  async function refresh() {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }
+
   return (
     <main className="flex min-h-dvh flex-1 flex-col bg-canvas">
-      <header className="pt-safe bg-nav text-white">
-        <div className="mx-auto flex h-14 max-w-md items-center gap-2 px-2">
+      {/* Pita navy memanjang ke bawah; kartu status menumpang di atasnya, sama seperti halaman lacak. */}
+      <header className="pt-safe relative overflow-hidden bg-nav pb-14 text-white">
+        <DrumRings className="-right-24 -top-28 w-[300px]" />
+        <div className="relative mx-auto flex h-14 max-w-md items-center gap-2 px-2">
           <Link
             href="/lacak"
             aria-label="Lacak kode lain"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-md text-nav-ink hover:bg-nav-2 hover:text-white"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-nav-ink transition-colors hover:bg-nav-2 hover:text-white"
           >
             <IconArrowLeft size={20} />
           </Link>
-          <BrandMark size={28} />
-          <p className="flex-1 text-base font-semibold">Gedklin</p>
-          <span className="pr-2 font-mono text-sm font-semibold tracking-wider text-nav-ink">{code}</span>
+          <BrandMark size={28} className="rounded-[5px] ring-1 ring-white/15" />
+          <p className="flex-1 text-base font-semibold">Gedklin Laundry</p>
         </div>
       </header>
 
-      <div className="mx-auto w-full max-w-md flex-1 space-y-4 px-4 py-5">
+      <div className="relative mx-auto -mt-12 w-full max-w-md flex-1 space-y-4 px-4 pb-8">
         {loading ? (
           <TrackingSkeleton />
         ) : !order ? (
-          <div className="space-y-4">
-            <Alert tone="danger">{error}</Alert>
-            <Link href="/lacak" className={buttonClass("secondary", "lg", "w-full")}>
-              <IconSearch size={18} />
-              Coba kode lain
-            </Link>
-          </div>
+          <section className="rounded-2xl bg-surface shadow-pop">
+            {notFound ? (
+              <EmptyState
+                icon={IconSearch}
+                title="Kode tidak ditemukan"
+                action={
+                  <Link href="/lacak" className={buttonClass("primary", "lg")}>
+                    <IconSearch size={18} />
+                    Coba kode lain
+                  </Link>
+                }
+              >
+                <span className="serial text-serial">{code}</span> tidak terdaftar. Cek lagi kode di nota (tanpa huruf O
+                dan angka 0).
+              </EmptyState>
+            ) : (
+              <EmptyState
+                icon={IconAlert}
+                title="Status belum bisa dimuat"
+                action={
+                  <Button size="lg" loading={refreshing} onClick={refresh}>
+                    {!refreshing && <IconRefresh size={18} />}
+                    Coba lagi
+                  </Button>
+                }
+              >
+                {error}
+              </EmptyState>
+            )}
+          </section>
         ) : (
-          <TrackingBody order={order} now={now} />
+          <TrackingBody order={order} code={code} now={now} />
         )}
 
         {order && (
-          <div className="flex flex-col items-center gap-2 pt-2">
+          <div className="flex flex-col items-center gap-1 pt-2">
             {error && <Alert tone="warn" className="w-full">Gagal memperbarui: {error}</Alert>}
-            <Button
-              variant="ghost"
-              loading={refreshing}
-              onClick={async () => {
-                setRefreshing(true);
-                await load();
-                setRefreshing(false);
-              }}
-            >
+            <Button variant="ghost" loading={refreshing} onClick={refresh}>
               {!refreshing && <IconRefresh size={16} />}
               Perbarui status
             </Button>
+            <p className="text-xs text-muted">Diperbarui otomatis tiap menit.</p>
           </div>
         )}
       </div>
@@ -105,26 +129,39 @@ export function TrackingView({ code }: { code: string }) {
   );
 }
 
-function TrackingBody({ order, now }: { order: Tracking; now: number }) {
+const STAMP_TONE = {
+  ready: "text-ok-700",
+  cancelled: "text-danger-600",
+  done: "text-muted",
+  active: "text-brand-600",
+};
+
+function TrackingBody({ order, code, now }: { order: Tracking; code: string; now: number }) {
   const currentIndex = STEPS.findIndex((s) => s.status === order.status);
   const reached = new Map(order.history.map((h) => [h.to_status, h.changed_at]));
   const ready = order.status === "READY";
   const done = order.status === "PICKED_UP";
   const cancelled = order.status === "CANCELLED";
   const timing = etaState(order, now);
-  const stampTone = ready ? "text-ok-700" : cancelled ? "text-danger-600" : done ? "text-faint" : "text-brand-600";
+  const stampTone = STAMP_TONE[ready ? "ready" : cancelled ? "cancelled" : done ? "done" : "active"];
 
   return (
     <>
-      <section className="rounded-2xl bg-surface shadow-card" aria-live="polite">
-        <div className="px-5 pb-5 pt-5">
+      <section className="rounded-2xl bg-surface shadow-pop" aria-live="polite">
+        <div className="px-5 pb-5 pt-4">
           <div className="flex items-center justify-between gap-3">
-            <p className={`display flex items-center gap-3 text-2xl animate-stamp ${stampTone}`}>
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
-              {STATUS_LABEL[order.status]}
+            <p className="flex items-baseline gap-2 text-xs text-muted">
+              Kode
+              <span className="serial text-base text-serial">{code}</span>
             </p>
             {order.is_express && <ExpressBadge />}
           </div>
+          {/* Status sebagai stempel di nota; labelnya teks, jadi tidak bergantung pada warna. */}
+          <p
+            className={`mt-4 inline-flex -rotate-2 items-center rounded-[5px] border-2 border-current px-3 py-1.5 text-xl font-bold uppercase leading-none tracking-[0.08em] animate-stamp ${stampTone}`}
+          >
+            {STATUS_LABEL[order.status]}
+          </p>
 
           <div className="mt-5 border-t border-dashed border-field/60 pt-4 text-ink-2">
             {cancelled ? (
@@ -142,13 +179,13 @@ function TrackingBody({ order, now }: { order: Tracking; now: number }) {
             ) : timing === "late" ? (
               <>
                 <p className="label-caps text-danger-700">Melewati janji standar</p>
-                <p className="tabular display mt-1 text-2xl text-ink">{formatDateTime(order.promised_ready_at)}</p>
+                <p className="tabular display mt-1 text-3xl text-ink">{formatDateTime(order.promised_ready_at)}</p>
                 <p className="mt-2 text-sm text-muted">Sedang kami selesaikan. Kabar via WhatsApp begitu siap.</p>
               </>
             ) : timing === "due" ? (
               <>
                 <p className="label-caps text-muted">Perkiraan siap diambil</p>
-                <p className="display mt-1 text-2xl text-ink">Segera siap</p>
+                <p className="display mt-1 text-3xl text-ink">Segera siap</p>
                 <p className="mt-1 text-sm text-muted">Kabar via WhatsApp begitu siap.</p>
                 {order.promised_ready_at && (
                   <p className="mt-2 text-xs text-faint">Janji standar: {formatDateTime(order.promised_ready_at)}</p>
@@ -157,7 +194,7 @@ function TrackingBody({ order, now }: { order: Tracking; now: number }) {
             ) : (
               <>
                 <p className="label-caps text-muted">Perkiraan siap diambil</p>
-                <p className="tabular display mt-1 text-2xl text-ink">{formatDateTime(order.predicted_ready_at)}</p>
+                <p className="tabular display mt-1 text-3xl text-ink">{formatDateTime(order.predicted_ready_at)}</p>
                 {now > 0 && <p className="mt-1 text-base text-muted">{relativeEta(order.predicted_ready_at, now)}</p>}
                 {order.promised_ready_at && order.promised_ready_at !== order.predicted_ready_at && (
                   <p className="mt-2 text-xs text-faint">Janji standar: {formatDateTime(order.promised_ready_at)}</p>
@@ -169,8 +206,8 @@ function TrackingBody({ order, now }: { order: Tracking; now: number }) {
       </section>
 
       {!cancelled && (
-        <section className="rounded-lg bg-surface p-5 shadow-card">
-          <h2 className="label-caps text-muted">Riwayat</h2>
+        <section className="rounded-2xl bg-surface p-5 shadow-card">
+          <h2 className="text-base font-semibold text-ink">Riwayat</h2>
           <ol className="mt-4">
             {STEPS.map((s, i) => {
               const isDone = i <= currentIndex;
@@ -208,10 +245,10 @@ function TrackingBody({ order, now }: { order: Tracking; now: number }) {
         </section>
       )}
 
-      <section className="rounded-lg bg-surface p-5 shadow-card">
+      <section className="rounded-2xl bg-surface p-5 shadow-card">
         <div className="flex items-center justify-between">
-          <h2 className="label-caps text-muted">Isi pesanan</h2>
-          <span className="text-sm font-semibold text-ink-2">{speedLabel(order.is_express)}</span>
+          <h2 className="text-base font-semibold text-ink">Isi pesanan</h2>
+          <span className="text-sm font-medium text-muted">{speedLabel(order.is_express)}</span>
         </div>
         <ul className="mt-2 divide-y divide-dashed divide-field/50">
           {order.items.map((item, i) => (
@@ -236,8 +273,8 @@ function TrackingSkeleton() {
   return (
     <div className="space-y-4" aria-busy="true">
       <span className="sr-only">Memuat status...</span>
-      <div className="skeleton h-48 rounded-lg" />
-      <div className="skeleton h-64 rounded-lg" />
+      <div className="skeleton h-52 rounded-2xl!" />
+      <div className="skeleton h-64 rounded-2xl!" />
     </div>
   );
 }

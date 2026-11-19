@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
-import { IconChat, IconReceipt, IconSearch, IconUser } from "@/components/icons";
+import { IconChat, IconPhone, IconReceipt, IconSearch, IconUser } from "@/components/icons";
 import { Drawer, Modal, useToast } from "@/components/overlay";
 import {
   Button,
@@ -17,12 +17,13 @@ import {
   PaymentBadge,
   Segmented,
   StatusBadge,
+  Switch,
   inputClass,
   tileClass,
   tileListClass,
 } from "@/components/ui";
 import { api } from "@/lib/api";
-import { formatDateTime, formatRupiah, summarizeItems } from "@/lib/format";
+import { cleanPhoneInput, displayPhone, formatDateTime, formatRupiah, phoneError, summarizeItems } from "@/lib/format";
 import type { CustomerDetail, CustomerSummary, Role } from "@/lib/types";
 
 const ROLES: Role[] = ["owner", "cashier"];
@@ -31,11 +32,6 @@ const SEARCH_DELAY_MS = 300;
 const EDIT_FORM = "customer-edit-form";
 
 type Filter = "all" | "unpaid";
-
-function displayPhone(phone: string): string {
-  const local = phone.startsWith("62") ? `0${phone.slice(2)}` : phone;
-  return local.replace(/^(\d{4})(\d{4})(\d+)$/, "$1-$2-$3");
-}
 
 export default function PelangganPage() {
   const [query, setQuery] = useState("");
@@ -94,9 +90,7 @@ export default function PelangganPage() {
 
   return (
     <AppShell roles={ROLES}>
-      <PageHeader
-        title="Pelanggan"
-      />
+      <PageHeader title="Pelanggan" description="Riwayat pesanan dan tagihan tiap pelanggan." />
       <Card flush>
         <div className="flex flex-wrap items-center gap-3 p-3 sm:p-4">
           <div className="relative min-w-0 flex-1">
@@ -161,7 +155,10 @@ export default function PelangganPage() {
                         </span>
                       )}
                     </span>
-                    <span className="tabular block text-sm text-muted">{displayPhone(c.phone_wa)}</span>
+                    <span className="block text-sm text-muted">
+                      <span className="tabular">{displayPhone(c.phone_wa)}</span>
+                      {!c.has_whatsapp && " · tanpa WhatsApp"}
+                    </span>
                   </span>
                   <span className="flex w-full items-baseline justify-between gap-3 sm:block sm:w-auto sm:text-right">
                     <span className="tabular order-2 block text-base font-semibold text-ink sm:order-none">{formatRupiah(c.total_spent)}</span>
@@ -213,17 +210,31 @@ function CustomerDrawer({ id, onClose, onChanged }: { id: number; onClose: () =>
       open
       onClose={onClose}
       title={customer?.name ?? "Pelanggan"}
-      description={customer ? <span className="tabular">{displayPhone(customer.phone_wa)}</span> : undefined}
+      description={
+        customer ? (
+          <span>
+            <span className="tabular">{displayPhone(customer.phone_wa)}</span>
+            {!customer.has_whatsapp && " · tanpa WhatsApp"}
+          </span>
+        ) : undefined
+      }
       footer={
         customer && (
           <>
             <Button variant="secondary" onClick={() => setEditing(true)}>
               Ubah data
             </Button>
-            <ButtonLink variant="whatsapp" href={`https://wa.me/${customer.phone_wa}`} target="_blank" rel="noopener noreferrer">
-              <IconChat size={18} />
-              Hubungi via WA
-            </ButtonLink>
+            {customer.has_whatsapp ? (
+              <ButtonLink variant="whatsapp" href={`https://wa.me/${customer.phone_wa}`} target="_blank" rel="noopener noreferrer">
+                <IconChat size={18} />
+                Hubungi via WA
+              </ButtonLink>
+            ) : (
+              <ButtonLink href={`tel:+${customer.phone_wa}`}>
+                <IconPhone size={18} />
+                Telepon
+              </ButtonLink>
+            )}
           </>
         )
       }
@@ -320,6 +331,7 @@ function EditCustomerModal({
 }) {
   const [name, setName] = useState(customer.name);
   const [phone, setPhone] = useState(displayPhone(customer.phone_wa));
+  const [whatsapp, setWhatsapp] = useState(customer.has_whatsapp);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -328,7 +340,7 @@ function EditCustomerModal({
       open={open}
       onClose={onClose}
       title="Ubah data pelanggan"
-      description="Untuk nota dan WA siap diambil."
+      description="Untuk nota dan kabar cucian siap diambil."
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={busy}>
@@ -345,13 +357,18 @@ function EditCustomerModal({
         className="space-y-4"
         onSubmit={async (e) => {
           e.preventDefault();
+          const problem = phoneError(phone, whatsapp);
+          if (problem) {
+            setError(problem);
+            return;
+          }
           setBusy(true);
           setError(null);
           try {
             onSaved(
               await api<CustomerDetail>(`/customers/${customer.id}`, {
                 method: "PATCH",
-                body: { name: name.trim(), phone_wa: phone },
+                body: { name: name.trim(), phone_wa: phone, has_whatsapp: whatsapp },
               }),
             );
           } catch (err) {
@@ -364,16 +381,25 @@ function EditCustomerModal({
         <Field label="Nama">
           <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
         </Field>
-        <Field label="No. WhatsApp">
+        <Field label={whatsapp ? "No. WhatsApp" : "No. HP / telepon"}>
           <input
             className={`${inputClass} tabular`}
             type="tel"
             inputMode="tel"
+            maxLength={20}
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => setPhone(cleanPhoneInput(e.target.value))}
             required
           />
         </Field>
+        <Switch
+          label="Pakai WhatsApp"
+          description={
+            whatsapp ? "Nota dan kabar siap diambil dikirim lewat WA." : "Tidak ada WA yang dikirim ke pelanggan ini."
+          }
+          checked={whatsapp}
+          onChange={setWhatsapp}
+        />
         <ErrorText message={error} />
       </form>
     </Modal>

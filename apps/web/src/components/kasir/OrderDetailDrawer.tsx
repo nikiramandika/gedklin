@@ -8,8 +8,10 @@ import { useAuth } from "@/lib/auth";
 import {
   STATUS_ACTION,
   STATUS_LABEL,
+  displayPhone,
   etaState,
   formatDateTime,
+  formatKg,
   formatRupiah,
   lineDetail,
   paymentLabel,
@@ -19,7 +21,7 @@ import {
 import type { Order, OrderDetail, OrderNotification, Receipt } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 
-import { IconChat, IconEdit, IconHistory, IconPrinter } from "../icons";
+import { IconChat, IconEdit, IconHistory, IconPhone, IconPrinter } from "../icons";
 import { ConfirmDialog, Drawer, Modal } from "../overlay";
 import {
   Alert,
@@ -153,6 +155,7 @@ function OrderDetailPanel({
   const editable = !!order && (order.status === "RECEIVED" || order.status === "PROCESSING") && !order.is_paid;
   const cancelled = order?.status === "CANCELLED";
   const timing = order ? etaState(order, now) : null;
+  const wa = order?.customer.has_whatsapp ?? true;
 
   if (mode === "items" && order) {
     return (
@@ -215,16 +218,24 @@ function OrderDetailPanel({
             )}
             {!cancelled && (
               <div className="grid grid-cols-2 gap-2">
-                <ButtonLink
-                  variant="secondary"
-                  href={receipt?.whatsapp_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-disabled={!receipt}
-                >
-                  <IconChat size={16} className="text-ok-600" />
-                  Kirim ulang WA
-                </ButtonLink>
+                {wa ? (
+                  <ButtonLink
+                    variant="secondary"
+                    href={receipt?.whatsapp_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-disabled={!receipt}
+                    className={receipt ? "" : "pointer-events-none opacity-50"}
+                  >
+                    <IconChat size={16} className="text-ok-600" />
+                    Kirim ulang WA
+                  </ButtonLink>
+                ) : (
+                  <ButtonLink variant="secondary" href={`tel:+${order.customer.phone_wa}`}>
+                    <IconPhone size={16} className="text-brand-600" />
+                    Telepon
+                  </ButtonLink>
+                )}
                 <ButtonLink variant="secondary" href={`/nota/${order.id}`} target="_blank" rel="noopener">
                   <IconPrinter size={16} />
                   Cetak nota
@@ -294,8 +305,11 @@ function OrderDetailPanel({
               </dd>
               <dt className="text-muted">Lokasi rak</dt>
               <dd className="text-right font-mono font-semibold text-ink">{order.rack_location ?? "–"}</dd>
-              <dt className="text-muted">No. WhatsApp</dt>
-              <dd className="tabular text-right text-ink-2">+{order.customer.phone_wa}</dd>
+              <dt className="text-muted">{wa ? "No. WhatsApp" : "No. telepon"}</dt>
+              <dd className="text-right text-ink-2">
+                <span className="tabular">{displayPhone(order.customer.phone_wa)}</span>
+                {!wa && <span className="block text-xs text-muted">tanpa WhatsApp</span>}
+              </dd>
             </dl>
           </section>
 
@@ -363,7 +377,7 @@ function OrderDetailPanel({
                     <p className="font-medium text-ink">{item.name}</p>
                     <p className="text-xs text-muted">
                       {[
-                        item.weight_kg !== null ? `${item.weight_kg} kg` : null,
+                        item.weight_kg !== null ? formatKg(item.weight_kg) : null,
                         item.qty_pcs ? `${item.qty_pcs} pcs` : null,
                         lineDetail(item) || null,
                       ]
@@ -408,7 +422,9 @@ function OrderDetailPanel({
 
           <section>
             <h3 className="mb-2 text-sm font-semibold text-ink">Notifikasi WhatsApp</h3>
-            {notifs.length === 0 ? (
+            {!wa && notifs.length === 0 ? (
+              <p className="text-sm text-muted">Pelanggan tidak pakai WhatsApp, jadi tidak ada WA yang dikirim.</p>
+            ) : notifs.length === 0 ? (
               <p className="text-sm text-muted">Belum ada notifikasi.</p>
             ) : (
               <ul className="space-y-1.5 text-sm">

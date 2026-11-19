@@ -171,6 +171,7 @@ class CustomerOut(ORM):
     id: int
     name: str
     phone_wa: str
+    has_whatsapp: bool
 
 
 class OrderItemIn(BaseModel):
@@ -188,6 +189,7 @@ class QuoteIn(BaseModel):
 class OrderCreate(QuoteIn):
     customer_name: str = Field(min_length=1, max_length=100)
     customer_phone: str = Field(min_length=8, max_length=20)
+    customer_has_whatsapp: bool = True
     notes: str | None = Field(default=None, max_length=1000)
     payment_method: PaymentMethod | None = None
 
@@ -317,6 +319,7 @@ class CustomerSummaryOut(BaseModel):
     id: int
     name: str
     phone_wa: str
+    has_whatsapp: bool
     created_at: datetime
     order_count: int
     total_spent: int
@@ -331,6 +334,7 @@ class CustomerDetailOut(CustomerSummaryOut):
 class CustomerUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     phone_wa: str | None = Field(default=None, min_length=8, max_length=20)
+    has_whatsapp: bool | None = None
 
 
 class ReportDay(BaseModel):

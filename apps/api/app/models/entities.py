@@ -15,6 +15,7 @@ from sqlalchemy import (
     Text,
     Time,
     text,
+    true,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -54,6 +55,8 @@ class Customer(Base):
     name: Mapped[str] = mapped_column(String(100))
     # Tidak pernah masuk dataset ML atau tampil di portal tracking.
     phone_wa: Mapped[str] = mapped_column(String(20), unique=True, index=True)
+    # False: pelanggan tanpa WhatsApp; nomor hanya untuk ditelepon dan tidak ada WA yang dikirim.
+    has_whatsapp: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
 

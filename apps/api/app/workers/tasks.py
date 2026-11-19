@@ -36,6 +36,12 @@ def send_notification(self: Task, notification_id: int) -> str:
             return "missing-order"
         if notif.type == NotificationType.READY and order.ready_notif_sent:
             return "already-sent"
+        if not order.customer.has_whatsapp:
+            # Antre sebelum pelanggan ditandai tanpa WhatsApp: jangan kirim ke nomor tanpa WA.
+            notif.status = NotificationStatus.FAILED
+            notif.error = "Pelanggan tidak pakai WhatsApp"
+            db.commit()
+            return "no-whatsapp"
 
         if notif.type == NotificationType.RECEIPT:
             message = receipt_message(order)

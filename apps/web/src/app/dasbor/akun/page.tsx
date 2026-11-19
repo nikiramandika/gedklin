@@ -87,7 +87,6 @@ export default function AkunPage() {
         icon={IconUsers}
         title="Daftar akun"
         description={users ? `${users.length} akun terdaftar` : undefined}
-        className="max-w"
       >
         {error && (
           <div className="px-4 pb-3 sm:px-5">
@@ -95,7 +94,7 @@ export default function AkunPage() {
           </div>
         )}
         {!users ? (
-          <Loading rows={3} />
+          !error && <Loading rows={3} />
         ) : (
           <ul className={tileListClass}>
             {users.map((u) => (

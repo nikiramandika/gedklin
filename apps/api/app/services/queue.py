@@ -22,13 +22,11 @@ def is_escalated(order: Order, now: datetime, threshold_hours: float | None = No
 def queue_rank(
     order: Order, now: datetime, threshold_hours: float | None = None
 ) -> tuple[int, int, datetime, int]:
+    # Reguler yang mendekati janji masuk kelompok Express dan diurutkan FIFO bersama, supaya
+    # Express yang datang belakangan tidak terus menyalipnya sampai lewat janji.
     started = 0 if order.status == OrderStatus.PROCESSING else 1
-    if order.is_express:
-        tier = 0
-    elif is_escalated(order, now, threshold_hours):
-        tier = 1
-    else:
-        tier = 2
+    priority = order.is_express or is_escalated(order, now, threshold_hours)
+    tier = 0 if priority else 1
     return started, tier, order.received_at, order.id
 
 

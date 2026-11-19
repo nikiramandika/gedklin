@@ -15,7 +15,7 @@ from app.models import (
     OrderStatus,
     PredictionLog,
 )
-from app.services.orders import create_order, mark_followups
+from app.services.orders import OrderError, create_order, mark_followups, normalize_phone
 from app.services.pricing import ItemRequest
 from app.workers.tasks import send_notification
 from tests.conftest import new_order
@@ -380,3 +380,94 @@ def test_daily_operations_capacity_and_promises(client: TestClient, owner: dict)
         "/service-promises/CK", json={"regular_hours": 36, "express_hours": 24}, headers=owner
     )
     assert res.status_code == 200 and res.json()["regular_hours"] == 36
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("0812-3456-7890", "6281234567890"),
+        ("+62 812-3456-789", "628123456789"),
+        ("(0812) 3456 7890", "6281234567890"),
+        ("812345678", "62812345678"),
+    ],
+)
+def test_normalize_phone_accepts_mobile_numbers(raw: str, expected: str) -> None:
+    assert normalize_phone(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "08abc123def4567",
+        "021 5551234",
+        "0812",
+        "0899 9999 9999 99",
+        "+1 415 555 0100",
+        "0812-3456-7890 ext",
+    ],
+)
+def test_normalize_phone_rejects_junk(raw: str) -> None:
+    with pytest.raises(OrderError):
+        normalize_phone(raw)
+
+
+def test_create_order_rejects_invalid_phone(client: TestClient, cashier: dict) -> None:
+    payload = {
+        "customer_name": "Budi",
+        "customer_phone": "08abc123def4567",
+        "is_express": False,
+        "items": [{"catalog_code": "CKL", "weight_kg": 5}],
+    }
+    res = client.post("/orders", json=payload, headers=cashier)
+    assert res.status_code == 422 and "Nomor WhatsApp" in res.json()["detail"]
+
+
+def test_customer_without_whatsapp_gets_no_wa_and_may_use_landline(
+    client: TestClient, cashier: dict, db: Session
+) -> None:
+    order = new_order(
+        client, cashier, customer_phone="021-555-1234", customer_has_whatsapp=False
+    )
+    assert order["customer"]["has_whatsapp"] is False
+    assert order["customer"]["phone_wa"] == "62215551234"
+    advance(client, cashier, order["id"], "PROCESSING", "READY")
+    notifs = db.scalars(select(Notification).where(Notification.order_id == order["id"]))
+    assert list(notifs) == []
+
+    found = client.get("/orders/customers/lookup?phone=021 555 1234", headers=cashier).json()
+    assert found["has_whatsapp"] is False
+
+
+def test_landline_still_rejected_when_customer_uses_whatsapp(
+    client: TestClient, cashier: dict
+) -> None:
+    payload = {
+        "customer_name": "Budi",
+        "customer_phone": "021-555-1234",
+        "items": [{"catalog_code": "CKL", "weight_kg": 5}],
+    }
+    assert client.post("/orders", json=payload, headers=cashier).status_code == 422
+
+
+def test_queued_notification_skipped_after_customer_drops_whatsapp(
+    client: TestClient, cashier: dict, db: Session
+) -> None:
+    order = new_order(client, cashier)
+    res = client.patch(
+        f"/customers/{order['customer']['id']}", json={"has_whatsapp": False}, headers=cashier
+    )
+    assert res.status_code == 200 and res.json()["has_whatsapp"] is False
+    notif = Notification(order_id=order["id"], type=NotificationType.READY)
+    db.add(notif)
+    db.commit()
+    assert send_notification.apply(args=[notif.id]).get() == "no-whatsapp"
+
+
+def test_turning_whatsapp_on_requires_mobile_number(client: TestClient, cashier: dict) -> None:
+    order = new_order(
+        client, cashier, customer_phone="021-555-1234", customer_has_whatsapp=False
+    )
+    res = client.patch(
+        f"/customers/{order['customer']['id']}", json={"has_whatsapp": True}, headers=cashier
+    )
+    assert res.status_code == 422

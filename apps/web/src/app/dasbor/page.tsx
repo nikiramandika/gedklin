@@ -21,7 +21,7 @@ import {
   buttonClass,
 } from "@/components/ui";
 import { api } from "@/lib/api";
-import { STATUS_LABEL, formatDate, formatRupiah } from "@/lib/format";
+import { STATUS_LABEL, formatDate, formatRupiah, formatWeekdayDay } from "@/lib/format";
 import type { Dashboard, OrderStatus, Role } from "@/lib/types";
 
 const ROLES: Role[] = ["owner"];
@@ -221,7 +221,11 @@ function WeekChart({ days }: { days: Dashboard["last_7_days"] }) {
                   />
                 </button>
                 {(hover === i || (hover === null && isLast)) && (
-                  <span className="tabular pointer-events-none absolute -top-1 left-1/2 z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md bg-ink px-2 py-1 text-xs font-medium text-white shadow-pop">
+                  <span
+                    className={`tabular pointer-events-none absolute -top-1 z-10 -translate-y-full whitespace-nowrap rounded-md bg-ink px-2 py-1 text-xs font-medium text-white shadow-pop ${
+                      isLast ? "right-0" : i === 0 ? "left-0" : "left-1/2 -translate-x-1/2"
+                    }`}
+                  >
                     {fmt(v)}
                   </span>
                 )}
@@ -229,15 +233,23 @@ function WeekChart({ days }: { days: Dashboard["last_7_days"] }) {
             );
           })}
         </ul>
+        {/* Hari dan tanggal dua baris supaya tetap utuh di layar sempit. */}
         <ul className="mt-2 flex gap-2 sm:gap-4" aria-hidden="true">
-          {days.map((d, i) => (
-            <li
-              key={d.date}
-              className={`flex-1 truncate text-center text-xs ${i === days.length - 1 ? "font-medium text-ink" : "text-muted"}`}
-            >
-              {formatDate(d.date)}
-            </li>
-          ))}
+          {days.map((d, i) => {
+            const { weekday, day, month } = formatWeekdayDay(d.date);
+            return (
+              <li
+                key={d.date}
+                className={`flex-1 text-center text-xs leading-tight ${i === days.length - 1 ? "font-medium text-ink" : "text-muted"}`}
+              >
+                <span className="block">{weekday}</span>
+                <span className="tabular block whitespace-nowrap">
+                  {day}
+                  <span className="hidden sm:inline"> {month}</span>
+                </span>
+              </li>
+            );
+          })}
         </ul>
       </div>
     </Card>
@@ -287,7 +299,10 @@ function AccuracyCard({ data }: { data: Dashboard }) {
           </div>
         </div>
       )}
-      <p className="mt-4 border-t border-dashed border-field/50 pt-3 font-mono text-xs text-faint">{data.model_version}</p>
+      <p className="mt-4 flex flex-wrap gap-x-1.5 border-t border-dashed border-field/50 pt-3 text-xs text-faint">
+        Model perkiraan
+        <span className="font-mono">{data.model_version}</span>
+      </p>
     </Card>
   );
 }
@@ -341,12 +356,16 @@ function DashboardSkeleton() {
   return (
     <div className="space-y-5" aria-busy="true">
       <span className="sr-only">Memuat dasbor...</span>
-      <div className="skeleton h-32 rounded-lg" />
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="skeleton h-28 rounded-2xl!" />
+        ))}
+      </div>
       <div className="grid gap-5 xl:grid-cols-[1.7fr_1fr]">
-        <div className="skeleton h-80 rounded-2xl" />
+        <div className="skeleton h-80 rounded-2xl!" />
         <div className="space-y-5">
-          <div className="skeleton h-48 rounded-2xl" />
-          <div className="skeleton h-40 rounded-2xl" />
+          <div className="skeleton h-48 rounded-2xl!" />
+          <div className="skeleton h-40 rounded-2xl!" />
         </div>
       </div>
     </div>
