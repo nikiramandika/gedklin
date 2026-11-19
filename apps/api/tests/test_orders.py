@@ -425,9 +425,7 @@ def test_create_order_rejects_invalid_phone(client: TestClient, cashier: dict) -
 def test_customer_without_whatsapp_gets_no_wa_and_may_use_landline(
     client: TestClient, cashier: dict, db: Session
 ) -> None:
-    order = new_order(
-        client, cashier, customer_phone="021-555-1234", customer_has_whatsapp=False
-    )
+    order = new_order(client, cashier, customer_phone="021-555-1234", customer_has_whatsapp=False)
     assert order["customer"]["has_whatsapp"] is False
     assert order["customer"]["phone_wa"] == "62215551234"
     advance(client, cashier, order["id"], "PROCESSING", "READY")
@@ -464,9 +462,7 @@ def test_queued_notification_skipped_after_customer_drops_whatsapp(
 
 
 def test_turning_whatsapp_on_requires_mobile_number(client: TestClient, cashier: dict) -> None:
-    order = new_order(
-        client, cashier, customer_phone="021-555-1234", customer_has_whatsapp=False
-    )
+    order = new_order(client, cashier, customer_phone="021-555-1234", customer_has_whatsapp=False)
     res = client.patch(
         f"/customers/{order['customer']['id']}", json={"has_whatsapp": True}, headers=cashier
     )

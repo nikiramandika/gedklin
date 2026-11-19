@@ -254,9 +254,7 @@ def recompute_etas(db: Session, now: datetime | None = None) -> list[int]:
     return [n.order_id for n in delay_notifications]
 
 
-def upsert_customer(
-    db: Session, name: str, phone_raw: str, has_whatsapp: bool = True
-) -> Customer:
+def upsert_customer(db: Session, name: str, phone_raw: str, has_whatsapp: bool = True) -> Customer:
     phone = normalize_phone(phone_raw, mobile_only=has_whatsapp)
     customer = db.scalar(select(Customer).where(Customer.phone_wa == phone))
     if customer is None:
