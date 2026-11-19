@@ -302,10 +302,23 @@ class TrackingItemOut(ORM):
     qty_pcs: int | None
 
 
+class OutletHoursOut(BaseModel):
+    is_open: bool
+    open_time: time
+    close_time: time
+
+
 class TrackingOut(BaseModel):
+    """Portal publik: tanpa nomor HP, nama petugas, atau catatan; nama pelanggan disamarkan."""
+
     tracking_code: str
+    customer_name: str
+    whatsapp_updates: bool
     is_express: bool
     items: list[TrackingItemOut]
+    price_total: int
+    is_paid: bool
+    outlet_today: OutletHoursOut
     status: OrderStatus
     received_at: datetime
     promised_ready_at: datetime | None

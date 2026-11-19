@@ -143,8 +143,13 @@ export interface TrackingItem {
 
 export interface Tracking {
   tracking_code: string;
+  customer_name: string;
+  whatsapp_updates: boolean;
   is_express: boolean;
   items: TrackingItem[];
+  price_total: number;
+  is_paid: boolean;
+  outlet_today: { is_open: boolean; open_time: string; close_time: string };
   status: OrderStatus;
   received_at: string;
   promised_ready_at: string | null;

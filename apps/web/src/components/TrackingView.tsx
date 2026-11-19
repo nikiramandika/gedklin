@@ -4,13 +4,21 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { ApiError, api } from "@/lib/api";
-import { STATUS_LABEL, describeItem, etaState, formatDateTime, relativeEta, speedLabel } from "@/lib/format";
+import {
+  STATUS_LABEL,
+  describeItem,
+  etaState,
+  formatDateTime,
+  formatRupiah,
+  relativeEta,
+  speedLabel,
+} from "@/lib/format";
 import type { OrderStatus, Tracking } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 
 import { DrumRings } from "./brand";
 import { BrandMark, IconAlert, IconArrowLeft, IconCheck, IconRefresh, IconSearch } from "./icons";
-import { Alert, Button, EmptyState, ExpressBadge, buttonClass } from "./ui";
+import { Alert, Button, EmptyState, ExpressBadge, PaymentBadge, buttonClass } from "./ui";
 
 const REFRESH_MS = 60_000;
 
@@ -129,6 +137,11 @@ export function TrackingView({ code }: { code: string }) {
   );
 }
 
+// "08:00:00" -> "08.00", penulisan jam yang lazim di Indonesia.
+function clock(value: string): string {
+  return value.slice(0, 5).replace(":", ".");
+}
+
 const STAMP_TONE = {
   ready: "text-ok-700",
   cancelled: "text-danger-600",
@@ -144,17 +157,27 @@ function TrackingBody({ order, code, now }: { order: Tracking; code: string; now
   const cancelled = order.status === "CANCELLED";
   const timing = etaState(order, now);
   const stampTone = STAMP_TONE[ready ? "ready" : cancelled ? "cancelled" : done ? "done" : "active"];
+  // Pelanggan tanpa WhatsApp tidak menerima kabar, jadi jangan menjanjikannya.
+  const updateNote = order.whatsapp_updates ? "Kabar via WhatsApp begitu siap." : "Cek lagi halaman ini sebelum datang.";
+  const outlet = order.outlet_today;
 
   return (
     <>
       <section className="rounded-2xl bg-surface shadow-pop" aria-live="polite">
         <div className="px-5 pb-5 pt-4">
-          <div className="flex items-center justify-between gap-3">
-            <p className="flex items-baseline gap-2 text-xs text-muted">
-              Kode
-              <span className="serial text-base text-serial">{code}</span>
-            </p>
-            {order.is_express && <ExpressBadge />}
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              {order.customer_name && (
+                <p className="truncate text-sm text-muted">
+                  Pesanan <span className="font-semibold text-ink">{order.customer_name}</span>
+                </p>
+              )}
+              <p className="mt-0.5 flex items-baseline gap-2 text-xs text-muted">
+                Kode
+                <span className="serial text-base text-serial">{code}</span>
+              </p>
+            </div>
+            {order.is_express && <ExpressBadge className="mt-0.5" />}
           </div>
           {/* Status sebagai stempel di nota; labelnya teks, jadi tidak bergantung pada warna. */}
           <p
@@ -167,10 +190,17 @@ function TrackingBody({ order, code, now }: { order: Tracking; code: string; now
             {cancelled ? (
               <p className="text-base">Pesanan dibatalkan. Hubungi Gedklin Laundry bila ada pertanyaan.</p>
             ) : ready ? (
-              <p className="text-base">
-                Siap sejak <strong className="font-semibold text-ink">{formatDateTime(order.ready_at)}</strong>. Tunjukkan
-                kode ini di outlet.
-              </p>
+              <>
+                <p className="text-base">
+                  Siap sejak <strong className="font-semibold text-ink">{formatDateTime(order.ready_at)}</strong>.
+                  Tunjukkan kode ini di outlet.
+                </p>
+                <p className="mt-2 text-sm text-muted">
+                  {outlet.is_open
+                    ? `Outlet buka hari ini ${clock(outlet.open_time)}–${clock(outlet.close_time)}.`
+                    : "Outlet tutup hari ini."}
+                </p>
+              </>
             ) : done ? (
               <p className="text-base">
                 Diambil <strong className="font-semibold text-ink">{formatDateTime(order.picked_up_at)}</strong>. Terima
@@ -180,13 +210,13 @@ function TrackingBody({ order, code, now }: { order: Tracking; code: string; now
               <>
                 <p className="label-caps text-danger-700">Melewati janji standar</p>
                 <p className="tabular display mt-1 text-3xl text-ink">{formatDateTime(order.promised_ready_at)}</p>
-                <p className="mt-2 text-sm text-muted">Sedang kami selesaikan. Kabar via WhatsApp begitu siap.</p>
+                <p className="mt-2 text-sm text-muted">Sedang kami selesaikan. {updateNote}</p>
               </>
             ) : timing === "due" ? (
               <>
                 <p className="label-caps text-muted">Perkiraan siap diambil</p>
                 <p className="display mt-1 text-3xl text-ink">Segera siap</p>
-                <p className="mt-1 text-sm text-muted">Kabar via WhatsApp begitu siap.</p>
+                <p className="mt-1 text-sm text-muted">{updateNote}</p>
                 {order.promised_ready_at && (
                   <p className="mt-2 text-xs text-faint">Janji standar: {formatDateTime(order.promised_ready_at)}</p>
                 )}
@@ -257,12 +287,25 @@ function TrackingBody({ order, code, now }: { order: Tracking; code: string; now
             </li>
           ))}
         </ul>
-        <p className="mt-2 text-xs text-muted">Masuk {formatDateTime(order.received_at)}</p>
+        {!cancelled && (
+          <div className="mt-2 flex items-center justify-between gap-3 border-t border-line pt-3">
+            <div>
+              <p className="text-xs text-muted">Total</p>
+              <p className="tabular text-lg font-semibold text-ink">{formatRupiah(order.price_total)}</p>
+            </div>
+            <div className="text-right">
+              <PaymentBadge paid={order.is_paid} />
+              {!order.is_paid && !done && <p className="mt-1.5 text-xs text-muted">Bayar saat ambil</p>}
+            </div>
+          </div>
+        )}
+        <p className="mt-3 text-xs text-muted">Masuk {formatDateTime(order.received_at)}</p>
       </section>
 
       {!ready && !done && (
         <p className="px-2 text-center text-xs text-muted text-pretty">
-          Perkiraan bisa berubah saat ramai. Kabar via WhatsApp saat siap.
+          Perkiraan bisa berubah saat ramai.{" "}
+          {order.whatsapp_updates ? "Kabar via WhatsApp saat siap." : "Cek lagi halaman ini sebelum datang."}
         </p>
       )}
     </>

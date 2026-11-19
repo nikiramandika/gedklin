@@ -257,7 +257,7 @@ Simpan waktu dalam UTC di database, tampilkan dalam **Asia/Jakarta**.
 - Python: type hints, ruff untuk lint dan format, pytest untuk test.
 - TypeScript: strict mode, ESLint + Prettier.
 - Perubahan skema database selalu lewat migrasi Alembic.
-- Endpoint publik (portal tracking) hanya menerima `tracking_code` dan tidak mengembalikan data pribadi.
+- Endpoint publik (portal tracking) hanya menerima `tracking_code` dan tidak mengembalikan data pribadi: nama pelanggan hanya samaran (mis. "Ni** R."), tanpa nomor HP, nama petugas, atau catatan. Total dan status bayar boleh tampil.
 - Konfigurasi lewat environment variable (`DATABASE_URL`, `REDIS_URL`, `MODEL_PATH`, `DELAY_THRESHOLD_HOURS`, `ETA_TOLERANCE_HOURS`, `WA_PROVIDER`, `WA_API_KEY`). Jangan hardcode secret.
 - Harga selalu dalam Rupiah bertipe integer.
 - Teks UI dalam Bahasa Indonesia.

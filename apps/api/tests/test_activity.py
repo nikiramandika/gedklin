@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from app.routers.tracking import mask_name
 from tests.conftest import new_order
 
 
@@ -100,3 +101,22 @@ def test_search_by_tracking_code_shows_whole_order_trail(
 
     assert len(logs(client, owner, q="siti")) == 5
     assert logs(client, owner, q="TIDAKADA00") == []
+
+
+def test_public_tracking_shows_masked_name_total_and_hours(
+    client: TestClient, cashier: dict
+) -> None:
+    order = new_order(client, cashier, customer_name="Niki Ramandika", customer_has_whatsapp=False)
+    body = client.get(f"/public/track/{order['tracking_code']}").json()
+    assert body["customer_name"] == "Ni** R."
+    assert "Ramandika" not in str(body) and "62812" not in str(body)
+    assert body["whatsapp_updates"] is False
+    assert body["price_total"] == order["price_total"] and body["is_paid"] is False
+    assert set(body["outlet_today"]) == {"is_open", "open_time", "close_time"}
+
+
+def test_mask_name_short_and_single_word() -> None:
+    assert mask_name("Lia") == "Li*"
+    assert mask_name("Budi") == "Bu**"
+    assert mask_name("Christopher Nolan Jr") == "Ch*** J."
+    assert mask_name("A") == "A"

@@ -301,8 +301,10 @@ def test_public_tracking_has_no_personal_data(client: TestClient, cashier: dict)
     res = client.get(f"/public/track/{order['tracking_code'].lower()}")
     assert res.status_code == 200
     text = res.text
-    assert "Siti" not in text and "6281234567890" not in text
-    assert "customer" not in res.json() and "price_total" not in res.json()
+    # Nama hanya tampil samaran; nomor HP dan objek pelanggan tidak pernah dikirim.
+    assert "Siti" not in text and "Aminah" not in text and "6281234567890" not in text
+    assert res.json()["customer_name"] == "Si** A."
+    assert "customer" not in res.json() and "phone_wa" not in text
     assert res.json()["history"][0]["to_status"] == OrderStatus.RECEIVED.value
     assert res.json()["items"] == [
         {"name": "Cuci + Kering + Lipat", "weight_kg": 5.0, "qty_pcs": None}
