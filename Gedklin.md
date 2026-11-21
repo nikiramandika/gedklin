@@ -79,12 +79,12 @@ infra/
 
 | Role | Akses |
 |---|---|
-| `owner` | Dasbor, laporan + unduh CSV, kelola katalog dan harga, akun kasir dan admin, data operasional harian, log aktivitas, batalkan catatan pembayaran yang salah |
-| `admin` | Daftar pesanan yang perlu ditindaklanjuti (belum diambil > 3 hari) |
-| `cashier` | Buat pesanan, lihat harga dan ETA, kirim nota digital, update status termasuk menandai `READY`, catat pembayaran, koreksi/batalkan pesanan sebelum siap, kelola data pelanggan |
+| `owner` (Pemilik) | Semua akses: dasbor, laporan + unduh CSV, kelola katalog dan harga, akun karyawan (tambah, ubah nama/peran, nonaktifkan), data operasional harian, log aktivitas, batalkan catatan pembayaran yang salah |
+| `cashier` (Staff Kasir) | Buat pesanan, lihat harga dan ETA, kirim nota digital, update status termasuk menandai `READY`, catat pembayaran, koreksi/batalkan pesanan sebelum siap, kelola data pelanggan |
+| `staff` (Staff) | Layar Antrean Cucian (`/antrean`): melihat urutan cucian aktif, menandai `PROCESSING` dan `READY` (+ lokasi rak). Tanpa harga, pembayaran, dan nomor HP pelanggan |
 | Pelanggan | Tanpa login. Akses portal tracking lewat `tracking_code` |
 
-Tidak ada role `staff`. Petugas cuci/setrika tidak memakai sistem, semua perubahan status dilakukan oleh kasir.
+Hierarki mengikuti tempat kerja: konter (Staff Kasir), area cuci/setrika (Staff), dan manajemen (Pemilik). Akun pemilik dibuat lewat seed; dari aplikasi pemilik hanya menambah atau mengubah akun Staff Kasir dan Staff. Kasir tetap bisa mengubah semua status bila Staff tidak memegang perangkat. Role ini dulu bernama `admin` (hanya tindak lanjut); migrasi `0011` mengganti namanya menjadi `staff` dan tindak lanjut pindah ke kasir.
 
 ## Katalog layanan dan harga
 
@@ -219,7 +219,7 @@ Simpan waktu dalam UTC di database, tampilkan dalam **Asia/Jakarta**.
 | Pesanan dibuat | Kirim **1 kali** nota digital (isi, total, status bayar, perkiraan siap, link lacak) lewat gateway. Idempoten. Tombol WA di kasir tetap ada untuk kirim ulang manual. |
 | Pesanan berubah ke `READY` | Kirim **1 kali** notifikasi siap diambil. Idempoten. |
 | ETA mundur karena overload | Hanya pesanan **Reguler**. Kirim jika ETA baru > `last_notified_eta` + `DELAY_THRESHOLD_HOURS` (default 6 jam, menunggu kesepakatan mitra). **Maksimal 2 kali** per pesanan. |
-| Belum diambil > 3 hari setelah `ready_at` | **Tidak** kirim WA otomatis. Celery beat harian set `needs_followup = true`, muncul di halaman admin, admin menghubungi manual. |
+| Belum diambil > 3 hari setelah `ready_at` | **Tidak** kirim WA otomatis. Celery beat harian set `needs_followup = true`, muncul di halaman Tindak Lanjut (`/tindak-lanjut`), kasir menghubungi manual. |
 
 - Pengiriman lewat Celery task dengan retry. Kegagalan dicatat di `notifications`.
 - Implementasikan `NotificationSender` sebagai interface + adapter per provider. Mode dev: `ConsoleSender` yang hanya log.

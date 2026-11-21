@@ -126,7 +126,8 @@ export function Card({
       {(title || action) && (
         <CardHeader title={title} description={description} action={action} icon={icon} tone={tone} />
       )}
-      <div className={flush ? "" : "px-4 pb-5 pt-3 sm:px-5"}>{children}</div>
+      {/* flow-root: margin anak pertama (mis. daftar tab) tidak bocor keluar kartu. */}
+      <div className={flush ? "flow-root" : "px-4 pb-5 pt-3 sm:px-5"}>{children}</div>
     </section>
   );
 }

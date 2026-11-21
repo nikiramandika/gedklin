@@ -22,7 +22,7 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     shortcuts: [
       { name: "Pesanan baru", url: "/kasir", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
-      { name: "Tindak lanjut", url: "/admin", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
+      { name: "Tindak lanjut", url: "/tindak-lanjut", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
     ],
   };
 }

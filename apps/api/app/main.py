@@ -4,7 +4,17 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routers import activity, admin, auth, customers, orders, owner, reports, tracking
+from app.routers import (
+    activity,
+    auth,
+    customers,
+    followups,
+    orders,
+    owner,
+    reports,
+    tracking,
+    work,
+)
 from app.services.eta import get_predictor
 
 logging.basicConfig(level=logging.INFO)
@@ -22,7 +32,8 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(orders.router)
 app.include_router(owner.router)
-app.include_router(admin.router)
+app.include_router(followups.router)
+app.include_router(work.router)
 app.include_router(tracking.router)
 app.include_router(activity.router)
 app.include_router(customers.router)

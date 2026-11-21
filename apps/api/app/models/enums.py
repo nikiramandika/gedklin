@@ -3,8 +3,9 @@ from enum import StrEnum
 
 class Role(StrEnum):
     OWNER = "owner"
-    ADMIN = "admin"
     CASHIER = "cashier"
+    # Staff mengerjakan cucian di belakang: hanya melihat antrean dan mengubah status proses.
+    STAFF = "staff"
 
 
 class CatalogGroup(StrEnum):

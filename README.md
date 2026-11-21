@@ -9,7 +9,7 @@ dasbor pemilik, dan portal tracking pelanggan (PWA).
 
 ```
 apps/api   FastAPI + SQLAlchemy + Alembic + Celery (harga, antrean, ETA, notifikasi)
-apps/web   Next.js 16 (App Router, TypeScript strict): kasir, dasbor, admin, portal /lacak (PWA)
+apps/web   Next.js 16 (App Router, TypeScript strict): kasir, antrean cucian (staff), dasbor, portal /lacak (PWA)
 ml/        Paket gedklin_ml (feature builder bersama API & training) + script pipeline
 infra/     docker-compose (Postgres + Redis; profil `app` untuk semua service)
 ```
@@ -93,7 +93,7 @@ Di terminal baru, aktifkan venv dengan `.\.venv\Scripts\Activate.ps1` (dari root
 menjalankan `uvicorn` atau `celery`. Kalau pakai Command Prompt (cmd), aktivasinya
 `.venv\Scripts\activate.bat` dan ganti `Copy-Item` dengan `copy`.
 
-Halaman: `/login`, `/kasir`, `/dasbor` (+ `/operasional`, `/layanan`, `/akun`), `/admin`,
+Halaman: `/login`, `/kasir`, `/dasbor` (+ `/operasional`, `/layanan`, `/akun`), `/tindak-lanjut`, `/antrean`,
 `/lacak` dan `/lacak/<kode>` (publik).
 
 ### Isi `apps/api/.env` untuk lokal

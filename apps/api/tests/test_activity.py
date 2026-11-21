@@ -64,17 +64,17 @@ def test_owner_changes_are_logged_with_before_and_after(
 
 
 def test_logins_logged_and_paging_and_owner_only(
-    client: TestClient, owner: dict, cashier: dict, admin: dict
+    client: TestClient, owner: dict, cashier: dict, staff: dict
 ) -> None:
     entries = logs(client, owner, entity_type="auth")
-    assert {e["user_name"] for e in entries} == {"Owner", "Cashier", "Admin"}
+    assert {e["user_name"] for e in entries} == {"Owner", "Cashier", "Staff"}
 
     first = logs(client, owner, limit=1)
     rest = logs(client, owner, before_id=first[0]["id"])
     assert all(e["id"] < first[0]["id"] for e in rest)
 
     assert client.get("/activity-logs", headers=cashier).status_code == 403
-    assert client.get("/activity-logs", headers=admin).status_code == 403
+    assert client.get("/activity-logs", headers=staff).status_code == 403
 
 
 def test_search_by_tracking_code_shows_whole_order_trail(

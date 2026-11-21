@@ -18,6 +18,7 @@ import {
   IconDownload,
   IconHistory,
   IconKey,
+  IconList,
   IconLogOut,
   IconMenu,
   IconReceipt,
@@ -45,7 +46,8 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { href: "/dasbor", label: "Dasbor", icon: IconDashboard, roles: ["owner"] },
       { href: "/kasir", label: "Kasir", icon: IconReceipt, roles: ["owner", "cashier"] },
       { href: "/pelanggan", label: "Pelanggan", icon: IconUser, roles: ["owner", "cashier"] },
-      { href: "/admin", label: "Tindak Lanjut", icon: IconAlert, roles: ["owner", "admin"] },
+      { href: "/antrean", label: "Antrean Cucian", icon: IconList, roles: ["staff"] },
+      { href: "/tindak-lanjut", label: "Tindak Lanjut", icon: IconAlert, roles: ["owner", "cashier"] },
       { href: "/dasbor/laporan", label: "Laporan", icon: IconChart, roles: ["owner"] },
     ],
   },
@@ -59,7 +61,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
         roles: ["owner"],
       },
       { href: "/dasbor/layanan", label: "Layanan & Harga", icon: IconTag, roles: ["owner"] },
-      { href: "/dasbor/akun", label: "Akun Petugas", icon: IconUsers, roles: ["owner"] },
+      { href: "/dasbor/akun", label: "Akun Karyawan", icon: IconUsers, roles: ["owner"] },
       { href: "/dasbor/log", label: "Log Aktivitas", icon: IconHistory, roles: ["owner"] },
     ],
   },
@@ -67,8 +69,8 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
 
 const ROLE_LABEL: Record<Role, string> = {
   owner: "Pemilik",
-  admin: "Admin",
-  cashier: "Kasir",
+  cashier: "Staff Kasir",
+  staff: "Staff",
 };
 
 function isActive(pathname: string, href: string): boolean {

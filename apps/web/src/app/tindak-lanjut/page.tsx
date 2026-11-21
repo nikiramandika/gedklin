@@ -22,7 +22,7 @@ import { displayPhone, formatDateTime, formatRupiah, summarizeItems } from "@/li
 import type { Order, Role } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 
-const ROLES: Role[] = ["admin", "owner"];
+const ROLES: Role[] = ["cashier", "owner"];
 const readyDate = new Intl.DateTimeFormat("id-ID", {
   timeZone: "Asia/Jakarta",
   weekday: "long",
@@ -30,7 +30,7 @@ const readyDate = new Intl.DateTimeFormat("id-ID", {
   month: "long",
 });
 
-// Pesan pembuka untuk admin; tetap bisa diubah di WhatsApp sebelum dikirim.
+// Pesan pembuka untuk kasir; tetap bisa diubah di WhatsApp sebelum dikirim.
 function reminderLink(o: Order): string {
   const since = o.ready_at ? ` sejak ${readyDate.format(new Date(o.ready_at))}` : "";
   const bill = o.is_paid ? "" : ` Total tagihan ${formatRupiah(o.price_total)}, bisa dibayar saat ambil.`;
@@ -43,7 +43,7 @@ function daysSince(iso: string | null, now: number): number {
   return Math.floor((now - new Date(iso).getTime()) / 86_400_000);
 }
 
-export default function AdminPage() {
+export default function TindakLanjutPage() {
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -51,7 +51,7 @@ export default function AdminPage() {
 
   const load = useCallback(
     () =>
-      api<Order[]>("/admin/followups")
+      api<Order[]>("/followups")
         .then((o) => {
           setOrders(o);
           setError(null);

@@ -44,8 +44,8 @@ def test_key_is_encrypted_and_never_returned(client: TestClient, owner: dict, db
     assert entries and all(KEY not in str(e) for e in entries)
 
 
-def test_ai_settings_owner_only(client: TestClient, cashier: dict, admin: dict) -> None:
-    for headers in (cashier, admin):
+def test_ai_settings_owner_only(client: TestClient, cashier: dict, staff: dict) -> None:
+    for headers in (cashier, staff):
         assert client.get("/settings/ai", headers=headers).status_code == 403
         assert client.post("/reports/ai-analysis", json={}, headers=headers).status_code == 403
 

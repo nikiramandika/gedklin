@@ -70,8 +70,8 @@ def owner(client: TestClient) -> dict[str, str]:
 
 
 @pytest.fixture
-def admin(client: TestClient) -> dict[str, str]:
-    return login(client, "admin")
+def staff(client: TestClient) -> dict[str, str]:
+    return login(client, "staff")
 
 
 def new_order(client: TestClient, headers: dict[str, str], **overrides: object) -> dict:

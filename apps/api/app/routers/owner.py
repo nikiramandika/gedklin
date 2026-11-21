@@ -75,7 +75,7 @@ DAILY_FIELDS = (
     "close_time",
     "machine_issue_note",
 )
-ROLE_LABEL = {Role.OWNER: "Pemilik", Role.ADMIN: "Admin", Role.CASHIER: "Kasir"}
+ROLE_LABEL = {Role.OWNER: "Pemilik", Role.CASHIER: "Staff Kasir", Role.STAFF: "Staff"}
 
 
 @router.get("/catalog", response_model=list[CatalogItemOut])
@@ -360,8 +360,10 @@ def update_user(
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Akun tidak ditemukan")
-    if user.id == me.id and (data.is_active is False or (data.role and data.role != Role.OWNER)):
+    if user.id == me.id and data.is_active is False:
         raise HTTPException(status.HTTP_409_CONFLICT, "Tidak bisa menonaktifkan akun sendiri")
+    if data.role is not None and data.role != user.role and user.role == Role.OWNER:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Peran akun pemilik tidak bisa diubah")
     before = snapshot(user, USER_FIELDS)
     changes = data.model_dump(exclude_none=True)
     if password := changes.pop("password", None):

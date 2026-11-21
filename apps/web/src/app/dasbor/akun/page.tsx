@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
-import { IconKey, IconPlus, IconUsers } from "@/components/icons";
+import { IconEdit, IconKey, IconPlus, IconUsers } from "@/components/icons";
 import { ConfirmDialog, Modal, useToast } from "@/components/overlay";
 import {
   Button,
@@ -12,7 +12,6 @@ import {
   Field,
   Loading,
   PageHeader,
-  Segmented,
   inputClass,
   tileClass,
   tileListClass,
@@ -21,14 +20,21 @@ import { api } from "@/lib/api";
 import type { Role, User } from "@/lib/types";
 
 const ROLES: Role[] = ["owner"];
-const ROLE_LABEL: Record<Role, string> = { owner: "Pemilik", admin: "Admin", cashier: "Kasir" };
+const ROLE_LABEL: Record<Role, string> = { owner: "Pemilik", cashier: "Staff Kasir", staff: "Staff" };
 const ROLE_STYLE: Record<Role, string> = {
   owner: "text-ink",
-  admin: "text-warn-700",
   cashier: "text-brand-600",
+  staff: "text-ok-700",
 };
-const EMPTY = { name: "", username: "", password: "", role: "cashier" as Role };
+// Akun pemilik dibuat saat instalasi; dari sini pemilik hanya mengatur akun staff.
+type StaffRole = Exclude<Role, "owner">;
+const STAFF_ROLES: { value: StaffRole; description: string }[] = [
+  { value: "cashier", description: "Di konter: terima pesanan, catat pembayaran, serahkan cucian, hubungi pelanggan." },
+  { value: "staff", description: "Mengerjakan cucian: lihat antrean, tandai mulai dikerjakan dan siap diambil." },
+];
+const EMPTY = { name: "", username: "", password: "", role: "cashier" as StaffRole };
 const CREATE_FORM = "create-user-form";
+const EDIT_FORM = "edit-user-form";
 const RESET_FORM = "reset-password-form";
 
 export default function AkunPage() {
@@ -36,6 +42,7 @@ export default function AkunPage() {
   const [users, setUsers] = useState<User[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<User | null>(null);
   const [resetting, setResetting] = useState<User | null>(null);
   const [toggling, setToggling] = useState<User | null>(null);
   const [toggleBusy, setToggleBusy] = useState(false);
@@ -73,8 +80,8 @@ export default function AkunPage() {
   return (
     <AppShell roles={ROLES}>
       <PageHeader
-        title="Akun Petugas"
-        description="Kasir: catat pesanan & status. Admin: tindak lanjut."
+        title="Akun Karyawan"
+        description="Staff Kasir melayani di konter. Staff mengerjakan cucian lewat layar Antrean Cucian."
         actions={
           <Button onClick={() => setCreating(true)}>
             <IconPlus size={18} />
@@ -101,6 +108,7 @@ export default function AkunPage() {
               <UserRow
                 key={u.id}
                 user={u}
+                onEdit={() => setEditing(u)}
                 onReset={() => setResetting(u)}
                 onToggle={() => {
                   setToggleError(null);
@@ -118,6 +126,16 @@ export default function AkunPage() {
         onCreated={(user) => {
           setCreating(false);
           toast(`Akun @${user.username} ditambahkan`);
+          load();
+        }}
+      />
+      <EditUserModal
+        key={editing?.id ?? "closed"}
+        user={editing}
+        onClose={() => setEditing(null)}
+        onSaved={(user) => {
+          setEditing(null);
+          toast(`Akun ${user.name} diperbarui`);
           load();
         }}
       />
@@ -149,10 +167,12 @@ export default function AkunPage() {
 
 function UserRow({
   user: u,
+  onEdit,
   onReset,
   onToggle,
 }: {
   user: User;
+  onEdit: () => void;
   onReset: () => void;
   onToggle: () => void;
 }) {
@@ -173,6 +193,12 @@ function UserRow({
         <p className="font-mono text-sm text-muted">@{u.username}</p>
       </div>
       <div className="flex w-full gap-2 sm:w-auto">
+        {u.role !== "owner" && (
+          <Button variant="secondary" size="sm" className="flex-1 sm:flex-none" onClick={onEdit}>
+            <IconEdit size={15} />
+            Ubah
+          </Button>
+        )}
         <Button variant="secondary" size="sm" className="flex-1 sm:flex-none" onClick={onReset}>
           <IconKey size={15} />
           Reset password
@@ -246,17 +272,7 @@ function CreateUserModal({
           }
         }}
       >
-        <Field label="Peran">
-          <Segmented<Role>
-            label="Peran akun"
-            value={form.role}
-            onChange={(role) => setForm({ ...form, role })}
-            options={[
-              { value: "cashier", label: "Kasir" },
-              { value: "admin", label: "Admin" },
-            ]}
-          />
-        </Field>
+        <RolePicker value={form.role} onChange={(role) => setForm({ ...form, role })} />
         <Field label="Nama">
           <input
             className={inputClass}
@@ -288,6 +304,104 @@ function CreateUserModal({
             minLength={8}
           />
         </Field>
+        <ErrorText message={error} />
+      </form>
+    </Modal>
+  );
+}
+
+function RolePicker({ value, onChange }: { value: StaffRole; onChange: (role: StaffRole) => void }) {
+  return (
+    <fieldset>
+      <legend className="mb-1.5 block text-sm font-medium text-ink-2">Peran</legend>
+      <div role="radiogroup" aria-label="Peran akun" className="grid gap-2 sm:grid-cols-2">
+        {STAFF_ROLES.map((r) => {
+          const active = r.value === value;
+          return (
+            <button
+              key={r.value}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => onChange(r.value)}
+              className={`rounded-xl px-3 py-2.5 text-left ring-inset transition-[background-color,box-shadow] duration-150 ${
+                active ? "bg-brand-50 ring-2 ring-brand-600" : "bg-surface ring-1 ring-line hover:bg-subtle"
+              }`}
+            >
+              <span className={`block text-sm font-semibold ${active ? "text-brand-700" : "text-ink"}`}>
+                {ROLE_LABEL[r.value]}
+              </span>
+              <span className="mt-0.5 block text-xs text-muted text-pretty">{r.description}</span>
+            </button>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
+function EditUserModal({
+  user,
+  onClose,
+  onSaved,
+}: {
+  user: User | null;
+  onClose: () => void;
+  onSaved: (user: User) => void;
+}) {
+  const [name, setName] = useState(user?.name ?? "");
+  const [role, setRole] = useState<StaffRole>(user && user.role !== "owner" ? user.role : "cashier");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const roleChanged = user !== null && role !== user.role;
+
+  return (
+    <Modal
+      open={user !== null}
+      onClose={onClose}
+      title="Ubah akun"
+      description={user ? `@${user.username}` : undefined}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
+            Batal
+          </Button>
+          <Button type="submit" form={EDIT_FORM} loading={busy}>
+            Simpan
+          </Button>
+        </>
+      }
+    >
+      <form
+        id={EDIT_FORM}
+        className="space-y-4"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!user) return;
+          setError(null);
+          setBusy(true);
+          try {
+            const updated = await api<User>(`/users/${user.id}`, {
+              method: "PATCH",
+              body: { name: name.trim(), role },
+            });
+            onSaved(updated);
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "Gagal menyimpan");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <Field label="Nama">
+          <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} required />
+        </Field>
+        <RolePicker value={role} onChange={setRole} />
+        {roleChanged && (
+          <p className="text-sm text-muted">
+            Menu {user?.name} ikut berubah saat ia membuka aplikasi lagi. Pesanan yang pernah dicatat tetap tersimpan.
+          </p>
+        )}
         <ErrorText message={error} />
       </form>
     </Modal>

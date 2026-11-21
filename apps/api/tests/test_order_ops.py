@@ -200,7 +200,7 @@ def test_login_lockout_after_five_failures(client: TestClient) -> None:
     assert [attempt("salah") for _ in range(5)] == [401] * 5
     assert attempt(PASSWORD) == 429
     assert (
-        client.post("/auth/login", json={"username": "admin", "password": PASSWORD}).status_code
+        client.post("/auth/login", json={"username": "staff", "password": PASSWORD}).status_code
         == 200
     )
 

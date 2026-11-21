@@ -279,7 +279,7 @@ def test_small_eta_changes_do_not_notify(client: TestClient, cashier: dict, db: 
 
 
 def test_followup_marked_after_three_days_without_whatsapp(
-    client: TestClient, cashier: dict, admin: dict, db: Session
+    client: TestClient, cashier: dict, db: Session
 ) -> None:
     order = new_order(client, cashier)
     advance(client, cashier, order["id"], "PROCESSING", "READY")
@@ -287,13 +287,13 @@ def test_followup_marked_after_three_days_without_whatsapp(
     assert mark_followups(db, utcnow() + timedelta(days=2)) == 0
     assert mark_followups(db, utcnow() + timedelta(days=4)) == 1
 
-    followups = client.get("/admin/followups", headers=admin).json()
+    followups = client.get("/followups", headers=cashier).json()
     assert [o["id"] for o in followups] == [order["id"]]
     types = set(db.scalars(select(Notification.type).where(Notification.order_id == order["id"])))
     assert types == {NotificationType.RECEIPT, NotificationType.READY}
 
     advance(client, cashier, order["id"], "PICKED_UP")
-    assert client.get("/admin/followups", headers=admin).json() == []
+    assert client.get("/followups", headers=cashier).json() == []
 
 
 def test_public_tracking_has_no_personal_data(client: TestClient, cashier: dict) -> None:
@@ -313,12 +313,12 @@ def test_public_tracking_has_no_personal_data(client: TestClient, cashier: dict)
     assert client.get("/public/track/TIDAKADA00").status_code == 404
 
 
-def test_role_access(client: TestClient, cashier: dict, admin: dict, owner: dict) -> None:
+def test_role_access(client: TestClient, cashier: dict, staff: dict, owner: dict) -> None:
     assert client.get("/dashboard/summary", headers=cashier).status_code == 403
     assert client.get("/dashboard/summary", headers=owner).status_code == 200
     assert client.get("/settings", headers=cashier).status_code == 403
-    assert client.post("/orders", json={}, headers=admin).status_code == 403
-    assert client.get("/admin/followups", headers=cashier).status_code == 403
+    assert client.post("/orders", json={}, headers=staff).status_code == 403
+    assert client.get("/followups", headers=staff).status_code == 403
     assert client.get("/orders/queue").status_code == 401
 
 

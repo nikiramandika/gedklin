@@ -25,7 +25,7 @@ const AuthContext = createContext<AuthState | null>(null);
 export const HOME_BY_ROLE: Record<Role, string> = {
   owner: "/dasbor",
   cashier: "/kasir",
-  admin: "/admin",
+  staff: "/antrean",
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {

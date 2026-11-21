@@ -56,7 +56,7 @@ export default function LoginPage() {
             }}
           >
             <h1 className="display text-2xl text-ink">Masuk ke Gedklin</h1>
-            <p className="mt-1 text-sm text-muted">Kasir, admin, dan pemilik</p>
+            <p className="mt-1 text-sm text-muted">Pemilik, staff kasir, dan staff</p>
 
             <div className="mt-6 space-y-4">
               <Field label="Username">

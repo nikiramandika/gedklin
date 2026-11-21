@@ -1,4 +1,4 @@
-export type Role = "owner" | "admin" | "cashier";
+export type Role = "owner" | "cashier" | "staff";
 export type OrderStatus = "RECEIVED" | "PROCESSING" | "READY" | "PICKED_UP" | "CANCELLED";
 export type PaymentMethod = "CASH" | "QRIS" | "TRANSFER";
 export type CatalogGroup = "KILOAN" | "SETRIKA" | "KHUSUS" | "SATUAN" | "DRY_CLEAN";
@@ -135,6 +135,31 @@ export interface Receipt {
   tracking_url: string;
   whatsapp_link: string;
   message: string;
+}
+
+/** Pesanan di layar Antrean Cucian (role staff): tanpa harga, pembayaran, dan nomor HP. */
+export interface WorkItem {
+  name: string;
+  process: Process;
+  weight_kg: number | null;
+  qty_pcs: number | null;
+  machine_loads: number | null;
+}
+
+export interface WorkOrder {
+  id: number;
+  tracking_code: string;
+  customer_name: string;
+  is_express: boolean;
+  items: WorkItem[];
+  notes: string | null;
+  rack_location: string | null;
+  status: OrderStatus;
+  received_at: string;
+  promised_ready_at: string | null;
+  predicted_ready_at: string | null;
+  queue_position: number;
+  next_status: OrderStatus | null;
 }
 
 export interface TrackingItem {

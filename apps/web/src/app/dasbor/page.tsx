@@ -89,7 +89,7 @@ function DashboardBody({ data }: { data: Dashboard }) {
           tone="warn"
           action={
             <Link
-              href="/admin"
+              href="/tindak-lanjut"
               className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold hover:underline"
             >
               Lihat

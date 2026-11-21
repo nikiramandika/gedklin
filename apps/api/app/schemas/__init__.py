@@ -40,16 +40,20 @@ class TokenOut(BaseModel):
     user: UserOut
 
 
+# Akun pemilik hanya dibuat lewat seed; dari aplikasi pemilik menambah atau mengubah akun staff.
+StaffRole = Literal[Role.CASHIER, Role.STAFF]
+
+
 class UserCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     username: str = Field(min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9_.]+$")
     password: str = Field(min_length=8)
-    role: Role
+    role: StaffRole
 
 
 class UserUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
-    role: Role | None = None
+    role: StaffRole | None = None
     is_active: bool | None = None
     password: str | None = Field(default=None, min_length=8)
 
@@ -283,6 +287,37 @@ class OrderOut(ORM):
 
 class OrderDetailOut(OrderOut):
     history: list[StatusHistoryOut]
+
+
+class WorkItemOut(ORM):
+    name: str
+    process: Process
+    weight_kg: float | None
+    qty_pcs: int | None
+    machine_loads: int | None
+
+
+class WorkOrderOut(BaseModel):
+    """Pesanan untuk layar Antrean Cucian (role staff): tanpa harga, pembayaran, dan nomor HP."""
+
+    id: int
+    tracking_code: str
+    customer_name: str
+    is_express: bool
+    items: list[WorkItemOut]
+    notes: str | None
+    rack_location: str | None
+    status: OrderStatus
+    received_at: datetime
+    promised_ready_at: datetime | None
+    predicted_ready_at: datetime | None
+    queue_position: int
+    next_status: OrderStatus | None
+
+
+class WorkStatusIn(BaseModel):
+    to_status: Literal[OrderStatus.PROCESSING, OrderStatus.READY]
+    rack_location: str | None = Field(default=None, max_length=20)
 
 
 class ReceiptOut(BaseModel):

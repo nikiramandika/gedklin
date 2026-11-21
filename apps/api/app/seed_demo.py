@@ -58,6 +58,8 @@ MOBILE_PREFIX = "62812990"
 LANDLINE_PREFIX = "6261990"
 DEMO_PASSWORD = "kasir123"
 CASHIERS = [("Rina Sitompul", "rina"), ("Dedi Siregar", "dedi")]
+# Staff yang mengerjakan cucian: mengubah status menjadi diproses dan siap.
+WORKERS = [("Andi Nasution", "andi")]
 
 FIRST = (
     "Andi Budi Citra Dewi Eka Fajar Gita Hendra Indah Joko Kartika Lestari Maya Nanda Oki Putri "
@@ -146,26 +148,30 @@ def _demo_customer():  # noqa: ANN202
     )
 
 
-def _staff(db: Session) -> list[User]:
-    staff = []
-    for name, username in CASHIERS:
+def _demo_users(db: Session, accounts: list[tuple[str, str]], role: Role) -> list[User]:
+    users = []
+    for name, username in accounts:
         user = db.scalar(select(User).where(User.username == username))
         if user is None:
             user = User(
                 name=name,
                 username=username,
                 password_hash=hash_password(DEMO_PASSWORD),
-                role=Role.CASHIER,
+                role=role,
                 is_active=True,
             )
             db.add(user)
-        staff.append(user)
+        users.append(user)
     db.flush()
+    others = list(db.scalars(select(User).where(User.role == role, User.is_active.is_(True))))
+    return list({u.id: u for u in [*users, *others]}.values())
+
+
+def _staff(db: Session) -> tuple[list[User], list[User]]:
+    """Kasir (plus pemilik) untuk konter, staff untuk perubahan status proses dan siap."""
     owner = db.scalar(select(User).where(User.role == Role.OWNER))
-    others = list(
-        db.scalars(select(User).where(User.role == Role.CASHIER, User.is_active.is_(True)))
-    )
-    return list({u.id: u for u in [*staff, *others, *([owner] if owner else [])]}.values())
+    counter = _demo_users(db, CASHIERS, Role.CASHIER) + ([owner] if owner else [])
+    return counter, _demo_users(db, WORKERS, Role.STAFF)
 
 
 def _daily_operations(db: Session, rng: random.Random, today: date) -> None:
@@ -264,7 +270,7 @@ def seed_demo(db: Session, seed: int = 7) -> int:
     rng = random.Random(seed)
     now = utcnow()
     today = now.astimezone(LOCAL_TZ).date()
-    staff = _staff(db)
+    staff, workers = _staff(db)
     customers = _customers(db, rng)
     regulars = customers[:35]
     _daily_operations(db, rng, today)
@@ -375,7 +381,7 @@ def seed_demo(db: Session, seed: int = 7) -> int:
                 # Masih di antrean: ETA dihitung model seperti pesanan sungguhan.
                 if processing < now:
                     order.status = OrderStatus.PROCESSING
-                    steps.append((OrderStatus.PROCESSING, processing, rng.choice(staff)))
+                    steps.append((OrderStatus.PROCESSING, processing, rng.choice(workers)))
                 _history(db, order, steps)
                 eta = predict_eta(db, order, ctx)
                 order.initial_predicted_ready_at = order.last_notified_eta = eta
@@ -399,8 +405,8 @@ def seed_demo(db: Session, seed: int = 7) -> int:
             order.status = OrderStatus.READY
             order.ready_at = ready
             order.rack_location = rng.choice(racks)
-            steps.append((OrderStatus.PROCESSING, processing, rng.choice(staff)))
-            steps.append((OrderStatus.READY, ready, rng.choice(staff)))
+            steps.append((OrderStatus.PROCESSING, processing, rng.choice(workers)))
+            steps.append((OrderStatus.READY, ready, rng.choice(workers)))
             if customer.has_whatsapp:
                 _notify(db, order, NotificationType.READY, ready, rng)
                 order.ready_notif_sent = True
@@ -462,7 +468,8 @@ def main() -> None:
             raise SystemExit("Data contoh sudah ada. Hapus dulu dengan --hapus")
         n = seed_demo(db)
         print(
-            f"{n} pesanan contoh dibuat. Login kasir contoh: rina / dedi, password {DEMO_PASSWORD}"
+            f"{n} pesanan contoh dibuat. Login contoh: kasir rina / dedi, staff andi, "
+            f"password {DEMO_PASSWORD}"
         )
 
 

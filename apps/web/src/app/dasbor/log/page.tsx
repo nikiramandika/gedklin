@@ -111,12 +111,20 @@ const FIELD_LABEL: Record<string, string> = {
 const MONEY_FIELDS = new Set(["price", "extra_price", "total"]);
 
 const WEEKDAY_NAMES = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"];
+// "admin" untuk catatan lama sebelum role itu diganti staff.
+const ROLE_NAMES: Record<string, string> = {
+  owner: "Pemilik",
+  cashier: "Staff Kasir",
+  staff: "Staff",
+  admin: "Admin",
+};
 
 function formatValue(field: string, value: unknown): string {
   if (field === "closed_weekdays" && Array.isArray(value)) {
     return value.length ? value.map((d) => WEEKDAY_NAMES[d] ?? d).join(", ") : "Tidak ada";
   }
   if (value === null || value === undefined || value === "") return "–";
+  if (field === "role" && typeof value === "string") return ROLE_NAMES[value] ?? value;
   if (typeof value === "boolean") return value ? "Ya" : "Tidak";
   if (MONEY_FIELDS.has(field) && typeof value === "number") return formatRupiah(value);
   if (typeof value === "string" && /^\d{2}:\d{2}(:\d{2})?$/.test(value)) return value.slice(0, 5);

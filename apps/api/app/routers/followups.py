@@ -8,14 +8,14 @@ from app.routers.orders import to_out
 from app.schemas import OrderOut
 from app.security import require_roles
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(prefix="/followups", tags=["followups"])
 
 
-@router.get("/followups", response_model=list[OrderOut])
+@router.get("", response_model=list[OrderOut])
 def followups(
-    db: Session = Depends(get_db), _: User = Depends(require_roles(Role.ADMIN, Role.OWNER))
+    db: Session = Depends(get_db), _: User = Depends(require_roles(Role.CASHIER, Role.OWNER))
 ) -> list[OrderOut]:
-    """Pesanan siap yang belum diambil > 3 hari. Admin menghubungi pelanggan manual."""
+    """Pesanan siap yang belum diambil > 3 hari. Kasir menghubungi pelanggan manual."""
     stmt = (
         select(Order)
         .where(Order.needs_followup.is_(True), Order.status == OrderStatus.READY)
