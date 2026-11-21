@@ -17,6 +17,7 @@ from gedklin_ml.features import (
     content_from_items,
     count_loads,
     machine_loads,
+    promise_deadline,
     promised_hours,
     queue_stats,
     shift_into_open_hours,
@@ -224,6 +225,20 @@ def test_shift_into_open_hours() -> None:
         return DayOps(is_open=False) if d == date(2026, 10, 21) else DEFAULT_DAY_OPS
 
     assert shift_into_open_hours(utc(20, 18), closed_21) == utc(22, 8)
+
+
+def test_promise_deadline_skips_closed_days() -> None:
+    def closed_sunday(d: date) -> DayOps:
+        return DayOps(is_open=False) if d.weekday() == 6 else DEFAULT_DAY_OPS
+
+    # Selasa + 2 hari tanpa hari tutup: tetap 48 jam kalender.
+    assert promise_deadline(utc(20, 10), 48, closed_sunday) == utc(22, 10)
+    # Sabtu 24 Okt 10.00 + 2 hari: Minggu tidak dihitung, jadi Selasa, bukan Senin.
+    assert promise_deadline(utc(24, 10), 48, closed_sunday) == utc(27, 10)
+    # Jumat 23 Okt + 2 hari melewati Minggu: Senin.
+    assert promise_deadline(utc(23, 10), 48, closed_sunday) == utc(26, 10)
+    # Sabtu sore + 1 hari jatuh di luar jam buka Senin, digeser ke jam buka berikutnya.
+    assert promise_deadline(utc(24, 16), 24, closed_sunday) == utc(26, 16)
 
 
 def test_work_hours_between_counts_only_open_hours() -> None:

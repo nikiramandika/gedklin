@@ -26,6 +26,8 @@
   },
   "express_multiplier": 2,
   "machine_capacity_kg": 8,
+  "_closed_weekdays_note": "Hari tutup rutin tiap minggu: 0 = Senin ... 6 = Minggu. Gedklin tutup setiap Minggu.",
+  "closed_weekdays": [6],
   "kiloan": [
     {
       "code": "C",

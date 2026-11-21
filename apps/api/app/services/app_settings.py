@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import dataclass, replace
 from datetime import date, time
 
 from sqlalchemy import select
@@ -25,6 +26,8 @@ DEFAULTS: dict[str, str] = {
     "default_dryers_available": str(DEFAULT_DAY_OPS.dryers_available),
     "default_open_time": DEFAULT_DAY_OPS.open_time.strftime("%H:%M"),
     "default_close_time": DEFAULT_DAY_OPS.close_time.strftime("%H:%M"),
+    # Hari tutup rutin (0 = Senin ... 6 = Minggu), dipisah koma. Kosong = buka tiap hari.
+    "closed_weekdays": "",
 }
 
 
@@ -34,10 +37,19 @@ class AppConfig:
     machine_capacity_kg: float
     default_promise_hours: float
     default_day: DayOps
+    closed_weekdays: frozenset[int] = frozenset()
 
 
 def _parse_time(value: str) -> time:
     return time.fromisoformat(value)
+
+
+def parse_weekdays(value: str) -> frozenset[int]:
+    return frozenset(int(v) for v in value.split(",") if v.strip())
+
+
+def format_weekdays(days: Iterable[int]) -> str:
+    return ",".join(str(d) for d in sorted(set(days)))
 
 
 def load_app_config(db: Session) -> AppConfig:
@@ -55,6 +67,7 @@ def load_app_config(db: Session) -> AppConfig:
             open_time=_parse_time(v["default_open_time"]),
             close_time=_parse_time(v["default_close_time"]),
         ),
+        closed_weekdays=parse_weekdays(v["closed_weekdays"]),
     )
 
 
@@ -93,7 +106,13 @@ def day_ops_lookup(db: Session, config: AppConfig) -> DayOpsLookup:
     def lookup(day: date) -> DayOps:
         if day not in cache:
             row = db.scalar(select(DailyOperation).where(DailyOperation.date == day))
-            cache[day] = to_day_ops(row) if row else config.default_day
+            if row is not None:
+                # Data harian menang: hari tutup rutin tetap bisa dibuka per tanggal.
+                cache[day] = to_day_ops(row)
+            elif day.weekday() in config.closed_weekdays:
+                cache[day] = replace(config.default_day, is_open=False)
+            else:
+                cache[day] = config.default_day
         return cache[day]
 
     return lookup

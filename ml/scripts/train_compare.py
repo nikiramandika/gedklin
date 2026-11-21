@@ -29,7 +29,7 @@ from gedklin_ml.features import (
     DayOpsLookup,
     add_work_hours,
     daily_lookup,
-    shift_into_open_hours,
+    promise_deadline,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -75,7 +75,7 @@ def to_calendar_hours(
     for ts, value in zip(received, raw, strict=True):
         start = ts.to_pydatetime()
         if name == PROMISE:
-            ready = shift_into_open_hours(start + timedelta(hours=float(value)), day_ops)
+            ready = promise_deadline(start, float(value), day_ops)
         else:
             ready = add_work_hours(start, float(value), day_ops)
         out.append((ready - start) / timedelta(hours=1))

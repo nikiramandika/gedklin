@@ -237,6 +237,25 @@ def shift_into_open_hours(dt: datetime, day_ops: DayOpsLookup, max_days: int = 1
     return _as_utc(dt)
 
 
+def promise_deadline(
+    start: datetime, hours: float, day_ops: DayOpsLookup, max_days: int = 60
+) -> datetime:
+    """Batas janji: jam kalender dari start, tetapi hari tutup tidak dihitung.
+
+    Kebijakan mitra: pesanan Sabtu dengan janji 2 hari siap Selasa, bukan Senin.
+    """
+    local = to_local(start)
+    end = local + timedelta(hours=max(float(hours), 0.0))
+    day = local.date() + timedelta(days=1)
+    for _ in range(max_days):
+        if day > end.date():
+            break
+        if not day_ops(day).is_open:
+            end += timedelta(days=1)
+        day += timedelta(days=1)
+    return shift_into_open_hours(end, day_ops)
+
+
 def work_hours_between(start: datetime, end: datetime, day_ops: DayOpsLookup) -> float:
     start_l, end_l = to_local(start), to_local(end)
     if end_l <= start_l:

@@ -99,6 +99,7 @@ const FIELD_LABEL: Record<string, string> = {
   default_dryers_available: "Pengering default",
   default_open_time: "Jam buka default",
   default_close_time: "Jam tutup default",
+  closed_weekdays: "Hari tutup rutin",
   is_open: "Buka",
   staff_on_duty: "Petugas",
   washers_available: "Mesin cuci",
@@ -109,7 +110,12 @@ const FIELD_LABEL: Record<string, string> = {
 };
 const MONEY_FIELDS = new Set(["price", "extra_price", "total"]);
 
+const WEEKDAY_NAMES = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"];
+
 function formatValue(field: string, value: unknown): string {
+  if (field === "closed_weekdays" && Array.isArray(value)) {
+    return value.length ? value.map((d) => WEEKDAY_NAMES[d] ?? d).join(", ") : "Tidak ada";
+  }
   if (value === null || value === undefined || value === "") return "–";
   if (typeof value === "boolean") return value ? "Ya" : "Tidak";
   if (MONEY_FIELDS.has(field) && typeof value === "number") return formatRupiah(value);

@@ -53,6 +53,8 @@ export interface AppSettings {
   default_dryers_available: number;
   default_open_time: string;
   default_close_time: string;
+  /** Hari tutup rutin: 0 = Senin ... 6 = Minggu. */
+  closed_weekdays: number[];
 }
 
 export interface ServicePromise {

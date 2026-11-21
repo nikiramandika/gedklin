@@ -52,6 +52,8 @@ from app.services.orders import (
 from gedklin_ml.features import LOCAL_TZ, shift_into_open_hours
 
 DAYS = 60
+# Mitra tutup setiap hari Minggu (weekday 6): tidak ada pesanan dan operasional ditandai tutup.
+CLOSED_WEEKDAYS = {6}
 MOBILE_PREFIX = "62812990"
 LANDLINE_PREFIX = "6261990"
 DEMO_PASSWORD = "kasir123"
@@ -167,21 +169,39 @@ def _staff(db: Session) -> list[User]:
 
 
 def _daily_operations(db: Session, rng: random.Random, today: date) -> None:
-    for offset in range(DAYS, -2, -1):
+    """Hanya pengecualian yang dicatat; hari lain mengikuti jadwal normal di pengaturan."""
+    normal = load_app_config(db).default_day
+    for offset in range(DAYS, -1, -1):
         day = today - timedelta(days=offset)
+        if day.weekday() in CLOSED_WEEKDAYS:
+            continue
         if db.scalar(select(DailyOperation.id).where(DailyOperation.date == day)):
             continue
-        broken = rng.random() < 0.08
+        roll = rng.random()
+        if roll < 0.07:
+            washers, staff, note = (
+                normal.washers_available - 1,
+                normal.staff_on_duty,
+                "Mesin cuci 2 diservis",
+            )
+        elif roll < 0.12:
+            washers, staff, note = (
+                normal.washers_available,
+                max(1, normal.staff_on_duty - 1),
+                "Satu petugas izin",
+            )
+        else:
+            continue
         db.add(
             DailyOperation(
                 date=day,
                 is_open=True,
-                staff_on_duty=3 if day.weekday() >= 5 else rng.choice((2, 2, 3)),
-                washers_available=3 if broken else 4,
-                dryers_available=3,
-                open_time=time(8, 0),
-                close_time=time(20, 0) if day.weekday() >= 5 else time(19, 0),
-                machine_issue_note="Mesin cuci 2 diservis" if broken else None,
+                staff_on_duty=staff,
+                washers_available=washers,
+                dryers_available=normal.dryers_available,
+                open_time=normal.open_time,
+                close_time=normal.close_time,
+                machine_issue_note=note,
             )
         )
     db.flush()
@@ -257,6 +277,8 @@ def seed_demo(db: Session, seed: int = 7) -> int:
 
     for offset in range(DAYS, -1, -1):
         day = today - timedelta(days=offset)
+        if day.weekday() in CLOSED_WEEKDAYS:
+            continue
         growth = 1 + (DAYS - offset) / DAYS * 0.35
         base = 21 if day.weekday() >= 5 else 15
         count = max(6, int(rng.gauss(base * growth, 3)))

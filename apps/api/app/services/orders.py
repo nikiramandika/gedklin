@@ -42,9 +42,9 @@ from gedklin_ml.features import (
     add_work_hours,
     build_features,
     local_date,
+    promise_deadline,
     promised_hours,
     queue_stats,
-    shift_into_open_hours,
     summarize_queue,
 )
 
@@ -162,7 +162,7 @@ def order_promised_hours(order: Order, ctx: EtaContext) -> float:
 
 def promised_ready_at(order: Order, ctx: EtaContext) -> datetime:
     hours = order_promised_hours(order, ctx)
-    return shift_into_open_hours(order.received_at + timedelta(hours=hours), ctx.day_ops)
+    return promise_deadline(order.received_at, hours, ctx.day_ops)
 
 
 def compute_features(

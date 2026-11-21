@@ -22,6 +22,11 @@ from gedklin_ml.features import (
 ROOT = Path(__file__).resolve().parents[1]
 OPEN, CLOSE = time(8, 0), time(17, 0)
 WASHERS, DRYERS, STAFF = 4, 3, 2
+# Mitra tutup setiap hari Minggu (weekday 6).
+CLOSED_WEEKDAYS = {6}
+# Pengerjaan dimulai sekian JAM KERJA (jam buka) sebelum batas janji, acak dalam rentang ini.
+# Dihitung dalam jam kerja supaya selalu tersisa waktu buka untuk mengerjakannya.
+LEAD_BUFFER_HOURS = (5.0, 11.0)
 HOURLY_WEIGHT = {8: 3, 9: 4, 10: 3, 11: 2, 12: 1.5, 13: 1.5, 14: 1.5, 15: 2, 16: 3}
 LAYANAN_P = {"C": 0.05, "CK": 0.12, "CKL": 0.38, "CKS": 0.35, "S": 0.05, "SATUAN": 0.05}
 # Asumsi untuk dummy: janji mitra untuk C, CK, S, dan SATUAN belum diketahui.
@@ -45,6 +50,7 @@ def daily_schedule(rng: np.random.Generator, start: date, days: int) -> pd.DataF
                 "dryers_available": DRYERS - int(rng.random() < 0.12),
                 "open_time": OPEN.strftime("%H:%M"),
                 "close_time": CLOSE.strftime("%H:%M"),
+                "is_open": int(d.weekday() not in CLOSED_WEEKDAYS),
             }
         )
     return pd.DataFrame(rows)
@@ -57,6 +63,8 @@ def arrivals(rng: np.random.Generator, daily: pd.DataFrame) -> list[dict]:
     orders = []
     for row in daily.itertuples(index=False):
         d = date.fromisoformat(row.date)
+        if not row.is_open:
+            continue
         n = int(rng.poisson(22 if d.weekday() >= 5 else 16))
         for h in rng.choice(hours, size=n, p=p / p.sum()):
             layanan = str(rng.choice(layanan_codes, p=list(LAYANAN_P.values())))
@@ -110,6 +118,33 @@ class Job:
         return self.machine_done >= self.loads
 
 
+def _promise_deadline(received: datetime, hours: float) -> datetime:
+    end = received + timedelta(hours=hours)
+    day = received.date() + timedelta(days=1)
+    while day <= end.date():
+        if day.weekday() in CLOSED_WEEKDAYS:
+            end += timedelta(days=1)
+        day += timedelta(days=1)
+    return end
+
+
+def _minus_open_hours(dt: datetime, hours: float) -> datetime:
+    """Mundur sekian jam buka dari dt (jam tutup dan hari tutup dilewati)."""
+    remaining = timedelta(hours=hours)
+    cursor = dt
+    while remaining > timedelta(0):
+        day = cursor.date()
+        open_dt, close_dt = datetime.combine(day, OPEN), datetime.combine(day, CLOSE)
+        if day.weekday() in CLOSED_WEEKDAYS or cursor <= open_dt:
+            cursor = datetime.combine(day - timedelta(days=1), CLOSE)
+            continue
+        cursor = min(cursor, close_dt)
+        step = min(remaining, cursor - open_dt)
+        cursor -= step
+        remaining -= step
+    return cursor
+
+
 def make_job(rng: np.random.Generator, o: dict) -> Job:
     layanan, kg = o["layanan_utama"], o["berat_kg"]
     loads = machine_loads(kg, MACHINE_CAPACITY_KG) if layanan in MACHINE_PROCESSES else 0
@@ -125,11 +160,14 @@ def make_job(rng: np.random.Generator, o: dict) -> Job:
     if layanan in ("CKS", "S"):
         staff += IRON_MIN_PER_KG * kg
     promise = EXPRESS_PROMISE_HOURS if o["express"] else SIM_PROMISE_HOURS[layanan]
-    lead = max(0.0, promise - float(rng.uniform(16, 30)))
+    # Petugas mengatur kerja dari batas janji; hari tutup tidak dihitung dalam janji.
+    deadline = _promise_deadline(o["received_at"], promise)
+    buffer = float(rng.uniform(*LEAD_BUFFER_HOURS))
+    eligible_at = max(o["received_at"], _minus_open_hours(deadline, buffer))
     return Job(
         order=o,
         priority=(0 if o["express"] else 1, o["received_at"], o["order_id"]),
-        eligible_at=o["received_at"] + timedelta(hours=lead),
+        eligible_at=eligible_at,
         to_wash=loads,
         loads=loads,
         needs_dryer=layanan in DRYER_PROCESSES or o["pcs_khusus"] > 0,
@@ -146,6 +184,8 @@ def simulate(rng: np.random.Generator, orders: list[dict], daily: pd.DataFrame) 
     tick = 0
 
     for row in daily.itertuples(index=False):
+        if not row.is_open:
+            continue
         d = date.fromisoformat(row.date)
         t = datetime.combine(d, time.fromisoformat(row.open_time))
         close_dt = datetime.combine(d, time.fromisoformat(row.close_time))
@@ -229,8 +269,13 @@ def main() -> None:
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     df.to_csv(args.out_dir / "orders_dummy.csv", index=False)
-    daily.to_csv(args.out_dir / "daily_dummy.csv", index=False)
-    print(f"[DUMMY] {len(df)} pesanan, {len(daily)} hari -> {args.out_dir}")
+    last_ready = pd.to_datetime(df["ready_at"]).max().date().isoformat()
+    daily_out = daily_all[daily_all["date"] <= max(last_ready, daily["date"].iloc[-1])]
+    daily_out.to_csv(args.out_dir / "daily_dummy.csv", index=False)
+    print(
+        f"[DUMMY] {len(df)} pesanan, {len(daily)} hari ({int(daily['is_open'].sum())} buka)"
+        f" -> {args.out_dir}"
+    )
 
 
 if __name__ == "__main__":

@@ -20,6 +20,7 @@ from app.models import (
     User,
 )
 from app.security import hash_password
+from app.services.app_settings import format_weekdays
 from gedklin_ml.features import MACHINE_CAPACITY_KG
 
 CATALOG_PATH = Path(__file__).resolve().parents[1] / "seed" / "price_catalog.json"
@@ -91,6 +92,8 @@ def setting_values(data: dict[str, Any]) -> dict[str, str]:
     }
     if data["promise_hours"].get("default") is not None:
         values["default_promise_hours"] = f"{data['promise_hours']['default']:g}"
+    if data.get("closed_weekdays"):
+        values["closed_weekdays"] = format_weekdays(data["closed_weekdays"])
     return values
 
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -120,6 +120,7 @@ class AppSettingsOut(BaseModel):
     default_dryers_available: int
     default_open_time: time
     default_close_time: time
+    closed_weekdays: list[int]
 
 
 class AppSettingsIn(BaseModel):
@@ -131,6 +132,10 @@ class AppSettingsIn(BaseModel):
     default_dryers_available: int | None = Field(default=None, ge=0, le=50)
     default_open_time: time | None = None
     default_close_time: time | None = None
+    # 0 = Senin ... 6 = Minggu.
+    closed_weekdays: list[Annotated[int, Field(ge=0, le=6)]] | None = Field(
+        default=None, max_length=7
+    )
 
 
 class ServicePromiseOut(ORM):

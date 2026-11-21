@@ -41,8 +41,9 @@ from app.security import get_current_user, hash_password, require_roles
 from app.services import ai as ai_service
 from app.services import catalog as catalog_service
 from app.services.activity import diff, log_activity, snapshot
-from app.services.app_settings import load_app_config, save_app_settings
+from app.services.app_settings import format_weekdays, load_app_config, save_app_settings
 from app.services.eta import get_predictor
+from app.services.orders import recompute_etas
 from gedklin_ml.features import LOCAL_TZ
 
 router = APIRouter(tags=["owner"])
@@ -168,6 +169,16 @@ def delete_catalog_item(
     db.commit()
 
 
+SCHEDULE_SETTINGS = (
+    "closed_weekdays",
+    "default_staff_on_duty",
+    "default_washers_available",
+    "default_dryers_available",
+    "default_open_time",
+    "default_close_time",
+)
+
+
 def _settings_out(db: Session) -> AppSettingsOut:
     config = load_app_config(db)
     day = config.default_day
@@ -180,6 +191,7 @@ def _settings_out(db: Session) -> AppSettingsOut:
         default_dryers_available=day.dryers_available,
         default_open_time=day.open_time,
         default_close_time=day.close_time,
+        closed_weekdays=sorted(config.closed_weekdays),
     )
 
 
@@ -188,6 +200,8 @@ def _setting_value(value: object) -> str:
         return value.strftime("%H:%M")
     if isinstance(value, float):
         return f"{value:g}"
+    if isinstance(value, list):
+        return format_weekdays(value)
     return str(value)
 
 
@@ -208,6 +222,8 @@ def update_app_settings(
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "Jam tutup harus setelah jam buka"
         )
+    if len(set(changes.get("closed_weekdays", []))) >= 7:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Minimal satu hari harus buka")
     save_app_settings(db, {k: _setting_value(v) for k, v in changes.items()})
     db.flush()
     after = _settings_out(db)
@@ -215,6 +231,9 @@ def update_app_settings(
     if changed:
         log_activity(db, me, "settings.update", "Mengubah pengaturan", changes=changed)
     db.commit()
+    if any(key in changed for key in SCHEDULE_SETTINGS):
+        # Jadwal normal menggeser perkiraan siap pesanan yang masih di antrean.
+        recompute_etas(db)
     return after
 
 
