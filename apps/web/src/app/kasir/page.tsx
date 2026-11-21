@@ -73,8 +73,11 @@ export default function KasirPage() {
         </ul>
       }
     >
+      {/* Desktop: tinggi dikunci setinggi layar; form tetap terlihat dan hanya daftar pesanan yang di-scroll. */}
       <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(340px,380px)_minmax(0,1fr)]">
-        <div className={`${mobileView === "new" ? "block" : "hidden"} lg:block`}>
+        <div
+          className={`${mobileView === "new" ? "block" : "hidden"} lg:sticky lg:top-6 lg:-m-1 lg:block lg:max-h-[calc(100dvh-3rem+0.5rem)] lg:overflow-y-auto lg:p-1`}
+        >
           <NewOrderForm
             onCreated={(order) => {
               setRefreshKey((k) => k + 1);

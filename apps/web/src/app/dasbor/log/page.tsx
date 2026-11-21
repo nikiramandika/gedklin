@@ -29,14 +29,13 @@ import {
   Select,
   inputClass,
   tabClass,
-  tileClass,
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { formatRupiah } from "@/lib/format";
 import type { ActivityEntity, ActivityLog, Role, User } from "@/lib/types";
 
 const ROLES: Role[] = ["owner"];
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 20;
 const TZ = "Asia/Jakarta";
 
 const CATEGORIES: { key: ActivityEntity | "all"; label: string }[] = [
@@ -360,7 +359,7 @@ function LogContent() {
           {groups.map((g) => (
             <section key={g.key}>
               <h2 className="mb-2 px-1 text-xs font-semibold text-muted">{dayLabel(g.key)}</h2>
-              <ol className="space-y-2">
+              <ol className="divide-y divide-line overflow-hidden rounded-xl bg-surface shadow-tile">
                 {g.items.map((e) => (
                   <LogEntry key={e.id} entry={e} />
                 ))}
@@ -385,15 +384,15 @@ function LogEntry({ entry: e }: { entry: ActivityLog }) {
   const changes = e.changes ? Object.entries(e.changes) : [];
 
   return (
-    <li className={`${tileClass} px-4 py-3`}>
+    <li className="px-4 py-2.5">
       {/* Di HP tombol perubahan turun ke bawah meta supaya ringkasan tidak terjepit. */}
       <div className="flex flex-wrap items-start gap-x-3">
         <span className={`mt-0.5 flex shrink-0 ${style.tone}`} aria-hidden="true">
           <Icon size={18} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-base text-ink text-pretty">{e.summary}</p>
-          <p className="mt-0.5 text-sm text-muted">
+          <p className="text-sm text-ink text-pretty">{e.summary}</p>
+          <p className="mt-0.5 text-xs text-muted">
             <span className="font-medium text-ink-2">{e.user_name ?? "Sistem"}</span>
             {" · "}
             <time dateTime={e.created_at} className="tabular">

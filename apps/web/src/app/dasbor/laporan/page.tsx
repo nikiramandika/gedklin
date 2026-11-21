@@ -22,6 +22,7 @@ import { formatRupiah } from "@/lib/format";
 import type { Report, ReportRow, Role } from "@/lib/types";
 
 const ROLES: Role[] = ["owner"];
+const BREAKDOWN_TOP = 5;
 function compactRupiah(v: number): string {
   if (v >= 1_000_000) return `Rp\u00a0${(v / 1_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })}\u00a0jt`;
   if (v >= 1_000) return `Rp\u00a0${Math.round(v / 1_000).toLocaleString("id-ID")}\u00a0rb`;
@@ -353,34 +354,51 @@ function BreakdownCard({
   total: number;
   qty?: (row: ReportRow) => string;
 }) {
+  // Baris sudah urut pendapatan terbesar; sisanya disembunyikan agar kartu sejajar dan yang penting terbaca dulu.
+  const [expanded, setExpanded] = useState(false);
+  const hidden = rows.length - BREAKDOWN_TOP;
+  const shown = expanded || hidden <= 0 ? rows : rows.slice(0, BREAKDOWN_TOP);
   return (
     <Card icon={icon} tone="neutral" title={title}>
       {rows.length === 0 ? (
         <p className="text-sm text-muted">Belum ada data.</p>
       ) : (
-        <ul className="space-y-3">
-          {rows.map((row) => {
-            const share = total ? Math.round((row.revenue / total) * 100) : 0;
-            const detail = qty?.(row);
-            return (
-              <li key={row.key}>
-                <div className="flex items-baseline justify-between gap-3 text-sm">
-                  <span className="min-w-0 truncate font-medium text-ink">{row.label}</span>
-                  <span className="tabular shrink-0 font-semibold text-ink">{formatRupiah(row.revenue)}</span>
-                </div>
-                <div className="mt-1 flex items-center gap-3">
-                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-canvas" aria-hidden="true">
-                    <div className="h-full rounded-full bg-brand-500" style={{ width: `${share}%` }} />
+        <>
+          <ul className="space-y-3">
+            {shown.map((row) => {
+              const share = total ? Math.round((row.revenue / total) * 100) : 0;
+              const detail = qty?.(row);
+              return (
+                <li key={row.key}>
+                  <div className="flex items-baseline justify-between gap-3 text-sm">
+                    <span className="min-w-0 truncate font-medium text-ink">{row.label}</span>
+                    <span className="tabular shrink-0 font-semibold text-ink">{formatRupiah(row.revenue)}</span>
                   </div>
-                  <span className="tabular w-10 shrink-0 text-right text-xs text-muted">{share}%</span>
-                </div>
-                <p className="mt-0.5 text-xs text-muted">
-                  {row.orders} pesanan{detail ? ` · ${detail}` : ""}
-                </p>
-              </li>
-            );
-          })}
-        </ul>
+                  <div className="mt-1 flex items-center gap-3">
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-canvas" aria-hidden="true">
+                      <div className="h-full rounded-full bg-brand-500" style={{ width: `${share}%` }} />
+                    </div>
+                    <span className="tabular w-10 shrink-0 text-right text-xs text-muted">{share}%</span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted">
+                    {row.orders} pesanan{detail ? ` · ${detail}` : ""}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+          {hidden > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mt-3 w-full"
+              aria-expanded={expanded}
+              onClick={() => setExpanded((v) => !v)}
+            >
+              {expanded ? `Tampilkan ${BREAKDOWN_TOP} teratas` : `Tampilkan semua (${rows.length})`}
+            </Button>
+          )}
+        </>
       )}
     </Card>
   );

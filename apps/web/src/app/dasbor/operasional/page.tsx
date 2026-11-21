@@ -23,6 +23,7 @@ import { formatDate, todayLocalISO } from "@/lib/format";
 import type { AppSettings, DailyOperation, Role } from "@/lib/types";
 
 const ROLES: Role[] = ["owner"];
+const RECENT_DAYS = 7;
 
 export default function OperasionalPage() {
   return (
@@ -50,6 +51,8 @@ function OperasionalContent() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Yang sering diubah hanya minggu ini; 30 hari penuh dibuka bila perlu.
+  const [showAll, setShowAll] = useState(false);
 
   const load = useCallback(
     () =>
@@ -219,7 +222,7 @@ function OperasionalContent() {
           </form>
         </Card>
 
-        <Card flush icon={IconList} tone="neutral" title="30 hari terakhir">
+        <Card flush icon={IconList} tone="neutral" title={`${showAll && rows ? rows.length : RECENT_DAYS} hari terakhir`}>
           {loadError ? (
             <div className="px-4 pb-5 sm:px-5">
               <ErrorText message={loadError} />
@@ -244,7 +247,7 @@ function OperasionalContent() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => (
+                  {(showAll ? rows : rows.slice(0, RECENT_DAYS)).map((r) => (
                     <tr
                       key={r.date}
                       className={`[&>td]:py-3 [&>td:first-child]:rounded-l-xl [&>td:last-child]:rounded-r-xl ${
@@ -273,6 +276,17 @@ function OperasionalContent() {
                   ))}
                 </tbody>
               </table>
+              {rows.length > RECENT_DAYS && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-1 w-full"
+                  aria-expanded={showAll}
+                  onClick={() => setShowAll((v) => !v)}
+                >
+                  {showAll ? `Tampilkan ${RECENT_DAYS} hari terakhir` : `Tampilkan ${rows.length} hari`}
+                </Button>
+              )}
             </div>
           )}
         </Card>

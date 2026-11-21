@@ -45,6 +45,45 @@ export const BOARD_TABS: { key: BoardTab; label: string; short: string }[] = [
   { key: "ready", label: "Siap diambil", short: "Siap" },
 ];
 
+type BoardFilter = "all" | "late" | "waiting" | "express" | "unpaid";
+
+// Filter cepat per tab: kasir biasanya mencari yang mendesak, bukan membaca seluruh antrean.
+const BOARD_FILTERS: Record<BoardTab, { key: BoardFilter; label: string }[]> = {
+  received: [
+    { key: "all", label: "Semua" },
+    { key: "late", label: "Terlambat" },
+    { key: "express", label: "Express" },
+    { key: "unpaid", label: "Belum lunas" },
+  ],
+  processing: [
+    { key: "all", label: "Semua" },
+    { key: "late", label: "Terlambat" },
+    { key: "express", label: "Express" },
+    { key: "unpaid", label: "Belum lunas" },
+  ],
+  ready: [
+    { key: "all", label: "Semua" },
+    { key: "waiting", label: "Menunggu ≥ 3 hari" },
+    { key: "unpaid", label: "Belum lunas" },
+    { key: "express", label: "Express" },
+  ],
+};
+
+function matchesFilter(o: Order, filter: BoardFilter, now: number): boolean {
+  switch (filter) {
+    case "late":
+      return etaState(o, now) === "late";
+    case "waiting":
+      return !!o.ready_at && now > 0 && now - new Date(o.ready_at).getTime() >= 3 * DAY_MS;
+    case "express":
+      return o.is_express;
+    case "unpaid":
+      return !o.is_paid;
+    default:
+      return true;
+  }
+}
+
 export function useBoardData(refreshKey: number) {
   const [queue, setQueue] = useState<Order[] | null>(null);
   const [ready, setReady] = useState<Order[] | null>(null);
@@ -107,6 +146,11 @@ export function OrderBoard({
   const [dialog, setDialog] = useState<OrderDialog>(null);
   const [shownQuery, setShownQuery] = useState("");
   const lastQuery = useRef("");
+  // Filter terikat ke tab tempat ia dipilih, jadi otomatis kembali ke "Semua" saat tab berganti.
+  const [filterState, setFilterState] = useState<{ tab: BoardTab; key: BoardFilter }>({ tab, key: "all" });
+  const filter = filterState.tab === tab ? filterState.key : "all";
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const now = useNow();
 
   const runSearch = useCallback(async (q: string) => {
     lastQuery.current = q;
@@ -164,16 +208,16 @@ export function OrderBoard({
   }
 
   const searchMode = results !== null || searching;
-  const list = searchMode
-    ? results
-    : tab === "received"
-      ? board.received
-      : tab === "processing"
-        ? board.processing
-        : board.ready;
+  const tabList = tab === "received" ? board.received : tab === "processing" ? board.processing : board.ready;
+  const list = searchMode ? results : tabList && tabList.filter((o) => matchesFilter(o, filter, now));
+  const showFilters = !searchMode && !!tabList?.length;
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [tab, filter, searchMode]);
 
   return (
-    <section className="@container flex min-h-0 flex-col rounded-2xl bg-surface shadow-card">
+    <section className="@container flex min-h-0 flex-col rounded-2xl bg-surface shadow-card lg:h-[calc(100dvh-3rem)] lg:min-h-[32rem]">
       <h2 className="px-4 pt-4 text-base font-semibold text-ink lg:hidden">
         {searchMode ? "Hasil pencarian" : BOARD_TABS.find((t) => t.key === tab)?.label}
       </h2>
@@ -258,38 +302,77 @@ export function OrderBoard({
         </div>
       )}
 
-      {(error || actionError) && (
-        <div className="space-y-2 p-3 sm:p-4">
-          <ErrorText message={error} />
-          <ErrorText message={actionError} />
+      {showFilters && (
+        <div role="group" aria-label="Saring pesanan" className="flex shrink-0 gap-2 overflow-x-auto px-3 pb-3 sm:px-4">
+          {BOARD_FILTERS[tab].map((f) => {
+            const active = filter === f.key;
+            const count = f.key === "all" ? tabList.length : tabList.filter((o) => matchesFilter(o, f.key, now)).length;
+            return (
+              <button
+                key={f.key}
+                type="button"
+                aria-pressed={active}
+                disabled={!active && count === 0}
+                onClick={() => setFilterState({ tab, key: f.key })}
+                className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-medium ring-1 ring-inset transition-colors duration-150 disabled:cursor-not-allowed disabled:text-faint disabled:ring-line pointer-coarse:h-10 ${
+                  active
+                    ? "bg-brand-600 text-white ring-brand-600"
+                    : "text-ink-2 ring-line-strong hover:bg-brand-50 hover:text-brand-700 hover:ring-brand-300"
+                }`}
+              >
+                {f.label}
+                <span className={`tabular text-xs ${active ? "text-white/80" : "text-muted"}`}>{count}</span>
+              </button>
+            );
+          })}
         </div>
       )}
 
-      {list === null ? (
-        <Loading rows={5} />
-      ) : list.length === 0 ? (
-        searchMode ? (
-          <EmptyState icon={IconSearch} title="Tidak ditemukan">
-            Cek ejaan nama, nomor WA, atau kode.
-          </EmptyState>
+      {/* Desktop: hanya bagian ini yang di-scroll; tab, pencarian, dan filter tetap di tempat. */}
+      <div ref={scrollRef} className="min-h-0 flex-1 lg:overflow-y-auto lg:border-t lg:border-line lg:pt-2">
+        {(error || actionError) && (
+          <div className="space-y-2 p-3 sm:p-4">
+            <ErrorText message={error} />
+            <ErrorText message={actionError} />
+          </div>
+        )}
+
+        {list === null ? (
+          <Loading rows={5} />
+        ) : list.length === 0 ? (
+          searchMode ? (
+            <EmptyState icon={IconSearch} title="Tidak ditemukan">
+              Cek ejaan nama, nomor WA, atau kode.
+            </EmptyState>
+          ) : filter !== "all" ? (
+            <EmptyState icon={IconList} title="Tidak ada yang cocok">
+              <button
+                type="button"
+                onClick={() => setFilterState({ tab, key: "all" })}
+                className="font-medium text-brand-600 hover:text-brand-700"
+              >
+                Tampilkan semua
+              </button>
+            </EmptyState>
+          ) : (
+            <EmptyBoard tab={tab} />
+          )
         ) : (
-          <EmptyBoard tab={tab} />
-        )
-      ) : (
-        <ul className={tileListClass}>
-          {list.map((o) => (
-            <OrderRow
-              key={o.id}
-              order={o}
-              showPosition={!searchMode && tab !== "ready"}
-              showStatus={searchMode}
-              highlight={o.id === highlightId}
-              onAdvance={advance}
-              onOpen={() => setDetailId(o.id)}
-            />
-          ))}
-        </ul>
-      )}
+          <ul className={tileListClass}>
+            {list.map((o) => (
+              <OrderRow
+                key={o.id}
+                order={o}
+                showPosition={!searchMode && tab !== "ready"}
+                showStatus={searchMode}
+                highlight={o.id === highlightId}
+                onAdvance={advance}
+                onOpen={() => setDetailId(o.id)}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
 
       <OrderDetailDrawer
         orderId={detailId}

@@ -27,7 +27,7 @@ import { cleanPhoneInput, displayPhone, formatDateTime, formatRupiah, phoneError
 import type { CustomerDetail, CustomerSummary, Role } from "@/lib/types";
 
 const ROLES: Role[] = ["owner", "cashier"];
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 20;
 const SEARCH_DELAY_MS = 300;
 const EDIT_FORM = "customer-edit-form";
 
@@ -144,7 +144,7 @@ export default function PelangganPage() {
                 <button
                   type="button"
                   onClick={() => setOpenId(c.id)}
-                  className={`${tileClass} flex w-full flex-wrap items-center gap-3 px-4 py-4 text-left sm:px-5`}
+                  className={`${tileClass} flex w-full flex-wrap items-center gap-3 px-4 py-3 text-left sm:px-5`}
                 >
                   <span className="min-w-0 basis-full sm:flex-1 sm:basis-0">
                     <span className="flex flex-wrap items-center gap-2">
