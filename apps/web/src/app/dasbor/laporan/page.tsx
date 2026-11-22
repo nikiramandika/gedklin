@@ -105,10 +105,10 @@ export default function LaporanPage() {
     setDownloading(true);
     try {
       await apiDownload(
-        `/reports/orders.csv?start=${start}&end=${end}`,
-        `pesanan-gedklin-${start}-sd-${end}.csv`,
+        `/reports/orders.xlsx?start=${start}&end=${end}`,
+        `pesanan-gedklin-${start}-sd-${end}.xlsx`,
       );
-      toast("File CSV diunduh");
+      toast("Laporan Excel (.xlsx) diunduh");
     } catch (err) {
       toast(err instanceof Error ? err.message : "Gagal mengunduh", "error");
     } finally {
@@ -131,7 +131,7 @@ export default function LaporanPage() {
           <>
             <Button variant="secondary" onClick={download} loading={downloading} disabled={!range}>
               <IconDownload size={18} />
-              Unduh CSV
+              Unduh Excel (.xlsx)
             </Button>
             <Link href={analysisHref} className={buttonClass("primary")}>
               <IconSparkles size={18} />

@@ -185,6 +185,10 @@ def test_report_summary_and_csv(client: TestClient, cashier: dict, owner: dict) 
     assert lines[0].startswith("Kode;Diterima;Kasir") and len(lines) == 4
     assert "Dibatalkan" in res.text and "Belum lunas" in res.text
 
+    res_xlsx = client.get("/reports/orders.xlsx", params={"start": today, "end": today}, headers=owner)
+    assert res_xlsx.status_code == 200 and "openxmlformats" in res_xlsx.headers["content-type"]
+    assert len(res_xlsx.content) > 0
+
     assert client.get("/reports/summary", headers=cashier).status_code == 403
     bad = client.get(
         "/reports/summary", params={"start": today, "end": "2026-01-01"}, headers=owner
