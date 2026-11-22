@@ -158,7 +158,11 @@ def promised_ready_at(order: Order, ctx: EtaContext) -> datetime:
 
 
 def compute_features(
-    db: Session, order: Order, ctx: EtaContext, active: list[Order] | None = None
+    db: Session,
+    order: Order,
+    ctx: EtaContext,
+    active: list[Order] | None = None,
+    now: datetime | None = None,
 ) -> dict[str, float]:
     """Fitur pesanan memakai feature builder yang sama dengan training.
 
@@ -169,7 +173,7 @@ def compute_features(
     """
     queue = queue_stats(order.received_at, records_active_at(db, order.received_at))
     if active is not None:
-        ahead = summarize_queue(queue_record(o, None) for o in active if is_ahead(o, order))
+        ahead = summarize_queue(queue_record(o, None) for o in active if is_ahead(o, order, now))
         queue = queue.max(ahead)
     return build_features(
         received_at=order.received_at,
@@ -187,7 +191,7 @@ def predict_eta(
     active: list[Order] | None = None,
     now: datetime | None = None,
 ) -> datetime:
-    features = compute_features(db, order, ctx, active)
+    features = compute_features(db, order, ctx, active, now)
     hours, version = get_predictor().predict_hours(features)
     if hours is None:
         # Model tidak tersedia: fallback ke janji standar mitra.
@@ -218,7 +222,7 @@ def recompute_etas(db: Session, now: datetime | None = None) -> list[int]:
     """Hitung ulang ETA pesanan aktif dan antrekan notifikasi keterlambatan."""
     now = now or utcnow()
     ctx = EtaContext.load(db)
-    active = active_orders(db)
+    active = active_orders(db, now)
     delay_notifications: list[Notification] = []
     for order in active:
         eta = predict_eta(db, order, ctx, active, now)
@@ -544,7 +548,7 @@ def update_items(
     order.promised_ready_at = promised_ready_at(order, ctx)
     order.predicted_ready_at = None
     # Perkiraan baru dikirim ulang lewat nota, jadi tidak memicu WA "perkiraan mundur".
-    order.last_notified_eta = predict_eta(db, order, ctx, active_orders(db), now)
+    order.last_notified_eta = predict_eta(db, order, ctx, active_orders(db, now), now)
     db.commit()
     recompute_etas(db, now)
     db.refresh(order)

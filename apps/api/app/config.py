@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     delay_threshold_hours: float = 6
     max_delay_notifications: int = 2
     followup_after_days: int = 3
+    regular_escalation_threshold_hours: int = 8
     # Batas error yang dianggap "tepat" untuk metrik akurasi ETA.
     eta_tolerance_hours: float = 6
     # ETA yang sudah lewat tapi pesanan belum READY digeser ke now + buffer ini.
