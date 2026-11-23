@@ -6,6 +6,9 @@ from datetime import date, datetime, time, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -198,6 +201,92 @@ def export_orders(
     return Response(
         content="﻿" + buf.getvalue(),
         media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/orders.xlsx")
+def export_orders_xlsx(
+    db: Session = Depends(get_db),
+    _: User = Depends(owner),
+    start: date | None = None,
+    end: date | None = None,
+) -> Response:
+    """Semua pesanan pada periode dalam format Microsoft Excel (.xlsx)."""
+    start, end = _range(start, end)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Laporan Pesanan"
+
+    headers = [
+        "Kode",
+        "Diterima",
+        "Kasir",
+        "Pelanggan",
+        "Isi pesanan",
+        "Berat (kg)",
+        "Express",
+        "Total (Rp)",
+        "Status",
+        "Pembayaran",
+        "Dibayar",
+        "Siap",
+        "Diambil",
+        "Rak",
+        "Catatan",
+        "Alasan batal",
+    ]
+    ws.append(headers)
+
+    header_fill = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
+    header_font = Font(name="Calibri", size=11, bold=True)
+    for col_idx in range(1, len(headers) + 1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(vertical="center")
+
+    for o in _orders(db, start, end):
+        kg = sum(i.weight_kg or 0 for i in o.items)
+        ws.append(
+            [
+                o.tracking_code,
+                _fmt_dt(o.received_at),
+                o.created_by_name or "",
+                o.customer.name,
+                ", ".join(describe_item(i) for i in o.items),
+                round(kg, 2) if kg else 0,
+                "Ya" if o.is_express else "Tidak",
+                o.price_total,
+                STATUS_LABEL[o.status],
+                PAYMENT_LABEL[o.payment_method]
+                if o.is_paid and o.payment_method
+                else "Belum lunas",
+                _fmt_dt(o.paid_at),
+                _fmt_dt(o.ready_at),
+                _fmt_dt(o.picked_up_at),
+                o.rack_location or "",
+                o.notes or "",
+                o.cancel_reason or "",
+            ]
+        )
+
+    for row in ws.iter_rows(min_row=2, max_col=len(headers)):
+        row[5].number_format = "#,##0.0"
+        row[7].number_format = "#,##0"
+
+    for col in ws.columns:
+        max_len = max(len(str(cell.value or "")) for cell in col)
+        col_letter = get_column_letter(col[0].column)
+        ws.column_dimensions[col_letter].width = min(max(max_len + 3, 10), 40)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    filename = f"pesanan-gedklin-{start.isoformat()}-sd-{end.isoformat()}.xlsx"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
