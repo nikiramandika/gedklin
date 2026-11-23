@@ -1,16 +1,15 @@
 # Gedklin (SmartWash AI)
 
 Platform manajemen operasional laundry kiloan untuk mitra **Gedklin Laundry, Medan**:
-kasir/POS, prediksi waktu siap diambil berbasis ML, notifikasi WhatsApp terbatas,
-dasbor pemilik, dan portal tracking pelanggan (PWA).
+kasir/POS, penjadwalan antrean cucian (Least Slack Time), notifikasi WhatsApp terbatas,
+dasbor pemilik dengan analisis laporan berbasis AI, dan portal tracking pelanggan (PWA).
 
 
 ## Struktur
 
 ```
-apps/api   FastAPI + SQLAlchemy + Alembic + Celery (harga, antrean, ETA, notifikasi)
+apps/api   FastAPI + SQLAlchemy + Alembic + Celery (harga, janji waktu, penjadwalan antrean, notifikasi, analisis AI)
 apps/web   Next.js 16 (App Router, TypeScript strict): kasir, antrean cucian (staff), dasbor, portal /lacak (PWA)
-ml/        Paket gedklin_ml (feature builder bersama API & training) + script pipeline
 infra/     docker-compose (Postgres + Redis; profil `app` untuk semua service)
 ```
 
@@ -22,25 +21,21 @@ Prasyarat: Python 3.11, Node 22+, Docker (atau Postgres 16 + Redis lokal).
 # 1. Database & Redis
 docker compose -f infra/docker-compose.yml up -d
 
-# 2. Python env (dipakai API dan ML)
+# 2. Python env
 python3.11 -m venv .venv && source .venv/bin/activate
-# requirements memuat `-e ../../ml` (relatif ke folder kerja), jadi install dari apps/api
 (cd apps/api && pip install -r requirements-dev.txt)
 
-# 3. Model (pakai data dummy sampai data mitra terkumpul)
-cd ml && python scripts/generate_dummy.py && python scripts/build_dataset.py && python scripts/train_compare.py && cd ..
-
-# 4. API
+# 3. API
 cd apps/api
 cp .env.example .env            # isi SEED_OWNER_PASSWORD dan JWT_SECRET (lihat di bawah)
 alembic upgrade head
 python -m app.seed              # katalog harga, janji waktu, pengaturan + akun owner
 uvicorn app.main:app --reload   # http://localhost:8000/docs
 
-# 5. Worker + beat (terminal lain). Tanpa Redis: set CELERY_TASK_ALWAYS_EAGER=true di .env
+# 4. Worker + beat (terminal lain). Tanpa Redis: set CELERY_TASK_ALWAYS_EAGER=true di .env
 celery -A app.workers worker -B --loglevel=info
 
-# 6. Web (terminal lain)
+# 5. Web (terminal lain)
 cd apps/web && cp .env.example .env.local && npm install && npm run dev   # http://localhost:3000
 ```
 
@@ -52,37 +47,29 @@ Jalankan dari root repo. Docker Desktop harus sudah menyala.
 # 1. Database & Redis
 docker compose -f infra/docker-compose.yml up -d
 
-# 2. Python env (dipakai API dan ML)
+# 2. Python env
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 # Jika muncul error "running scripts is disabled", jalankan sekali:
 #   Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-# requirements memuat `-e ../../ml` (relatif ke folder kerja), jadi install dari apps/api
 cd apps/api; pip install -r requirements-dev.txt; cd ../..
 
-# 3. Model (pakai data dummy sampai data mitra terkumpul)
-cd ml
-python scripts/generate_dummy.py
-python scripts/build_dataset.py
-python scripts/train_compare.py
-cd ..
-
-# 4. API
+# 3. API
 cd apps/api
 Copy-Item .env.example .env     # isi SEED_OWNER_PASSWORD dan JWT_SECRET (lihat di bawah)
 alembic upgrade head
 python -m app.seed              # katalog harga, janji waktu, pengaturan + akun owner
 uvicorn app.main:app --reload   # http://localhost:8000/docs
 
-# 5a. Worker (terminal lain, aktifkan .venv dulu, dari apps/api)
+# 4a. Worker (terminal lain, aktifkan .venv dulu, dari apps/api)
 #     Windows tidak mendukung pool prefork maupun opsi -B, jadi pakai --pool=solo
 #     dan jalankan beat terpisah. Tanpa Redis: set CELERY_TASK_ALWAYS_EAGER=true di .env
 celery -A app.workers worker --pool=solo --loglevel=info
 
-# 5b. Beat / jadwal berkala (terminal lain, aktifkan .venv dulu, dari apps/api)
+# 4b. Beat / jadwal berkala (terminal lain, aktifkan .venv dulu, dari apps/api)
 celery -A app.workers beat --loglevel=info
 
-# 6. Web (terminal lain, dari root repo)
+# 5. Web (terminal lain, dari root repo)
 cd apps/web
 Copy-Item .env.example .env.local
 npm install
@@ -93,7 +80,7 @@ Di terminal baru, aktifkan venv dengan `.\.venv\Scripts\Activate.ps1` (dari root
 menjalankan `uvicorn` atau `celery`. Kalau pakai Command Prompt (cmd), aktivasinya
 `.venv\Scripts\activate.bat` dan ganti `Copy-Item` dengan `copy`.
 
-Halaman: `/login`, `/kasir`, `/dasbor` (+ `/operasional`, `/layanan`, `/akun`), `/tindak-lanjut`, `/antrean`,
+Halaman: `/login`, `/kasir`, `/dasbor` (+ `/operasional`, `/layanan`, `/akun`), `/pengaturan`, `/tindak-lanjut`, `/antrean`,
 `/lacak` dan `/lacak/<kode>` (publik).
 
 ### Isi `apps/api/.env` untuk lokal
@@ -114,7 +101,7 @@ Production memakai `.env` terpisah di server (`/opt/gedklin/.env`), jadi nilai l
 
 ```bash
 cd apps/api && pytest                     # SQLite; set TEST_DATABASE_URL untuk Postgres
-ruff check apps/api ml && ruff format --check apps/api ml
+ruff check apps/api && ruff format --check apps/api
 cd apps/web && npm run lint && npx tsc --noEmit && npm run build
 ```
 
@@ -124,39 +111,64 @@ cd apps/web && npm run lint && npx tsc --noEmit && npm run build
   `service_catalog` **hanya bila katalog masih kosong**, plus `service_promise` dan `app_settings`
   yang belum ada. Setelah itu pemilik mengelola layanan di `/dasbor/layanan`: tambah, ubah (nama,
   kelompok, proses, satuan, harga, aturan min/maks, Bisa Express), nonaktifkan, dan hapus. Layanan
-  yang sudah dipakai di pesanan tidak bisa dihapus, cukup dinonaktifkan. Pengali Express, kapasitas
-  mesin, dan janji waktu juga diatur di halaman itu. Item dry clean belum punya harga, jadi
-  nonaktif sampai harganya diisi.
+  yang sudah dipakai di pesanan tidak bisa dihapus, cukup dinonaktifkan. Item dry clean belum punya
+  harga, jadi nonaktif sampai harganya diisi.
+- `/pengaturan` mengumpulkan semua pengaturan: akun sendiri (nama, password) untuk semua peran, dan
+  khusus pemilik: profil outlet (nama/alamat/telepon di nota, WA, dan lacak), jadwal normal,
+  penjadwalan antrean (kapasitas mesin dan lama siklus), pengali Express, janji waktu, serta
+  penyedia dan API key AI. Libur atau mesin rusak per tanggal dicatat di Jadwal Outlet (`/dasbor/operasional`).
 - Semua aturan harga (kiloan: harga 7 kg pertama + tambahan per kg untuk sisa berat, minimal kg,
   per pcs, per load item khusus, Express = Reguler × `express_multiplier` hanya untuk item
   `express_eligible` yaitu CKL dan CKS) ada di `apps/api/app/services/pricing.py`.
   Form kasir memanggil `POST /orders/quote`, jadi aturan harga tidak diduplikasi di frontend.
-- Load mesin (`machine_loads = ceil(kg / machine_capacity_kg)`, default 8 kg) hanya untuk fitur ML,
-  terpisah dari harga.
+- Load mesin (`machine_loads = ceil(kg / machine_capacity_kg)`, default 8 kg) dipakai penjadwalan
+  antrean, terpisah dari harga.
+- Perkiraan siap di nota, `/lacak`, dan WhatsApp = janji standar layanan (`promised_ready_at`):
+  jam janji terpanjang dari item di pesanan, hari tutup tidak dihitung.
 - Status pesanan: `RECEIVED → PROCESSING → READY → PICKED_UP`, plus `CANCELLED` (dengan alasan,
   sebelum siap dan belum lunas). Tandai Diambil wajib lunas; pembayaran dicatat tunai/QRIS/transfer.
 - Pemilik: `/dasbor/laporan` (per periode, per layanan/kasir/metode bayar, unduh CSV) dan
   `/dasbor/log`. Kasir dan pemilik: `/pelanggan` (riwayat, tagihan belum lunas, ubah data).
 - Login dikunci 15 menit setelah 5 kali salah per username; petugas bisa ganti password sendiri.
 
-## Data & model
+## Penjadwalan antrean (Least Slack Time)
 
-- Form pencatatan mitra: `ml/data/raw/orders.csv` (`order_id, received_at, ready_at, layanan_utama,
-  express, berat_kg, pcs_khusus, pcs_satuan, pcs_dry_clean, ada_setrika`) dan `ml/data/raw/daily.csv` (`date,
-  staff_on_duty, washers_available, dryers_available, open_time, close_time`). Tidak di-commit.
-  Jika ada, script otomatis memakainya; jika tidak, memakai `*_dummy.csv`.
-- `build_dataset.py` mengubah data mentah menjadi fitur (`ml/data/processed/features.csv`) memakai
-  feature builder bersama `ml/gedklin_ml/features.py` yang juga dipakai API.
-- `train_compare.py` membandingkan baseline janji mitra, baseline median, Linear Regression,
-  Random Forest, dan XGBoost dengan split berbasis waktu. Model belajar `duration_work_hours`
-  (jam operasional); prediksinya diubah ke waktu kalender dengan `add_work_hours`, persis seperti
-  API, lalu error diukur dalam jam kalender dengan toleransi `ETA_TOLERANCE_HOURS` (default 6).
-  `ml/data/raw/daily.csv` dibutuhkan untuk konversi ini. Hasil: `ml/reports/comparison.csv`,
-  `comparison_by_group.csv` (MAE per `max_process_level` dan Reguler/Express),
-  `ml/models/best_model.joblib` + `metadata.json`.
-- Hasil dari data dummy ditulis ke `ml/reports/*_dummy.csv` dan **tidak boleh dilaporkan**.
-- API memuat model dari `MODEL_PATH`; jika gagal, fiturnya tidak cocok, atau satuannya bukan
-  `work_hours` (model lama), ETA memakai `promised_ready_at` (janji standar mitra).
-- Model tidak di-commit. Setelah melatih ulang, salin `best_model.joblib` + `metadata.json` ke
-  `/opt/gedklin/models/` di VM lalu restart `api` dan `worker`. Cek di Dasbor: "Model: ..." tidak
-  boleh `janji-mitra`.
+Urutan di papan kasir dan layar Antrean Cucian dihitung di `apps/api/app/services/queue.py`:
+
+```
+slack = sisa jam kerja sampai janji siap - taksiran waktu proses
+```
+
+- Waktu proses ditaksir dari berat: jumlah load mesin dibagi mesin cuci/pengering yang tersedia
+  hari itu, dikali lama satu siklus, ditambah setrika manual (per kg atau per pcs) dibagi petugas
+  yang bertugas. Kapasitas mesin dan lama siklus diatur pemilik di `/pengaturan` → Penjadwalan
+  antrean (bawaan 60/60 menit per load, 10 menit/kg, 5 menit/pcs; menunggu angka dari mitra).
+- Sisa waktu dihitung dalam jam buka outlet, jadi malam dan hari tutup tidak dihitung. Pesanan
+  yang sudah lewat janji punya slack negatif dan paling atas.
+- Slack terkecil dikerjakan duluan. Pesanan berat yang janjinya dekat naik ke atas walaupun janji
+  pesanan ringan lebih awal. Express tidak punya jalur khusus: janjinya yang lebih pendek otomatis
+  membuat slack-nya kecil.
+- Mencuci tidak bisa disela, jadi pesanan berstatus Diproses selalu tetap di depan.
+- Layar Antrean Cucian menampilkan taksiran proses dan sisa kelonggaran tiap pesanan.
+
+## Pengujian analisis AI
+
+- `tests/test_ai_data.py` memakai pesanan uji yang hasilnya dihitung tangan, lalu memastikan data
+  yang dikirim ke AI (total, per hari, per layanan, ketepatan waktu, dsb.) sama persis, prompt yang
+  terkirim memuat data itu tanpa nama/nomor pelanggan, dan pemeriksa angka
+  (`app/services/ai_check.py`) menandai angka yang dikarang AI.
+- Untuk laporan, uji AI sungguhan (memakai API key di Pengaturan AI) pada data di database:
+
+  ```bash
+  cd apps/api
+  python -m app.uji_ai --mulai 2026-10-01 --akhir 2026-10-31 --ulang 5 --keluaran hasil-uji-ai.md
+  ```
+
+  Hasilnya tabel Markdown: berapa angka yang disebut AI di tiap percobaan, berapa yang sesuai data,
+  daftar angka yang tidak ditemukan di data, waktu respons, dan lampiran jawaban AI. Hasil uji tidak
+  masuk riwayat analisis.
+- Batasan tugas: system prompt melarang AI menulis kode atau menjawab di luar data laporan, dan
+  meminta balasan `DI_LUAR_TOPIK`. Server juga menolak jawaban yang berisi penanda itu atau kode
+  program (`off_topic` di `ai_check.py`), sehingga tidak masuk riwayat. Uji untuk laporan:
+  `python -m app.uji_ai --mulai ... --akhir ... --uji-batasan` (8 skenario: membuat aplikasi,
+  menulis kode, puisi, pengetahuan umum, data pribadi, perintah mengabaikan aturan, dan 2 kontrol).

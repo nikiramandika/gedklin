@@ -39,9 +39,9 @@ import {
 import { ItemLines, SpeedField, useItemEditor } from "./ItemEditor";
 
 const NOTIF_LABEL: Record<OrderNotification["type"], string> = {
-  RECEIPT: "Nota pesanan",
+  RECEIPT: "Nota",
   READY: "Siap diambil",
-  DELAY: "Perkiraan mundur",
+  DELAY: "Kabar keterlambatan",
 };
 const NOTIF_STATUS: Record<OrderNotification["status"], string> = {
   PENDING: "Menunggu",
@@ -129,7 +129,7 @@ function OrderDetailPanel({
   async function runConfirm() {
     if (!order || !confirm) return;
     if (confirm === "cancel" && reason.trim().length < 3) {
-      setConfirmError("Tulis alasan pembatalan (minimal 3 huruf).");
+      setConfirmError("Isi alasan pembatalan.");
       return;
     }
     setConfirmBusy(true);
@@ -140,7 +140,7 @@ function OrderDetailPanel({
         await changed(`${order.tracking_code} dibatalkan`);
       } else {
         await api(`/orders/${order.id}/payment`, { method: "DELETE" });
-        await changed(`Catatan pembayaran ${order.tracking_code} dibatalkan`);
+        await changed(`Pembayaran ${order.tracking_code} dibatalkan`);
       }
       setConfirm(null);
       setReason("");
@@ -162,7 +162,7 @@ function OrderDetailPanel({
       <Drawer
         open
         onClose={() => setMode("view")}
-        title="Koreksi isi pesanan"
+        title="Ubah isi pesanan"
         description={`${order.customer.name} · ${order.tracking_code}`}
         footer={
           <>
@@ -170,7 +170,7 @@ function OrderDetailPanel({
               Batal
             </Button>
             <Button type="submit" form={ITEMS_FORM} loading={itemsBusy}>
-              Simpan koreksi
+              Simpan
             </Button>
           </>
         }
@@ -202,7 +202,7 @@ function OrderDetailPanel({
                 className="inline-flex items-center gap-1 rounded text-xs font-medium text-ink-2 underline-offset-4 hover:text-brand-700 hover:underline"
               >
                 <IconHistory size={14} />
-                Lihat log pesanan
+                Riwayat perubahan
               </Link>
             )}
           </span>
@@ -228,7 +228,7 @@ function OrderDetailPanel({
                     className={receipt ? "" : "pointer-events-none opacity-50"}
                   >
                     <IconChat size={16} className="text-ok-600" />
-                    Kirim ulang WA
+                    Kirim nota WA
                   </ButtonLink>
                 ) : (
                   <ButtonLink variant="secondary" href={`tel:+${order.customer.phone_wa}`}>
@@ -272,25 +272,20 @@ function OrderDetailPanel({
             <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2.5 text-sm">
               {!cancelled && (
                 <>
-                  <dt className="text-muted">{order.ready_at ? "Siap sejak" : "Perkiraan siap"}</dt>
-                  <dd className="text-right">
-                    <span className="font-medium text-ink">
-                      {formatDateTime(order.ready_at ?? order.predicted_ready_at)}
-                    </span>
-                    {!order.ready_at && now > 0 && (
-                      <span className="block text-xs text-muted">
-                        {timing === "due" ? "segera siap" : relativeEta(order.predicted_ready_at, now)}
-                      </span>
-                    )}
-                  </dd>
-                  <dt className="text-muted">Janji standar</dt>
+                  {order.ready_at && (
+                    <>
+                      <dt className="text-muted">Siap sejak</dt>
+                      <dd className="text-right font-medium text-ink">{formatDateTime(order.ready_at)}</dd>
+                    </>
+                  )}
+                  <dt className="text-muted">Janji siap</dt>
                   <dd className="text-right">
                     <span className={timing === "late" ? "font-medium text-danger-600" : "text-ink-2"}>
                       {formatDateTime(order.promised_ready_at)}
                     </span>
                     {timing === "late" && (
-                      <span className="block text-xs font-medium text-danger-600">
-                        Terlambat, {relativeEta(order.promised_ready_at, now)}
+                      <span className="block text-xs font-medium text-danger-600 first-letter:uppercase">
+                        {relativeEta(order.promised_ready_at, now)}
                       </span>
                     )}
                   </dd>
@@ -303,20 +298,21 @@ function OrderDetailPanel({
                   <span className="block text-xs text-muted">oleh {order.created_by_name}</span>
                 )}
               </dd>
-              <dt className="text-muted">Lokasi rak</dt>
-              <dd className="text-right font-mono font-semibold text-ink">{order.rack_location ?? "–"}</dd>
-              <dt className="text-muted">{wa ? "No. WhatsApp" : "No. telepon"}</dt>
-              <dd className="text-right text-ink-2">
-                <span className="tabular">{displayPhone(order.customer.phone_wa)}</span>
-                {!wa && <span className="block text-xs text-muted">tanpa WhatsApp</span>}
-              </dd>
+              {order.rack_location && (
+                <>
+                  <dt className="text-muted">Rak</dt>
+                  <dd className="text-right font-mono font-semibold text-ink">{order.rack_location}</dd>
+                </>
+              )}
+              <dt className="text-muted">{wa ? "WhatsApp" : "Telepon"}</dt>
+              <dd className="tabular text-right text-ink-2">{displayPhone(order.customer.phone_wa)}</dd>
             </dl>
           </section>
 
           {!cancelled && (
             <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-surface p-4 shadow-tile">
               <div>
-                <p className="text-sm text-muted">Pembayaran</p>
+                <p className="text-sm text-muted">Total</p>
                 <p className="tabular text-lg font-semibold text-ink">{formatRupiah(order.price_total)}</p>
                 <p className="text-xs text-ink-2">
                   {paymentLabel(order)}
@@ -334,7 +330,7 @@ function OrderDetailPanel({
                       setConfirm("void");
                     }}
                   >
-                    Batalkan catatan bayar
+                    Batalkan pembayaran
                   </Button>
                 )
               ) : (
@@ -351,12 +347,12 @@ function OrderDetailPanel({
               {!cancelled && (
                 <Button variant="secondary" size="sm" onClick={() => setEditingDetails(true)}>
                   <IconEdit size={14} className="text-brand-600" />
-                  Ubah catatan & rak
+                  Ubah
                 </Button>
               )}
             </div>
             <p className={`whitespace-pre-line text-sm ${order.notes ? "text-ink-2" : "text-muted"}`}>
-              {order.notes ?? "Tidak ada catatan."}
+              {order.notes ?? "–"}
             </p>
           </section>
 
@@ -366,7 +362,7 @@ function OrderDetailPanel({
               {editable && (
                 <Button variant="secondary" size="sm" onClick={() => setMode("items")}>
                   <IconEdit size={14} className="text-brand-600" />
-                  Koreksi isi
+                  Ubah
                 </Button>
               )}
             </div>
@@ -390,11 +386,10 @@ function OrderDetailPanel({
               ))}
             </ul>
             {!editable && !cancelled && (order.status === "RECEIVED" || order.status === "PROCESSING") && (
-              <p className="mt-2 rounded-lg bg-subtle px-3 py-2 text-sm text-ink-2">
-                Sudah lunas, isi pesanan dikunci.
+              <p className="mt-2 text-sm text-muted">
                 {isOwner
-                  ? " Untuk mengoreksi, tekan “Batalkan catatan bayar” di bagian Pembayaran, lalu terima pembayaran lagi setelah diperbaiki."
-                  : " Minta pemilik membatalkan catatan bayar bila ada salah input."}
+                  ? "Sudah lunas. Batalkan pembayaran dulu untuk mengubah isi."
+                  : "Sudah lunas. Hubungi pemilik bila isi salah."}
               </p>
             )}
           </section>
@@ -421,11 +416,9 @@ function OrderDetailPanel({
           </section>
 
           <section>
-            <h3 className="mb-2 text-sm font-semibold text-ink">Notifikasi WhatsApp</h3>
-            {!wa && notifs.length === 0 ? (
-              <p className="text-sm text-muted">Pelanggan tidak pakai WhatsApp, jadi tidak ada WA yang dikirim.</p>
-            ) : notifs.length === 0 ? (
-              <p className="text-sm text-muted">Belum ada notifikasi.</p>
+            <h3 className="mb-2 text-sm font-semibold text-ink">WhatsApp</h3>
+            {notifs.length === 0 ? (
+              <p className="text-sm text-muted">{wa ? "Belum ada pesan terkirim." : "Pelanggan tanpa WhatsApp."}</p>
             ) : (
               <ul className="space-y-1.5 text-sm">
                 {notifs.map((n) => (
@@ -442,16 +435,11 @@ function OrderDetailPanel({
           </section>
 
           {editable && (
-            <section className="rounded-2xl bg-danger-50/60 p-4">
-              <h3 className="text-sm font-semibold text-danger-700">Batalkan pesanan</h3>
-              <p className="mt-1 text-xs text-ink-2">
-                Untuk pesanan yang batal dititipkan atau salah dibuat. Pesanan keluar dari antrean dan tidak
-                dihitung sebagai pendapatan.
-              </p>
+            <div className="border-t border-line pt-4">
               <Button
-                variant="secondary"
+                variant="ghost"
                 size="sm"
-                className="mt-3 text-danger-600"
+                className="text-danger-700"
                 onClick={() => {
                   setConfirmError(null);
                   setConfirm("cancel");
@@ -459,7 +447,7 @@ function OrderDetailPanel({
               >
                 Batalkan pesanan
               </Button>
-            </section>
+            </div>
           )}
         </div>
       )}
@@ -484,12 +472,12 @@ function OrderDetailPanel({
         busy={confirmBusy}
         error={confirmError}
         tone={confirm === "cancel" ? "danger" : "warn"}
-        title={confirm === "cancel" ? `Batalkan pesanan ${order?.tracking_code ?? ""}?` : "Batalkan catatan pembayaran?"}
-        confirmLabel={confirm === "cancel" ? "Batalkan pesanan" : "Ya, belum lunas"}
+        title={confirm === "cancel" ? `Batalkan pesanan ${order?.tracking_code ?? ""}?` : "Batalkan pembayaran?"}
+        confirmLabel={confirm === "cancel" ? "Batalkan pesanan" : "Batalkan pembayaran"}
       >
         {confirm === "cancel" ? (
           <div className="space-y-3">
-            <p>Pesanan keluar dari antrean dan tidak bisa diaktifkan lagi. Pelanggan tidak menerima WA.</p>
+            <p>Pesanan keluar dari antrean dan tidak dihitung sebagai pendapatan. Tidak bisa dikembalikan.</p>
             <Field label="Alasan">
               <textarea
                 className={textareaClass}
@@ -497,12 +485,12 @@ function OrderDetailPanel({
                 maxLength={255}
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="mis. Pelanggan batal titip"
+                placeholder="Contoh: pelanggan batal"
               />
             </Field>
           </div>
         ) : (
-          "Pesanan akan kembali tercatat belum lunas. Gunakan hanya bila pembayaran salah dicatat."
+          "Pesanan kembali tercatat belum lunas."
         )}
       </ConfirmDialog>
     </Drawer>
@@ -543,7 +531,7 @@ function ItemsCorrection({
   return (
     <form id={ITEMS_FORM} onSubmit={submit} className="space-y-5">
       {editor.unavailable && (
-        <Alert tone="warn">Ada layanan yang sudah nonaktif. Pilih layanan pengganti sebelum menyimpan.</Alert>
+        <Alert tone="warn">Ada layanan yang sudah tidak tersedia. Ganti dulu sebelum menyimpan.</Alert>
       )}
       <ItemLines editor={editor} />
       <SpeedField editor={editor} />
@@ -586,7 +574,7 @@ function DetailsModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Catatan & lokasi rak"
+      title="Catatan & rak"
       description={`${order.customer.name} · ${order.tracking_code}`}
       footer={
         <>
@@ -629,12 +617,12 @@ function DetailsModal({
             onChange={(e) => setNotes(e.target.value)}
           />
         </Field>
-        <Field label="Lokasi rak" hint="Kosongkan bila belum ditaruh di rak.">
+        <Field label="Rak">
           <input
             className={`${inputClass} font-mono uppercase`}
             maxLength={20}
             value={rack}
-            placeholder="mis. B3"
+            placeholder="Contoh: B3"
             onChange={(e) => setRack(e.target.value.toUpperCase())}
           />
         </Field>

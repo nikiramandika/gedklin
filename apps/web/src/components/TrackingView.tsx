@@ -80,7 +80,7 @@ export function TrackingView({ code }: { code: string }) {
             <IconArrowLeft size={20} />
           </Link>
           <BrandMark size={28} className="rounded-[5px] ring-1 ring-white/15" />
-          <p className="flex-1 text-base font-semibold">Gedklin Laundry</p>
+          <p className="flex-1 text-base font-semibold">{order?.outlet.name ?? "Gedklin Laundry"}</p>
         </div>
       </header>
 
@@ -188,7 +188,10 @@ function TrackingBody({ order, code, now }: { order: Tracking; code: string; now
 
           <div className="mt-5 border-t border-dashed border-field/60 pt-4 text-ink-2">
             {cancelled ? (
-              <p className="text-base">Pesanan dibatalkan. Hubungi Gedklin Laundry bila ada pertanyaan.</p>
+              <p className="text-base">
+                Pesanan dibatalkan. Hubungi {order.outlet.name}
+                {order.outlet.phone ? ` (${order.outlet.phone})` : ""} bila ada pertanyaan.
+              </p>
             ) : ready ? (
               <>
                 <p className="text-base">
@@ -212,23 +215,11 @@ function TrackingBody({ order, code, now }: { order: Tracking; code: string; now
                 <p className="tabular display mt-1 text-3xl text-ink">{formatDateTime(order.promised_ready_at)}</p>
                 <p className="mt-2 text-sm text-muted">Sedang kami selesaikan. {updateNote}</p>
               </>
-            ) : timing === "due" ? (
-              <>
-                <p className="label-caps text-muted">Perkiraan siap diambil</p>
-                <p className="display mt-1 text-3xl text-ink">Segera siap</p>
-                <p className="mt-1 text-sm text-muted">{updateNote}</p>
-                {order.promised_ready_at && (
-                  <p className="mt-2 text-xs text-faint">Janji standar: {formatDateTime(order.promised_ready_at)}</p>
-                )}
-              </>
             ) : (
               <>
                 <p className="label-caps text-muted">Perkiraan siap diambil</p>
-                <p className="tabular display mt-1 text-3xl text-ink">{formatDateTime(order.predicted_ready_at)}</p>
-                {now > 0 && <p className="mt-1 text-base text-muted">{relativeEta(order.predicted_ready_at, now)}</p>}
-                {order.promised_ready_at && order.promised_ready_at !== order.predicted_ready_at && (
-                  <p className="mt-2 text-xs text-faint">Janji standar: {formatDateTime(order.promised_ready_at)}</p>
-                )}
+                <p className="tabular display mt-1 text-3xl text-ink">{formatDateTime(order.promised_ready_at)}</p>
+                {now > 0 && <p className="mt-1 text-base text-muted">{relativeEta(order.promised_ready_at, now)}</p>}
               </>
             )}
           </div>
@@ -304,7 +295,7 @@ function TrackingBody({ order, code, now }: { order: Tracking; code: string; now
 
       {!ready && !done && (
         <p className="px-2 text-center text-xs text-muted text-pretty">
-          Perkiraan bisa berubah saat ramai.{" "}
+          Saat ramai, cucian bisa sedikit melewati perkiraan.{" "}
           {order.whatsapp_updates ? "Kabar via WhatsApp saat siap." : "Cek lagi halaman ini sebelum datang."}
         </p>
       )}

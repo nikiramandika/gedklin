@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.db import get_db, utcnow
 from app.models import (
     ACTIVE_STATUSES,
@@ -42,9 +41,7 @@ from app.services import ai as ai_service
 from app.services import catalog as catalog_service
 from app.services.activity import diff, log_activity, snapshot
 from app.services.app_settings import format_weekdays, load_app_config, save_app_settings
-from app.services.eta import get_predictor
-from app.services.orders import recompute_etas
-from gedklin_ml.features import LOCAL_TZ
+from app.services.operations import LOCAL_TZ
 
 router = APIRouter(tags=["owner"])
 owner = require_roles(Role.OWNER)
@@ -169,16 +166,6 @@ def delete_catalog_item(
     db.commit()
 
 
-SCHEDULE_SETTINGS = (
-    "closed_weekdays",
-    "default_staff_on_duty",
-    "default_washers_available",
-    "default_dryers_available",
-    "default_open_time",
-    "default_close_time",
-)
-
-
 def _settings_out(db: Session) -> AppSettingsOut:
     config = load_app_config(db)
     day = config.default_day
@@ -192,6 +179,13 @@ def _settings_out(db: Session) -> AppSettingsOut:
         default_open_time=day.open_time,
         default_close_time=day.close_time,
         closed_weekdays=sorted(config.closed_weekdays),
+        outlet_name=config.outlet.name,
+        outlet_address=config.outlet.address,
+        outlet_phone=config.outlet.phone,
+        wash_minutes_per_load=config.work_rates.wash_minutes_per_load,
+        dry_minutes_per_load=config.work_rates.dry_minutes_per_load,
+        iron_minutes_per_kg=config.work_rates.iron_minutes_per_kg,
+        iron_minutes_per_pcs=config.work_rates.iron_minutes_per_pcs,
     )
 
 
@@ -231,9 +225,6 @@ def update_app_settings(
     if changed:
         log_activity(db, me, "settings.update", "Mengubah pengaturan", changes=changed)
     db.commit()
-    if any(key in changed for key in SCHEDULE_SETTINGS):
-        # Jadwal normal menggeser perkiraan siap pesanan yang masih di antrean.
-        recompute_etas(db)
     return after
 
 
@@ -436,13 +427,26 @@ def upsert_daily_operation(
     return row
 
 
+@router.delete("/daily-operations/{day}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_daily_operation(day: date, db: Session = Depends(get_db), me: User = Depends(owner)):
+    """Tanggal itu kembali mengikuti jadwal normal."""
+    row = db.scalar(select(DailyOperation).where(DailyOperation.date == day))
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tidak ada catatan untuk tanggal ini")
+    log_activity(
+        db,
+        me,
+        "operation.delete",
+        f"Menghapus catatan operasional {day.strftime('%d-%m-%Y')}",
+        entity_id=day.isoformat(),
+    )
+    db.delete(row)
+    db.commit()
+
+
 def _local_day_bounds(day: date) -> tuple[datetime, datetime]:
     start = datetime.combine(day, time.min, tzinfo=LOCAL_TZ)
     return start, start + timedelta(days=1)
-
-
-def _hours(delta: timedelta) -> float:
-    return abs(delta.total_seconds()) / 3600
 
 
 @router.get("/dashboard/summary", response_model=DashboardOut)
@@ -488,29 +492,19 @@ def dashboard(db: Session = Depends(get_db), _: User = Depends(owner)) -> Dashbo
         for s, c in db.execute(select(Order.status, func.count(Order.id)).group_by(Order.status))
     }
 
-    # Prediksi awal, karena prediksi terkini mendekati waktu siap dan tampak lebih akurat.
-    settings = get_settings()
     now = utcnow()
-    since = now - timedelta(days=7)
-    initial = func.coalesce(Order.initial_predicted_ready_at, Order.predicted_ready_at)
     rows = db.execute(
-        select(Order.ready_at, initial, Order.promised_ready_at).where(
-            Order.ready_at >= since, initial.is_not(None)
+        select(Order.ready_at, Order.promised_ready_at).where(
+            Order.ready_at >= now - timedelta(days=7), Order.promised_ready_at.is_not(None)
         )
     ).all()
-    eta_errors = [_hours(r - p) for r, p, _ in rows]
-    promise_errors = [_hours(r - j) for r, _, j in rows if j is not None]
-    late_7d = sum(1 for r, _, j in rows if j is not None and r > j)
+    late_hours = [(r - p).total_seconds() / 3600 for r, p in rows if r > p]
     overdue_now = db.scalar(
         select(func.count(Order.id)).where(
             Order.status.in_(ACTIVE_STATUSES), Order.promised_ready_at < now
         )
     )
 
-    def mean(values: list[float]) -> float | None:
-        return round(sum(values) / len(values), 1) if values else None
-
-    within = [e < settings.eta_tolerance_hours for e in eta_errors]
     return DashboardOut(
         today_orders=today_orders,
         today_revenue=today_revenue,
@@ -521,14 +515,11 @@ def dashboard(db: Session = Depends(get_db), _: User = Depends(owner)) -> Dashbo
         needs_followup=int(
             db.scalar(select(func.count(Order.id)).where(Order.needs_followup.is_(True))) or 0
         ),
-        eta_mae_hours_7d=mean(eta_errors),
-        eta_within_tolerance_pct_7d=round(100 * sum(within) / len(within), 1) if within else None,
-        promise_mae_hours_7d=mean(promise_errors),
-        late_vs_promise_7d=late_7d,
+        done_7d=len(rows),
+        late_vs_promise_7d=len(late_hours),
+        on_time_pct_7d=round(100 * (len(rows) - len(late_hours)) / len(rows), 1) if rows else None,
+        avg_late_hours_7d=round(sum(late_hours) / len(late_hours), 1) if late_hours else None,
         overdue_active=int(overdue_now or 0),
-        eta_samples_7d=len(eta_errors),
-        eta_tolerance_hours=settings.eta_tolerance_hours,
-        model_version=get_predictor().model_version,
         last_7_days=last_7_days,
         status_counts=status_counts,
     )

@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
-import { IconBolt, IconClock, IconPlus, IconTag, IconTrash } from "@/components/icons";
+import { IconPlus, IconTag, IconTrash } from "@/components/icons";
 import { ConfirmDialog, Drawer, useToast } from "@/components/overlay";
 import {
   Button,
@@ -18,6 +19,7 @@ import {
   Segmented,
   Select,
   Switch,
+  buttonClass,
   inputClass,
   tabClass,
   tabListClass,
@@ -28,13 +30,11 @@ import { api } from "@/lib/api";
 import { GROUP_RULES, PRICE_LABEL, UNIT_LABEL, codeFromName } from "@/lib/catalog";
 import { GROUP_LABEL, PROCESS_LABEL, formatRupiah, priceRule } from "@/lib/format";
 import type {
-  AppSettings,
   CatalogGroup,
   CatalogItem,
   CatalogUnit,
   Process,
   Role,
-  ServicePromise,
 } from "@/lib/types";
 
 const ROLES: Role[] = ["owner"];
@@ -99,15 +99,20 @@ export default function LayananPage() {
     <AppShell roles={ROLES}>
       <PageHeader
         title="Layanan & Harga"
-        description="Perubahan langsung dipakai kasir."
+        description="Perubahan langsung dipakai di kasir."
         actions={
-          <Button onClick={() => setEditor({})}>
-            <IconPlus size={18} />
-            Tambah layanan
-          </Button>
+          <>
+            <Link href="/pengaturan#harga" className={buttonClass("secondary")}>
+              Express & janji waktu
+            </Link>
+            <Button onClick={() => setEditor({})}>
+              <IconPlus size={18} />
+              Tambah layanan
+            </Button>
+          </>
         }
       />
-      <div className="grid grid-cols-1 items-start gap-5 2xl:grid-cols-[minmax(0,1fr)_400px]">
+      <div>
         <Card flush>
           <div
             role="tablist"
@@ -163,10 +168,6 @@ export default function LayananPage() {
             </ul>
           )}
         </Card>
-        <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2 2xl:grid-cols-1">
-          <SettingsCard />
-          <PromiseCard />
-        </div>
       </div>
 
       <ServiceDrawer
@@ -620,199 +621,5 @@ function ServiceForm({
 
       <ErrorText message={error} />
     </form>
-  );
-}
-
-function SettingsCard() {
-  const toast = useToast();
-  const [form, setForm] = useState<{ multiplier: string; capacity: string; promise: string } | null>(
-    null,
-  );
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    api<AppSettings>("/settings")
-      .then((s) =>
-        setForm({
-          multiplier: String(s.express_multiplier),
-          capacity: String(s.machine_capacity_kg),
-          promise: String(s.default_promise_hours),
-        }),
-      )
-      .catch((e: Error) => setError(e.message));
-  }, []);
-
-  if (!form)
-    return (
-      <Card title="Express, mesin & janji default">{error ? <ErrorText message={error} /> : <Loading rows={2} />}</Card>
-    );
-
-  return (
-    <Card icon={IconBolt} tone="warn" title="Express, mesin & janji default">
-      <form
-        className="space-y-4"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          setError(null);
-          setBusy(true);
-          try {
-            await api("/settings", {
-              method: "PUT",
-              body: {
-                express_multiplier: Number(form.multiplier.replace(",", ".")),
-                machine_capacity_kg: Number(form.capacity.replace(",", ".")),
-                default_promise_hours: Number(form.promise),
-              },
-            });
-            toast("Pengaturan disimpan");
-          } catch (err) {
-            setError(err instanceof Error ? err.message : "Gagal menyimpan");
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        <Field
-          label="Pengali harga Express"
-          hint="Harga Express = Reguler × pengali."
-        >
-          <div className="relative">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted">×</span>
-            <input
-              className={`${inputClass} tabular pl-8`}
-              inputMode="decimal"
-              value={form.multiplier}
-              onChange={(e) => setForm({ ...form, multiplier: e.target.value })}
-            />
-          </div>
-        </Field>
-        <Field
-          label="Kapasitas mesin cuci (kg)"
-          hint="Untuk perkiraan waktu, bukan harga."
-        >
-          <input
-            className={`${inputClass} tabular`}
-            inputMode="decimal"
-            value={form.capacity}
-            onChange={(e) => setForm({ ...form, capacity: e.target.value })}
-          />
-        </Field>
-        <Field label="Janji default (jam)" hint="Bila layanan belum punya janji sendiri.">
-          <input
-            className={`${inputClass} tabular`}
-            type="number"
-            min={1}
-            value={form.promise}
-            onChange={(e) => setForm({ ...form, promise: e.target.value })}
-          />
-        </Field>
-        <ErrorText message={error} />
-        <Button type="submit" loading={busy}>
-          Simpan pengaturan
-        </Button>
-      </form>
-    </Card>
-  );
-}
-
-function hoursValue(v: string): number | null {
-  return v.trim() === "" ? null : Number(v);
-}
-
-function PromiseCard() {
-  const toast = useToast();
-  const [rows, setRows] = useState<ServicePromise[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    api<ServicePromise[]>("/service-promises")
-      .then(setRows)
-      .catch((e: Error) => setError(e.message));
-  }, []);
-
-  function update(i: number, patch: Partial<ServicePromise>) {
-    setRows((rs) => rs && rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-  }
-
-  return (
-    <Card
-      icon={IconClock}
-      tone="neutral"
-      title="Janji waktu standar"
-      description="Dalam jam. Kosongkan bila belum tahu."
-    >
-      <p className="mb-4 text-xs text-muted">
-        Janji di nota dan cadangan bila model belum ada.
-      </p>
-      {!rows ? (
-        error ? <ErrorText message={error} /> : <Loading rows={4} />
-      ) : (
-        <form
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setError(null);
-            setBusy(true);
-            try {
-              await Promise.all(
-                rows.map((r) =>
-                  api(`/service-promises/${r.process}`, {
-                    method: "PUT",
-                    body: {
-                      regular_hours: r.regular_hours,
-                      express_hours: r.express_hours,
-                      min_regular_hours: r.min_regular_hours,
-                    },
-                  }),
-                ),
-              );
-              toast("Janji waktu disimpan");
-            } catch (err) {
-              setError(err instanceof Error ? err.message : "Gagal menyimpan");
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          <div className="mb-2 grid grid-cols-[minmax(0,1fr)_84px_84px] gap-2 text-xs font-medium text-muted">
-            <span>Proses</span>
-            <span>Reguler</span>
-            <span>Express</span>
-          </div>
-          <ul className="space-y-2">
-            {rows.map((r, i) => (
-              <li key={r.process} className="grid grid-cols-[minmax(0,1fr)_84px_84px] items-center gap-2">
-                <span className="text-xs text-ink-2">{PROCESS_LABEL[r.process]}</span>
-                <input
-                  className={`${inputClass} tabular px-2.5 text-center`}
-                  type="number"
-                  min={1}
-                  placeholder="?"
-                  value={r.regular_hours ?? ""}
-                  onChange={(e) => update(i, { regular_hours: hoursValue(e.target.value) })}
-                  aria-label={`Janji Reguler ${PROCESS_LABEL[r.process]} (jam)`}
-                />
-                <input
-                  className={`${inputClass} tabular px-2.5 text-center`}
-                  type="number"
-                  min={1}
-                  placeholder="?"
-                  value={r.express_hours ?? ""}
-                  onChange={(e) => update(i, { express_hours: hoursValue(e.target.value) })}
-                  aria-label={`Janji Express ${PROCESS_LABEL[r.process]} (jam)`}
-                />
-              </li>
-            ))}
-          </ul>
-          <div className="mt-4 space-y-3">
-            <ErrorText message={error} />
-            <Button type="submit" loading={busy}>
-              Simpan janji
-            </Button>
-          </div>
-        </form>
-      )}
-    </Card>
   );
 }

@@ -11,9 +11,7 @@ from app.models import (
     Notification,
     NotificationStatus,
     NotificationType,
-    Order,
     OrderStatus,
-    PredictionLog,
 )
 from app.services.orders import OrderError, create_order, mark_followups, normalize_phone
 from app.services.pricing import ItemRequest
@@ -54,13 +52,7 @@ def test_create_order_with_items_prices_and_promise(
     assert len(order["tracking_code"]) == 10
     assert order["next_status"] == "PROCESSING"
     assert order["promised_ready_at"] is not None
-    assert order["predicted_ready_at"] == order["promised_ready_at"]
-
-    log = db.scalar(select(PredictionLog).where(PredictionLog.order_id == order["id"]))
-    assert log is not None and log.model_version == "janji-mitra"
-    assert log.features_json["max_process_level"] == 4
-    assert log.features_json["n_satuan_items"] == 2
-    assert "phone" not in str(log.features_json)
+    assert "predicted_ready_at" not in order
 
 
 def test_quote_endpoint_and_validation(client: TestClient, cashier: dict) -> None:
@@ -130,14 +122,20 @@ def test_flow_and_ready_notification_sent_once(
     assert body["picked_up_at"] is not None and body["next_status"] is None
 
 
-def test_queue_is_express_first_then_fifo(client: TestClient, cashier: dict) -> None:
+def test_queue_endpoint_sorted_by_least_slack(client: TestClient, cashier: dict) -> None:
     a = new_order(client, cashier, customer_phone="081111111111")
     b = new_order(client, cashier, customer_phone="082222222222", is_express=True)
     c = new_order(client, cashier, customer_phone="083333333333")
     d = new_order(client, cashier, customer_phone="084444444444", is_express=True)
     queue = client.get("/orders/queue", headers=cashier).json()
+    # Janji Express lebih pendek, jadi slack-nya lebih kecil; sisanya urut janji terdekat.
     assert [o["id"] for o in queue] == [b["id"], d["id"], a["id"], c["id"]]
     assert [o["queue_position"] for o in queue] == [1, 2, 3, 4]
+    slacks = [o["slack_hours"] for o in queue]
+    assert slacks == sorted(slacks)
+    assert all(o["processing_hours"] > 0 for o in queue)
+    # Di luar antrean, kolom penjadwalan tidak diisi.
+    assert client.get(f"/orders/{a['id']}", headers=cashier).json()["slack_hours"] is None
 
 
 def test_receipt_sent_automatically_once_on_create(
@@ -157,125 +155,33 @@ def test_receipt_sent_automatically_once_on_create(
     db.rollback()
 
 
-class QueueAwarePredictor:
-    model_version = "uji-antrean"
+def test_receipt_shows_promise_as_estimate(db: Session) -> None:
+    from app.services.notifications import receipt_message
+    from app.services.operations import DEFAULT_OUTLET
 
-    def predict_work_hours(self, features: dict[str, float]) -> tuple[float, str]:
-        return 2 + 10 * features["active_orders_count"], self.model_version
-
-
-def _create(db: Session, phone: str, at: datetime, *, express: bool = False) -> Order:
-    return create_order(
+    order = create_order(
         db,
         customer_name="Budi",
-        customer_phone=phone,
-        is_express=express,
+        customer_phone="081234567890",
+        is_express=False,
         items=[ItemRequest("CKL", weight_kg=5)],
         user=None,
-        now=at,
+        # Selasa 20/10/2026 09.00 WIB + 48 jam.
+        now=datetime(2026, 10, 20, 2, 0, tzinfo=UTC),
     )
+    assert "Perkiraan siap: Kamis, 22/10/2026 09:00 WIB" in receipt_message(order, DEFAULT_OUTLET)
 
 
-# Selasa 20/10/2026 09.00 WIB.
-MORNING = datetime(2026, 10, 20, 2, 0, tzinfo=UTC)
-
-
-def test_delay_notification_when_express_cuts_in_regular_only_and_max_two(
-    db: Session, monkeypatch: pytest.MonkeyPatch
+def test_legacy_delay_notification_is_not_sent(
+    client: TestClient, cashier: dict, db: Session
 ) -> None:
-    monkeypatch.setattr("app.services.orders.get_predictor", lambda: QueueAwarePredictor())
-    regular = _create(db, "081111111111", MORNING)
-    first_eta = regular.predicted_ready_at
-    for i in range(3):
-        _create(db, f"08222222222{i}", MORNING + timedelta(minutes=10 * (i + 1)), express=True)
-
-    db.expire_all()
-    reg = db.get(Order, regular.id)
-    assert reg.predicted_ready_at > first_eta
-    assert reg.initial_predicted_ready_at == first_eta
-    assert reg.delay_notif_count == 2
-    delays = list(
-        db.scalars(select(Notification).where(Notification.type == NotificationType.DELAY))
-    )
-    assert [n.order_id for n in delays] == [regular.id, regular.id]
-    assert all(n.status == NotificationStatus.SENT for n in delays)
-
-
-def test_model_switch_does_not_send_delay_whatsapp(
-    db: Session, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from app.services.orders import recompute_etas
-
-    regular = _create(db, "081111111111", MORNING)
-    _create(db, "082222222222", MORNING + timedelta(minutes=5))
-
-    class SlowModel(QueueAwarePredictor):
-        model_version = "model-baru"
-
-        def predict_work_hours(self, features: dict[str, float]) -> tuple[float, str]:
-            return 40.0, self.model_version
-
-    monkeypatch.setattr("app.services.orders.get_predictor", lambda: SlowModel())
-    recompute_etas(db, MORNING + timedelta(hours=1))
-
-    db.expire_all()
-    reg = db.get(Order, regular.id)
-    assert reg.predicted_ready_at > reg.promised_ready_at + timedelta(hours=6)
-    assert reg.last_notified_eta == reg.predicted_ready_at
-    assert reg.delay_notif_count == 0
-    assert (
-        db.scalar(select(Notification).where(Notification.type == NotificationType.DELAY)) is None
-    )
-
-
-def test_overdue_eta_is_not_moved_by_clicks(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services.orders import change_status
-
-    monkeypatch.setattr("app.services.orders.get_predictor", lambda: QueueAwarePredictor())
-    late = _create(db, "081111111111", MORNING)
-    eta = late.predicted_ready_at
-    later = MORNING + timedelta(days=3)
-
-    _create(db, "082222222222", later)
-    change_status(db, late, OrderStatus.PROCESSING, None, later + timedelta(minutes=5))
-
-    db.expire_all()
-    late = db.get(Order, late.id)
-    assert late.predicted_ready_at == eta
-    assert late.promised_ready_at < later
-    assert late.delay_notif_count == 0
-
-
-def test_started_order_goes_ahead_and_pushes_waiting_eta(
-    db: Session, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from app.services.orders import change_status
-
-    monkeypatch.setattr("app.services.orders.get_predictor", lambda: QueueAwarePredictor())
-    first = _create(db, "081111111111", MORNING)
-    second = _create(db, "082222222222", MORNING + timedelta(minutes=5))
-    eta = first.predicted_ready_at
-
-    change_status(db, second, OrderStatus.PROCESSING, None, MORNING + timedelta(minutes=10))
-
-    db.expire_all()
-    assert db.get(Order, first.id).predicted_ready_at > eta
-
-
-def test_model_eta_counts_only_open_hours(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Diterima Selasa 16.00 WIB, model 2 jam kerja -> Rabu 09.00 WIB (bukan 08.00).
-    monkeypatch.setattr("app.services.orders.get_predictor", lambda: QueueAwarePredictor())
-    order = _create(db, "081111111111", datetime(2026, 10, 20, 9, 0, tzinfo=UTC))
-    assert order.predicted_ready_at == datetime(2026, 10, 21, 2, 0, tzinfo=UTC)
-
-
-def test_small_eta_changes_do_not_notify(client: TestClient, cashier: dict, db: Session) -> None:
-    from app.services.orders import recompute_etas
-
     order = new_order(client, cashier)
-    recompute_etas(db)
-    db.expire_all()
-    assert db.get(Order, order["id"]).delay_notif_count == 0
+    notif = Notification(order_id=order["id"], type=NotificationType.DELAY)
+    db.add(notif)
+    db.commit()
+    assert send_notification.apply(args=[notif.id]).get() == "obsolete"
+    db.refresh(notif)
+    assert notif.status == NotificationStatus.FAILED
 
 
 def test_followup_marked_after_three_days_without_whatsapp(

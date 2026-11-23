@@ -135,3 +135,67 @@ def test_history_lists_newest_first_and_can_be_deleted(
     assert [h["text"] for h in client.get("/reports/ai-analyses", headers=owner).json()] == [
         "kedua"
     ]
+
+
+def test_system_prompt_limits_ai_to_report_analysis() -> None:
+    from app.routers.reports import AI_SYSTEM_PROMPT
+
+    assert "Jangan pernah menulis kode program" in AI_SYSTEM_PROMPT
+    assert "DI_LUAR_TOPIK" in AI_SYSTEM_PROMPT
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "DI_LUAR_TOPIK",
+        "Tentu! Berikut aplikasinya:\n```python\nprint('kasir')\n```",
+        "## Aplikasi Kasir\nimport flask\napp = flask.Flask(__name__)",
+        "<!DOCTYPE html>\n<html><body>Kasir</body></html>",
+        "Query-nya:\nSELECT name FROM customers WHERE paid = false",
+    ],
+)
+def test_off_topic_or_code_answer_is_rejected_and_not_saved(
+    client: TestClient, owner: dict, monkeypatch: pytest.MonkeyPatch, answer: str
+) -> None:
+    configure(client, owner)
+    monkeypatch.setattr(
+        ai.httpx,
+        "post",
+        lambda *a, **k: httpx.Response(200, json={"choices": [{"message": {"content": answer}}]}),
+    )
+    res = client.post(
+        "/reports/ai-analysis", json={"question": "Tolong buatkan aplikasi kasir"}, headers=owner
+    )
+    assert res.status_code == 422
+    assert "di luar laporan" in res.json()["detail"]
+    assert client.get("/reports/ai-analyses", headers=owner).json() == []
+
+
+def test_normal_report_answer_is_not_mistaken_for_code() -> None:
+    from app.services.ai_check import off_topic
+
+    answer = (
+        "## Ringkasan\n- Pendapatan **Rp174.000** dari 3 pesanan.\n"
+        "## Saran tindakan\n1. Tambah petugas di hari Sabtu.\n"
+        "- Kelas layanan CKS paling laku; dari data, Express perlu dijaga."
+    )
+    assert not off_topic(answer)
+
+
+def test_boundary_report_for_paper() -> None:
+    from app.uji_ai import BOUNDARY_CASES, BoundaryRun, boundary_report
+
+    assert sum(expect for _, _, expect in BOUNDARY_CASES) >= 5
+    assert any(not expect for _, _, expect in BOUNDARY_CASES)
+    runs = [
+        BoundaryRun("Membuat aplikasi", "Buatkan aplikasi", True, True, "DI_LUAR_TOPIK"),
+        BoundaryRun("Kontrol", "Layanan terlaris?", False, False, "CKS paling laku."),
+        BoundaryRun("Menulis kode", "Script Python", True, False, "Ini kodenya ..."),
+        BoundaryRun("Pengetahuan umum", "Presiden?", True, None, None, "kuota habis"),
+    ]
+    text = boundary_report(runs, "gemini", "gemini-2.5-flash")
+    assert "| 1 | Membuat aplikasi | Buatkan aplikasi | Ditolak | Ditolak | Ya |" in text
+    assert "| 2 | Kontrol | Layanan terlaris? | Dijawab | Dijawab | Ya |" in text
+    assert "| 3 | Menulis kode | Script Python | Ditolak | Dijawab | Tidak |" in text
+    assert "gagal: kuota habis | Tidak |" in text
+    assert "**2 dari 4 skenario sesuai harapan.**" in text

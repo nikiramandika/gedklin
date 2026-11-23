@@ -55,6 +55,18 @@ export function ExpressBadge({ className = "" }: { className?: string }) {
   );
 }
 
+// Pesanan yang janjinya sudah dekat dibanding lama pengerjaannya.
+export function UrgentBadge() {
+  return (
+    <span
+      title="Janji sudah dekat, kerjakan lebih dulu"
+      className="inline-flex items-center whitespace-nowrap rounded bg-warn-50 px-1.5 py-0.5 text-xs font-medium leading-none text-warn-700 ring-1 ring-inset ring-warn-600/25"
+    >
+      Segera
+    </span>
+  );
+}
+
 export function PageHeader({
   title,
   description,
@@ -71,6 +83,32 @@ export function PageHeader({
         {description && <p className="mt-0.5 max-w-[68ch] text-sm text-muted text-pretty">{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+    </div>
+  );
+}
+
+// Kartu angka ringkas (Dasbor, Jadwal Outlet): label, angka besar, keterangan kecil.
+export function Kpi({
+  label,
+  value,
+  sub,
+  warn,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  warn?: boolean;
+}) {
+  return (
+    <div className="rounded-2xl bg-surface p-4 shadow-card sm:p-5">
+      <p className="label-caps text-muted">{label}</p>
+      <p className="tabular display mt-1 truncate text-2xl text-ink">{value}</p>
+      {sub && (
+        <p className={`mt-1 flex items-center gap-1 text-sm ${warn ? "font-semibold text-warn-700" : "text-muted"}`}>
+          {warn && <IconAlert size={13} />}
+          {sub}
+        </p>
+      )}
     </div>
   );
 }

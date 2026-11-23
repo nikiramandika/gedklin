@@ -1,64 +1,115 @@
+"""Penjadwalan antrean cucian dengan Least Slack Time (LST).
+
+slack = sisa jam kerja sampai janji siap - taksiran waktu proses pesanan
+
+Waktu proses ditaksir dari berat: berat -> jumlah load mesin -> siklus cuci/kering yang bisa
+berjalan paralel di beberapa mesin, ditambah setrika manual per kg/pcs oleh petugas yang
+bertugas. Slack terkecil dikerjakan duluan, jadi pesanan berat yang janjinya sudah dekat naik
+ke atas, sedangkan pesanan ringan yang janjinya masih jauh boleh menunggu. Express tidak diberi
+jalur khusus: janjinya yang pendek otomatis membuat slack-nya kecil.
+
+Mencuci tidak bisa disela di tengah siklus (non-preemptive), jadi pesanan yang sudah diproses
+selalu tetap di depan dan tidak disalip pesanan baru.
+"""
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+import math
+from collections.abc import Iterable
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Protocol
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.db import utcnow
 from app.models import ACTIVE_STATUSES, Order, OrderStatus
-from gedklin_ml.features import OrderContent, QueueRecord, content_from_items
+from app.services.app_settings import day_ops_lookup, load_app_config
+from app.services.operations import (
+    DRYER_PROCESSES,
+    IRONING_PROCESSES,
+    DayOps,
+    DayOpsLookup,
+    WorkRates,
+    local_date,
+    work_hours_between,
+)
 
 
-def is_escalated(order: Order, now: datetime, threshold_hours: float | None = None) -> bool:
-    if order.is_express or order.promised_ready_at is None:
-        return False
-    if threshold_hours is None:
-        threshold_hours = get_settings().regular_escalation_hours
-    return order.promised_ready_at - now <= timedelta(hours=threshold_hours)
+class ItemLike(Protocol):
+    process: str
+    weight_kg: float | None
+    qty_pcs: int | None
+    machine_loads: int | None
 
 
-def queue_rank(
-    order: Order, now: datetime, threshold_hours: float | None = None
-) -> tuple[int, int, datetime, int]:
-    # Reguler yang mendekati janji masuk kelompok Express dan diurutkan FIFO bersama, supaya
-    # Express yang datang belakangan tidak terus menyalipnya sampai lewat janji.
-    started = 0 if order.status == OrderStatus.PROCESSING else 1
-    priority = order.is_express or is_escalated(order, now, threshold_hours)
-    tier = 0 if priority else 1
-    return started, tier, order.received_at, order.id
+def processing_hours(items: Iterable[ItemLike], day: DayOps, rates: WorkRates) -> float:
+    wash_loads = dry_loads = 0
+    iron_minutes = 0.0
+    for item in items:
+        process = str(item.process)
+        loads = int(item.machine_loads or 0)
+        wash_loads += loads
+        if process in DRYER_PROCESSES:
+            dry_loads += loads
+        if process in IRONING_PROCESSES:
+            if item.weight_kg:
+                iron_minutes += float(item.weight_kg) * rates.iron_minutes_per_kg
+            else:
+                iron_minutes += int(item.qty_pcs or 0) * rates.iron_minutes_per_pcs
+    # Load dibagi ke mesin yang tersedia; mesin rusak semua (0) dianggap 1 agar tidak membagi 0.
+    wash = math.ceil(wash_loads / max(day.washers_available, 1)) * rates.wash_minutes_per_load
+    dry = math.ceil(dry_loads / max(day.dryers_available, 1)) * rates.dry_minutes_per_load
+    iron = iron_minutes / max(day.staff_on_duty, 1)
+    return (wash + dry + iron) / 60
+
+
+def hours_until(deadline: datetime, now: datetime, day_ops: DayOpsLookup) -> float:
+    """Sisa jam kerja sampai deadline; negatif bila sudah lewat."""
+    if deadline >= now:
+        return work_hours_between(now, deadline, day_ops)
+    return -work_hours_between(deadline, now, day_ops)
+
+
+@dataclass(frozen=True)
+class ScheduledOrder:
+    order: Order
+    processing_hours: float
+    # None = pesanan lama tanpa janji, ditaruh paling belakang.
+    slack_hours: float | None
+
+    @property
+    def started(self) -> bool:
+        return self.order.status == OrderStatus.PROCESSING
+
+    def rank(self) -> tuple[int, float, datetime, int]:
+        slack = math.inf if self.slack_hours is None else self.slack_hours
+        return (0 if self.started else 1, slack, self.order.received_at, self.order.id)
+
+
+def schedule_order(
+    order: Order, now: datetime, day_ops: DayOpsLookup, rates: WorkRates
+) -> ScheduledOrder:
+    hours = processing_hours(order.items, day_ops(local_date(now)), rates)
+    slack = None
+    if order.promised_ready_at is not None:
+        slack = hours_until(order.promised_ready_at, now, day_ops) - hours
+    return ScheduledOrder(order, round(hours, 2), None if slack is None else round(slack, 2))
+
+
+def schedule(
+    orders: Iterable[Order], now: datetime, day_ops: DayOpsLookup, rates: WorkRates
+) -> list[ScheduledOrder]:
+    return sorted((schedule_order(o, now, day_ops, rates) for o in orders), key=ScheduledOrder.rank)
+
+
+def active_schedule(db: Session, now: datetime | None = None) -> list[ScheduledOrder]:
+    now = now or utcnow()
+    config = load_app_config(db)
+    orders = db.scalars(select(Order).where(Order.status.in_(ACTIVE_STATUSES)))
+    return schedule(orders, now, day_ops_lookup(db, config), config.work_rates)
 
 
 def active_orders(db: Session, now: datetime | None = None) -> list[Order]:
-    now = now or utcnow()
-    threshold = get_settings().regular_escalation_hours
-    orders = db.scalars(select(Order).where(Order.status.in_(ACTIVE_STATUSES)))
-    return sorted(orders, key=lambda o: queue_rank(o, now, threshold))
-
-
-def order_content(order: Order) -> OrderContent:
-    return content_from_items(order.items, order.is_express)
-
-
-def queue_record(order: Order, ready_at: datetime | None) -> QueueRecord:
-    return QueueRecord.from_content(order.received_at, ready_at, order_content(order))
-
-
-def left_queue_at(order: Order) -> datetime | None:
-    return order.ready_at or order.cancelled_at
-
-
-def records_active_at(db: Session, at: datetime) -> list[QueueRecord]:
-    stmt = select(Order).where(
-        Order.received_at < at,
-        or_(Order.ready_at.is_(None), Order.ready_at > at),
-        or_(Order.cancelled_at.is_(None), Order.cancelled_at > at),
-    )
-    return [queue_record(o, left_queue_at(o)) for o in db.scalars(stmt)]
-
-
-def is_ahead(other: Order, order: Order, now: datetime) -> bool:
-    if other.id == order.id:
-        return False
-    return queue_rank(other, now) < queue_rank(order, now)
+    return [s.order for s in active_schedule(db, now)]

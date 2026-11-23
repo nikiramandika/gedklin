@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import CatalogGroup, CatalogUnit, Process, ServiceCatalog
-from gedklin_ml.features import MACHINE_CAPACITY_KG, count_loads, machine_loads
+from app.services.operations import MACHINE_CAPACITY_KG, count_loads, machine_loads
 
 
 class PricingError(ValueError):

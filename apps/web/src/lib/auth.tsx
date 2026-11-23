@@ -18,6 +18,8 @@ interface AuthState {
   ready: boolean;
   login: (username: string, password: string) => Promise<User>;
   logout: () => void;
+  /** Dipanggil setelah petugas mengubah profilnya sendiri. */
+  updateUser: (user: User) => void;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -62,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, ready, login, logout }}>
+    <AuthContext.Provider value={{ user, ready, login, logout, updateUser: setUser }}>
       {children}
     </AuthContext.Provider>
   );

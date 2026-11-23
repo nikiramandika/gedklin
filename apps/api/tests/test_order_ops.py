@@ -2,7 +2,7 @@ from datetime import datetime
 
 from fastapi.testclient import TestClient
 
-from gedklin_ml.features import LOCAL_TZ
+from app.services.operations import LOCAL_TZ
 from tests.conftest import PASSWORD, new_order
 
 
@@ -71,7 +71,7 @@ def test_correct_items_before_ready_and_unpaid(
     fixed = res.json()
     assert fixed["price_total"] == 25_000 + 2 * 7_000
     assert [i["weight_kg"] for i in fixed["items"]] == [9]
-    assert fixed["predicted_ready_at"] is not None
+    assert fixed["promised_ready_at"] is not None
 
     entry = client.get(
         "/activity-logs", params={"q": order["tracking_code"]}, headers=owner

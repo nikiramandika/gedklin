@@ -55,6 +55,20 @@ export interface AppSettings {
   default_close_time: string;
   /** Hari tutup rutin: 0 = Senin ... 6 = Minggu. */
   closed_weekdays: number[];
+  outlet_name: string;
+  outlet_address: string;
+  outlet_phone: string;
+  /** Lama kerja untuk penjadwalan antrean (menit). */
+  wash_minutes_per_load: number;
+  dry_minutes_per_load: number;
+  iron_minutes_per_kg: number;
+  iron_minutes_per_pcs: number;
+}
+
+export interface Outlet {
+  name: string;
+  address: string;
+  phone: string;
 }
 
 export interface ServicePromise {
@@ -116,14 +130,15 @@ export interface Order {
   status: OrderStatus;
   received_at: string;
   promised_ready_at: string | null;
-  predicted_ready_at: string | null;
   ready_at: string | null;
   picked_up_at: string | null;
-  delay_notif_count: number;
   ready_notif_sent: boolean;
   needs_followup: boolean;
   next_status: OrderStatus | null;
   queue_position: number | null;
+  /** Hanya terisi di antrean: taksiran lama pengerjaan dan sisa waktu sampai janji (jam kerja). */
+  processing_hours: number | null;
+  slack_hours: number | null;
 }
 
 export interface OrderDetail extends Order {
@@ -132,6 +147,7 @@ export interface OrderDetail extends Order {
 
 export interface Receipt {
   order: Order;
+  outlet: Outlet;
   tracking_url: string;
   whatsapp_link: string;
   message: string;
@@ -157,9 +173,11 @@ export interface WorkOrder {
   status: OrderStatus;
   received_at: string;
   promised_ready_at: string | null;
-  predicted_ready_at: string | null;
   queue_position: number;
   next_status: OrderStatus | null;
+  /** Taksiran lama pengerjaan dan sisa waktu sampai janji, dalam jam kerja. */
+  processing_hours: number;
+  slack_hours: number | null;
 }
 
 export interface TrackingItem {
@@ -176,11 +194,11 @@ export interface Tracking {
   items: TrackingItem[];
   price_total: number;
   is_paid: boolean;
+  outlet: Outlet;
   outlet_today: { is_open: boolean; open_time: string; close_time: string };
   status: OrderStatus;
   received_at: string;
   promised_ready_at: string | null;
-  predicted_ready_at: string | null;
   ready_at: string | null;
   picked_up_at: string | null;
   history: StatusHistory[];
@@ -205,14 +223,11 @@ export interface Dashboard {
   active_loads: number;
   ready_not_picked: number;
   needs_followup: number;
-  eta_mae_hours_7d: number | null;
-  eta_within_tolerance_pct_7d: number | null;
-  promise_mae_hours_7d: number | null;
+  done_7d: number;
   late_vs_promise_7d: number;
+  on_time_pct_7d: number | null;
+  avg_late_hours_7d: number | null;
   overdue_active: number;
-  eta_samples_7d: number;
-  eta_tolerance_hours: number;
-  model_version: string;
   last_7_days: { date: string; orders: number; revenue: number }[];
   status_counts: Record<string, number>;
 }

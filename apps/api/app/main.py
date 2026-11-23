@@ -15,7 +15,6 @@ from app.routers import (
     tracking,
     work,
 )
-from app.services.eta import get_predictor
 
 logging.basicConfig(level=logging.INFO)
 
@@ -42,4 +41,4 @@ app.include_router(reports.router)
 
 @app.get("/health", tags=["health"])
 def health() -> dict[str, str]:
-    return {"status": "ok", "model_version": get_predictor().model_version}
+    return {"status": "ok"}

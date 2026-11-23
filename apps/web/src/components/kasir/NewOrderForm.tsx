@@ -314,8 +314,8 @@ function SavedDialog({ receipt, now, onClose }: { receipt: Receipt | null; now: 
             </dd>
             <dt className="text-muted">Siap</dt>
             <dd className="text-right">
-              <span className="font-medium text-ink">{formatDateTime(o.predicted_ready_at)}</span>
-              {now > 0 && <span className="block text-xs text-muted">{relativeEta(o.predicted_ready_at, now)}</span>}
+              <span className="font-medium text-ink">{formatDateTime(o.promised_ready_at)}</span>
+              {now > 0 && <span className="block text-xs text-muted">{relativeEta(o.promised_ready_at, now)}</span>}
             </dd>
           </dl>
           {wa ? (

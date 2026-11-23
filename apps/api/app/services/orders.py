@@ -21,32 +21,13 @@ from app.models import (
     OrderStatus,
     OrderStatusHistory,
     PaymentMethod,
-    PredictionLog,
     User,
 )
 from app.services import pricing
 from app.services.activity import log_activity
 from app.services.app_settings import AppConfig, day_ops_lookup, load_app_config, load_promises
-from app.services.eta import PROMISE_VERSION, get_predictor
-from app.services.notifications import describe_item, format_rupiah, should_send_delay
-from app.services.queue import (
-    active_orders,
-    is_ahead,
-    order_content,
-    queue_record,
-    records_active_at,
-)
-from gedklin_ml.features import (
-    DayOpsLookup,
-    Promise,
-    add_work_hours,
-    build_features,
-    local_date,
-    promise_deadline,
-    promised_hours,
-    queue_stats,
-    summarize_queue,
-)
+from app.services.notifications import describe_item, format_rupiah
+from app.services.operations import DayOpsLookup, Promise, promise_deadline, promised_hours
 
 logger = logging.getLogger(__name__)
 
@@ -145,113 +126,24 @@ def _items_text(items: Sequence[OrderItem]) -> str:
 
 
 @dataclass
-class EtaContext:
+class PromiseContext:
     config: AppConfig
     promises: dict[str, Promise]
     day_ops: DayOpsLookup
 
     @classmethod
-    def load(cls, db: Session) -> EtaContext:
+    def load(cls, db: Session) -> PromiseContext:
         config = load_app_config(db)
         return cls(config, load_promises(db), day_ops_lookup(db, config))
 
 
-def order_promised_hours(order: Order, ctx: EtaContext) -> float:
-    return promised_hours(order_content(order), ctx.promises, ctx.config.default_promise_hours)
+def order_promised_hours(order: Order, ctx: PromiseContext) -> float:
+    return promised_hours(order.items, ctx.promises, ctx.config.default_promise_hours)
 
 
-def promised_ready_at(order: Order, ctx: EtaContext) -> datetime:
+def promised_ready_at(order: Order, ctx: PromiseContext) -> datetime:
     hours = order_promised_hours(order, ctx)
     return promise_deadline(order.received_at, hours, ctx.day_ops)
-
-
-def compute_features(
-    db: Session,
-    order: Order,
-    ctx: EtaContext,
-    active: list[Order] | None = None,
-    now: datetime | None = None,
-) -> dict[str, float]:
-    queue = queue_stats(order.received_at, records_active_at(db, order.received_at))
-    if active is not None:
-        now = now or utcnow()
-        ahead = summarize_queue(queue_record(o, None) for o in active if is_ahead(o, order, now))
-        queue = queue.max(ahead)
-    return build_features(
-        received_at=order.received_at,
-        content=order_content(order),
-        queue=queue,
-        day=ctx.day_ops(local_date(order.received_at)),
-        promised_hours=order_promised_hours(order, ctx),
-    )
-
-
-def predict_eta(
-    db: Session,
-    order: Order,
-    ctx: EtaContext,
-    active: list[Order] | None = None,
-    now: datetime | None = None,
-) -> datetime:
-    features = compute_features(db, order, ctx, active, now)
-    hours, version = get_predictor().predict_work_hours(features)
-    if hours is None:
-        eta = order.promised_ready_at or promised_ready_at(order, ctx)
-        version = PROMISE_VERSION
-    else:
-        eta = add_work_hours(order.received_at, hours, ctx.day_ops)
-
-    previous = order.predicted_ready_at
-    if previous is None or abs(eta - previous) >= timedelta(minutes=1):
-        db.add(
-            PredictionLog(
-                order_id=order.id,
-                features_json=features,
-                predicted_hours=round((eta - order.received_at) / timedelta(hours=1), 3),
-                model_version=version,
-            )
-        )
-        order.predicted_ready_at = eta
-    return order.predicted_ready_at or eta
-
-
-def latest_model_version(db: Session, order_id: int) -> str | None:
-    return db.scalar(
-        select(PredictionLog.model_version)
-        .where(PredictionLog.order_id == order_id)
-        .order_by(PredictionLog.id.desc())
-        .limit(1)
-    )
-
-
-def recompute_etas(db: Session, now: datetime | None = None) -> list[int]:
-    now = now or utcnow()
-    ctx = EtaContext.load(db)
-    active = active_orders(db, now)
-    delay_notifications: list[Notification] = []
-    for order in active:
-        before = latest_model_version(db, order.id)
-        eta = predict_eta(db, order, ctx, active, now)
-        db.flush()  # session tanpa autoflush: log prediksi baru harus terbaca
-        after = latest_model_version(db, order.id)
-        if before is not None and before != after:
-            # Model diganti: ETA bergeser bukan karena antrean, jadi tanpa WA.
-            order.last_notified_eta = eta
-            continue
-        if not order.customer.has_whatsapp:
-            # Tanpa WhatsApp tidak ada kabar mundur; ETA tetap dicatat agar tidak menumpuk.
-            order.last_notified_eta = eta
-            continue
-        if should_send_delay(order, eta):
-            order.last_notified_eta = eta
-            order.delay_notif_count += 1
-            notif = Notification(order_id=order.id, type=NotificationType.DELAY)
-            db.add(notif)
-            delay_notifications.append(notif)
-    db.commit()
-    for notif in delay_notifications:
-        enqueue_notification(notif.id)
-    return [n.order_id for n in delay_notifications]
 
 
 def upsert_customer(db: Session, name: str, phone_raw: str, has_whatsapp: bool = True) -> Customer:
@@ -308,7 +200,6 @@ def create_order(
         price_total=quote.total,
         received_at=now,
         status=OrderStatus.RECEIVED,
-        delay_notif_count=0,
         ready_notif_sent=False,
         needs_followup=False,
         created_by=user.id if user else None,
@@ -337,11 +228,7 @@ def create_order(
         f"{f', lunas {PAYMENT_LABEL[payment_method]}' if payment_method else ''})",
         entity_id=order.tracking_code,
     )
-    ctx = EtaContext.load(db)
-    order.promised_ready_at = promised_ready_at(order, ctx)
-    # ETA awal sudah tertulis di nota, jadi dianggap sudah diberitahukan.
-    order.last_notified_eta = predict_eta(db, order, ctx)
-    order.initial_predicted_ready_at = order.last_notified_eta
+    order.promised_ready_at = promised_ready_at(order, PromiseContext.load(db))
     receipt_notif = None
     if customer.has_whatsapp:
         receipt_notif = Notification(order_id=order.id, type=NotificationType.RECEIPT)
@@ -349,7 +236,6 @@ def create_order(
     db.commit()
     if receipt_notif is not None:
         enqueue_notification(receipt_notif.id)
-    recompute_etas(db, now)
     db.refresh(order)
     return order
 
@@ -422,7 +308,6 @@ def change_status(
     db.commit()
     if ready_notif is not None:
         enqueue_notification(ready_notif.id)
-    recompute_etas(db, now)
     db.refresh(order)
     return order
 
@@ -532,9 +417,7 @@ def update_items(
     items: Sequence[pricing.ItemRequest],
     is_express: bool,
     user: User | None,
-    now: datetime | None = None,
 ) -> Order:
-    now = now or utcnow()
     _check_editable(order, "dikoreksi")
     quote = quote_order(db, items, is_express)
     before_items, before_total = _items_text(order.items), order.price_total
@@ -558,14 +441,8 @@ def update_items(
         entity_id=order.tracking_code,
         changes=changes,
     )
-    ctx = EtaContext.load(db)
-    order.promised_ready_at = promised_ready_at(order, ctx)
-    order.predicted_ready_at = None
-    # Perkiraan baru dikirim ulang lewat nota, jadi tidak memicu WA.
-    order.last_notified_eta = predict_eta(db, order, ctx, active_orders(db, now), now)
-    order.initial_predicted_ready_at = order.last_notified_eta
+    order.promised_ready_at = promised_ready_at(order, PromiseContext.load(db))
     db.commit()
-    recompute_etas(db, now)
     db.refresh(order)
     return order
 
@@ -604,7 +481,6 @@ def cancel_order(
         changes={"status": [STATUS_LABEL[from_status], STATUS_LABEL[OrderStatus.CANCELLED]]},
     )
     db.commit()
-    recompute_etas(db, now)
     db.refresh(order)
     return order
 

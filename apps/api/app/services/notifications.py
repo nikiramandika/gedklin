@@ -8,13 +8,13 @@ import urllib.parse
 import urllib.request
 import uuid
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import httpx
 
 from app.config import Settings, get_settings
 from app.models import Order, OrderItem
-from gedklin_ml.features import to_local
+from app.services.operations import OutletProfile, to_local
 
 logger = logging.getLogger(__name__)
 
@@ -126,15 +126,6 @@ def get_sender(settings: Settings | None = None) -> NotificationSender:
     raise NotImplementedError(f"Adapter WA untuk provider '{provider}' belum dibuat")
 
 
-def should_send_delay(order: Order, new_eta: datetime, settings: Settings | None = None) -> bool:
-    settings = settings or get_settings()
-    if order.is_express or order.last_notified_eta is None:
-        return False
-    if order.delay_notif_count >= settings.max_delay_notifications:
-        return False
-    return new_eta > order.last_notified_eta + timedelta(hours=settings.delay_threshold_hours)
-
-
 def format_local(dt: datetime) -> str:
     days = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
     local = to_local(dt)
@@ -159,41 +150,28 @@ def tracking_url(order: Order, settings: Settings | None = None) -> str:
     return f"{settings.public_tracking_url.rstrip('/')}/{order.tracking_code}"
 
 
-def receipt_message(order: Order) -> str:
-    eta = format_local(order.predicted_ready_at) if order.predicted_ready_at else "-"
-    promise = order.promised_ready_at
-    promise_line = (
-        f"Janji standar layanan: {format_local(promise)}\n"
-        if promise and promise != order.predicted_ready_at
-        else ""
-    )
+def receipt_message(order: Order, outlet: OutletProfile) -> str:
+    eta = format_local(order.promised_ready_at) if order.promised_ready_at else "-"
+    contact = " · ".join(v for v in (outlet.address, outlet.phone) if v)
     lines = "\n".join(f"- {describe_item(i)}: {format_rupiah(i.subtotal)}" for i in order.items)
     return (
-        f"Nota Gedklin Laundry\n"
-        f"Kode: {order.tracking_code}\n"
+        f"Nota {outlet.name}\n"
+        + (f"{contact}\n" if contact else "")
+        + f"Kode: {order.tracking_code}\n"
         f"Kecepatan: {'Express' if order.is_express else 'Reguler'}\n"
         f"{lines}\n"
         f"Total: {format_rupiah(order.price_total)} "
         f"({'LUNAS' if order.is_paid else 'belum lunas, bayar saat ambil'})\n"
         + (f"Catatan: {order.notes}\n" if order.notes else "")
         + f"Perkiraan siap: {eta}\n"
-        + promise_line
         + f"Lacak: {tracking_url(order)}"
     )
 
 
-def ready_message(order: Order) -> str:
+def ready_message(order: Order, outlet: OutletProfile) -> str:
     return (
-        f"Halo Kak {order.customer.name}, cucian Anda di Gedklin Laundry sudah SIAP DIAMBIL.\n"
+        f"Halo Kak {order.customer.name}, cucian Anda di {outlet.name} sudah SIAP DIAMBIL.\n"
         f"Kode: {order.tracking_code}\n"
         f"Cek status: {tracking_url(order)}\n"
         "Terima kasih!"
-    )
-
-
-def delay_message(order: Order, new_eta: datetime) -> str:
-    return (
-        f"Halo Kak {order.customer.name}, mohon maaf antrean Gedklin Laundry sedang ramai.\n"
-        f"Perkiraan cucian Anda siap diambil menjadi {format_local(new_eta)}.\n"
-        f"Cek status: {tracking_url(order)}"
     )

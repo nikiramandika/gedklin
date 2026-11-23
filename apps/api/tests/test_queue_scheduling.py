@@ -1,121 +1,124 @@
-from datetime import datetime, timedelta
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, time, timedelta
 
-from sqlalchemy.orm import Session
+import pytest
 
-from app.db import utcnow
-from app.models import Customer, Order, OrderStatus
-from app.services.queue import active_orders, is_ahead, is_escalated
+from app.models import OrderStatus
+from app.services.operations import DEFAULT_DAY_OPS, DayOps, WorkRates
+from app.services.queue import hours_until, processing_hours, schedule
+
+RATES = WorkRates(
+    wash_minutes_per_load=60,
+    dry_minutes_per_load=60,
+    iron_minutes_per_kg=10,
+    iron_minutes_per_pcs=5,
+)
+# Selasa 20/10/2026 09.00 WIB.
+NOW = datetime(2026, 10, 20, 2, 0, tzinfo=UTC)
 
 
-def _order(
-    db: Session,
-    code: str,
-    *,
-    status: OrderStatus = OrderStatus.RECEIVED,
-    express: bool = False,
-    received_at: datetime,
-    promised_ready_at: datetime | None = None,
-) -> Order:
-    customer = db.query(Customer).first()
-    if customer is None:
-        customer = Customer(name="Pelanggan", phone_wa="628123456789")
-        db.add(customer)
-        db.flush()
-    order = Order(
-        tracking_code=code,
-        customer_id=customer.id,
-        status=status,
-        is_express=express,
-        price_total=50_000,
-        received_at=received_at,
-        promised_ready_at=promised_ready_at,
-        delay_notif_count=0,
-        ready_notif_sent=False,
-        needs_followup=False,
+def always(ops: DayOps = DEFAULT_DAY_OPS):  # noqa: ANN201
+    return lambda d: ops
+
+
+@dataclass
+class Item:
+    process: str
+    weight_kg: float | None = None
+    qty_pcs: int | None = None
+    machine_loads: int | None = None
+
+
+def kiloan(process: str, kg: float) -> Item:
+    return Item(process, weight_kg=kg, machine_loads=max(1, -(-int(kg) // 8)))
+
+
+_ids = iter(range(1, 1000))
+
+
+@dataclass
+class FakeOrder:
+    code: str
+    items: list[Item]
+    promised_ready_at: datetime | None
+    status: OrderStatus = OrderStatus.RECEIVED
+    received_at: datetime = NOW - timedelta(hours=1)
+    id: int = field(default_factory=lambda: next(_ids))
+
+
+def codes(orders: list[FakeOrder]) -> list[str]:
+    return [s.order.code for s in schedule(orders, NOW, always(), RATES)]
+
+
+def test_processing_hours_from_weight_loads_and_ironing() -> None:
+    # 20 kg CKL = 3 load: muat di 4 mesin cuci & 3 pengering, jadi 1 siklus cuci + 1 kering.
+    assert processing_hours([kiloan("CKL", 20)], DEFAULT_DAY_OPS, RATES) == 2
+    # 10 kg CKS = 2 load + setrika 10 kg x 10 menit dibagi 2 petugas = 50 menit.
+    assert processing_hours([kiloan("CKS", 10)], DEFAULT_DAY_OPS, RATES) == pytest.approx(170 / 60)
+    # Cuci saja tanpa pengering; satuan disetrika per pcs.
+    assert processing_hours([kiloan("C", 5)], DEFAULT_DAY_OPS, RATES) == 1
+    assert processing_hours([Item("SATUAN", qty_pcs=4)], DEFAULT_DAY_OPS, RATES) == pytest.approx(
+        10 / 60
     )
-    db.add(order)
-    db.commit()
-    db.refresh(order)
-    return order
 
 
-def _codes(db: Session, now: datetime) -> list[str]:
-    return [o.tracking_code for o in active_orders(db, now)]
+def test_fewer_machines_make_heavy_orders_take_longer() -> None:
+    one_washer = DayOps(washers_available=1, dryers_available=1)
+    assert processing_hours([kiloan("CKL", 20)], one_washer, RATES) == 6
 
 
-def test_processing_order_is_not_overtaken_by_express(db: Session) -> None:
-    now = utcnow()
-    started = _order(
-        db,
-        "REGPROC",
-        status=OrderStatus.PROCESSING,
-        received_at=now - timedelta(hours=3),
-        promised_ready_at=now + timedelta(hours=40),
+def test_heavy_order_near_promise_goes_before_lighter_order_with_earlier_promise() -> None:
+    # Ringan: janji 3 jam lagi, proses 2 jam -> slack 1 jam.
+    light = FakeOrder("RINGAN", [kiloan("CKL", 4)], NOW + timedelta(hours=3))
+    # Berat: janji 4,5 jam lagi, proses 4 jam (cuci, kering, setrika 24 kg) -> slack 0,5 jam.
+    heavy = FakeOrder("BERAT", [kiloan("CKS", 24)], NOW + timedelta(hours=4.5))
+    entries = schedule([light, heavy], NOW, always(), RATES)
+    assert [e.order.code for e in entries] == ["BERAT", "RINGAN"]
+    assert [e.slack_hours for e in entries] == [0.5, 1.0]
+    assert [e.processing_hours for e in entries] == [4.0, 2.0]
+
+
+def test_express_needs_no_special_lane_because_its_promise_is_shorter() -> None:
+    regular = FakeOrder("REG", [kiloan("CKL", 5)], NOW + timedelta(hours=47))
+    express = FakeOrder("EXP", [kiloan("CKL", 5)], NOW + timedelta(hours=23))
+    assert codes([regular, express]) == ["EXP", "REG"]
+
+
+def test_regular_close_to_promise_goes_before_new_express() -> None:
+    regular = FakeOrder("REGMEPET", [kiloan("CKL", 5)], NOW + timedelta(hours=3))
+    express = FakeOrder("EXPBARU", [kiloan("CKL", 5)], NOW + timedelta(hours=24))
+    assert codes([express, regular]) == ["REGMEPET", "EXPBARU"]
+
+
+def test_processing_order_is_not_overtaken() -> None:
+    started = FakeOrder(
+        "PROSES", [kiloan("CKL", 5)], NOW + timedelta(hours=40), status=OrderStatus.PROCESSING
     )
-    express = _order(
-        db,
-        "EXPREC",
-        express=True,
-        received_at=now - timedelta(minutes=10),
-        promised_ready_at=now + timedelta(hours=20),
-    )
-    assert is_ahead(started, express, now)
-    assert not is_ahead(express, started, now)
-    assert _codes(db, now) == ["REGPROC", "EXPREC"]
+    urgent = FakeOrder("MENDESAK", [kiloan("CKL", 5)], NOW + timedelta(hours=1))
+    assert codes([urgent, started]) == ["PROSES", "MENDESAK"]
 
 
-def test_regular_near_promise_joins_express_tier_in_fifo_order(db: Session) -> None:
-    now = utcnow()
-    _order(
-        db,
-        "REGJAUH",
-        received_at=now - timedelta(hours=10),
-        promised_ready_at=now + timedelta(hours=60),
-    )
-    near = _order(
-        db,
-        "REGDEKAT",
-        received_at=now - timedelta(hours=5),
-        promised_ready_at=now + timedelta(hours=6),
-    )
-    express = _order(
-        db,
-        "EXP",
-        express=True,
-        received_at=now - timedelta(hours=1),
-        promised_ready_at=now + timedelta(hours=23),
-    )
-    assert is_escalated(near, now)
-    # REGDEKAT masuk lebih dulu daripada EXP, jadi tidak tersalip; REGJAUH tetap di belakang.
-    assert is_ahead(near, express, now)
-    assert _codes(db, now) == ["REGDEKAT", "EXP", "REGJAUH"]
+def test_overdue_orders_have_negative_slack_and_most_late_first() -> None:
+    late = FakeOrder("TELAT2", [kiloan("CKL", 5)], NOW - timedelta(minutes=30))
+    later = FakeOrder("TELAT1", [kiloan("CKL", 5)], NOW - timedelta(minutes=10))
+    entries = schedule([later, late], NOW, always(), RATES)
+    assert [e.order.code for e in entries] == ["TELAT2", "TELAT1"]
+    assert entries[0].slack_hours == pytest.approx(-2.5)
 
 
-def test_express_still_ahead_of_escalated_regular_that_arrived_later(db: Session) -> None:
-    now = utcnow()
-    _order(
-        db,
-        "EXPAWAL",
-        express=True,
-        received_at=now - timedelta(hours=6),
-        promised_ready_at=now + timedelta(hours=18),
-    )
-    _order(
-        db,
-        "REGDEKAT",
-        received_at=now - timedelta(hours=2),
-        promised_ready_at=now + timedelta(hours=4),
-    )
-    assert _codes(db, now) == ["EXPAWAL", "REGDEKAT"]
+def test_orders_without_promise_go_last_and_ties_are_fifo() -> None:
+    legacy = FakeOrder("LAMA", [kiloan("CKL", 5)], None, received_at=NOW - timedelta(days=2))
+    first = FakeOrder("A", [kiloan("CKL", 5)], NOW + timedelta(hours=10), received_at=NOW)
+    second = FakeOrder("B", [kiloan("CKL", 5)], NOW + timedelta(hours=10), received_at=NOW)
+    second.received_at = NOW + timedelta(minutes=1)
+    assert codes([legacy, second, first]) == ["A", "B", "LAMA"]
 
 
-def test_regular_past_promise_stays_escalated(db: Session) -> None:
-    now = utcnow()
-    late = _order(
-        db,
-        "REGLEWAT",
-        received_at=now - timedelta(hours=60),
-        promised_ready_at=now - timedelta(hours=2),
-    )
-    assert is_escalated(late, now)
-    assert not is_escalated(late, now - timedelta(hours=20))
+def test_slack_counts_only_open_hours() -> None:
+    # Selasa 16.00 -> Rabu 09.00: 1 jam (16-17) + 1 jam (08-09).
+    tuesday_4pm = datetime(2026, 10, 20, 9, 0, tzinfo=UTC)
+    wednesday_9am = datetime(2026, 10, 21, 2, 0, tzinfo=UTC)
+    assert hours_until(wednesday_9am, tuesday_4pm, always()) == 2
+    assert hours_until(tuesday_4pm, wednesday_9am, always()) == -2
+    short = DayOps(close_time=time(12, 0))
+    assert hours_until(wednesday_9am, tuesday_4pm, always(short)) == 1

@@ -198,16 +198,14 @@ export function relativeEta(iso: string | null, now: number): string {
   return diff >= 0 ? `${text} lagi` : `lewat ${text}`;
 }
 
-// "late" diukur dari janji standar, bukan dari perkiraan.
-export type EtaState = "late" | "due" | "on_track";
+export type EtaState = "late" | "on_track";
 
 export function etaState(
-  o: { promised_ready_at: string | null; predicted_ready_at: string | null; ready_at: string | null },
+  o: { promised_ready_at: string | null; ready_at: string | null },
   now: number,
 ): EtaState | null {
   if (o.ready_at) return null;
   if (!now) return "on_track";
   if (o.promised_ready_at && new Date(o.promised_ready_at).getTime() < now) return "late";
-  if (o.predicted_ready_at && new Date(o.predicted_ready_at).getTime() < now) return "due";
   return "on_track";
 }

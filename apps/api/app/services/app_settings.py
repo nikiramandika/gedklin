@@ -8,13 +8,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import AppSetting, DailyOperation, ServicePromise
-from gedklin_ml.features import (
+from app.services.operations import (
     DEFAULT_DAY_OPS,
+    DEFAULT_OUTLET,
     DEFAULT_PROMISE_HOURS,
+    DEFAULT_WORK_RATES,
     MACHINE_CAPACITY_KG,
     DayOps,
     DayOpsLookup,
+    OutletProfile,
     Promise,
+    WorkRates,
 )
 
 DEFAULTS: dict[str, str] = {
@@ -28,6 +32,15 @@ DEFAULTS: dict[str, str] = {
     "default_close_time": DEFAULT_DAY_OPS.close_time.strftime("%H:%M"),
     # Hari tutup rutin (0 = Senin ... 6 = Minggu), dipisah koma. Kosong = buka tiap hari.
     "closed_weekdays": "",
+    # Tampil di nota, WhatsApp, dan halaman lacak.
+    "outlet_name": DEFAULT_OUTLET.name,
+    "outlet_address": DEFAULT_OUTLET.address,
+    "outlet_phone": DEFAULT_OUTLET.phone,
+    # Lama kerja untuk penjadwalan antrean LST (menit).
+    "wash_minutes_per_load": f"{DEFAULT_WORK_RATES.wash_minutes_per_load:g}",
+    "dry_minutes_per_load": f"{DEFAULT_WORK_RATES.dry_minutes_per_load:g}",
+    "iron_minutes_per_kg": f"{DEFAULT_WORK_RATES.iron_minutes_per_kg:g}",
+    "iron_minutes_per_pcs": f"{DEFAULT_WORK_RATES.iron_minutes_per_pcs:g}",
 }
 
 
@@ -38,6 +51,8 @@ class AppConfig:
     default_promise_hours: float
     default_day: DayOps
     closed_weekdays: frozenset[int] = frozenset()
+    outlet: OutletProfile = DEFAULT_OUTLET
+    work_rates: WorkRates = DEFAULT_WORK_RATES
 
 
 def _parse_time(value: str) -> time:
@@ -68,6 +83,15 @@ def load_app_config(db: Session) -> AppConfig:
             close_time=_parse_time(v["default_close_time"]),
         ),
         closed_weekdays=parse_weekdays(v["closed_weekdays"]),
+        outlet=OutletProfile(
+            name=v["outlet_name"], address=v["outlet_address"], phone=v["outlet_phone"]
+        ),
+        work_rates=WorkRates(
+            wash_minutes_per_load=float(v["wash_minutes_per_load"]),
+            dry_minutes_per_load=float(v["dry_minutes_per_load"]),
+            iron_minutes_per_kg=float(v["iron_minutes_per_kg"]),
+            iron_minutes_per_pcs=float(v["iron_minutes_per_pcs"]),
+        ),
     )
 
 

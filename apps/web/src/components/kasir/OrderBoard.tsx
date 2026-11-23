@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
 import { STATUS_ACTION, etaState, formatDateTime, formatRupiah, relativeEta, summarizeItems } from "@/lib/format";
+import { isUrgent } from "@/lib/priority";
 import type { Order } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 
@@ -26,6 +27,7 @@ import {
   Loading,
   PaymentBadge,
   StatusBadge,
+  UrgentBadge,
   inputClass,
   tileClass,
   tileListClass,
@@ -110,7 +112,8 @@ export function useBoardData(refreshKey: number) {
     return () => clearInterval(id);
   }, [reload, refreshKey]);
 
-  // Urutan antrean dari server (PROCESSING dulu, Express + Reguler mepet janji, lalu Reguler; FIFO) dipertahankan di tiap tab.
+  // Urutan antrean dari server dipertahankan: yang sedang diproses dulu, lalu yang paling mendesak
+  // (sisa waktu sampai janji dikurangi lama pengerjaan dari berat; Least Slack Time).
   const received = queue?.filter((o) => o.status === "RECEIVED") ?? null;
   const processing = queue?.filter((o) => o.status === "PROCESSING") ?? null;
 
@@ -445,9 +448,10 @@ function OrderRow({
     setStampKey((k) => k + 1);
   }
 
-  // Terlambat diukur dari janji standar di nota, bukan dari perkiraan.
+  // Terlambat diukur dari janji standar di nota.
   const timing = etaState(o, now);
   const overdue = timing === "late";
+  const urgent = showPosition && isUrgent(o, now);
   const waitingDays = o.ready_at && now > 0 ? Math.floor((now - new Date(o.ready_at).getTime()) / DAY_MS) : 0;
 
   async function run() {
@@ -464,12 +468,10 @@ function OrderRow({
       }
     : overdue
       ? { main: "Terlambat", sub: `janji ${formatDateTime(o.promised_ready_at)}` }
-      : timing === "due"
-        ? { main: "Segera siap", sub: formatDateTime(o.predicted_ready_at) }
-        : {
-            main: formatDateTime(o.predicted_ready_at),
-            sub: now > 0 ? relativeEta(o.predicted_ready_at, now) : null,
-          };
+      : {
+          main: formatDateTime(o.promised_ready_at),
+          sub: now > 0 ? relativeEta(o.promised_ready_at, now) : null,
+        };
   const etaTone = overdue ? "text-danger-700" : waitingDays >= 3 ? "text-warn-700" : "text-ink";
   const restCol = showPosition ? "col-start-2" : "col-start-1";
 
@@ -492,7 +494,7 @@ function OrderRow({
     >
       {showPosition && (
         <span
-          className={`tabular pt-0.5 text-right text-sm font-medium @xl:pt-0 ${o.is_express ? "text-danger-700" : "text-faint"}`}
+          className={`tabular pt-0.5 text-right text-sm font-medium @xl:pt-0 text-faint`}
           aria-label={`Urutan ${o.queue_position}`}
         >
           {o.queue_position}
@@ -509,6 +511,7 @@ function OrderRow({
           >
             {o.customer.name}
           </button>
+          {urgent && <UrgentBadge />}
           {o.is_express && <ExpressBadge />}
           {o.ready_at && <PaymentBadge paid={o.is_paid} />}
           {!o.customer.has_whatsapp && (

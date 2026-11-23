@@ -7,7 +7,6 @@ name: gedklin
 x-api-env: &api-env
   DATABASE_URL: postgresql+psycopg://gedklin:${POSTGRES_PASSWORD}@db:5432/gedklin
   REDIS_URL: redis://redis:6379/0
-  MODEL_PATH: /srv/ml/models/best_model.joblib
   CELERY_TASK_ALWAYS_EAGER: "false"
   # Dipakai bila WA_PROVIDER=openwa (service openwa di bawah).
   OPENWA_URL: http://openwa:2785
@@ -68,8 +67,6 @@ services:
       sh -c "alembic upgrade head && python -m app.seed &&
       uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
       --proxy-headers --forwarded-allow-ips='*'"
-    volumes:
-      - ./models:/srv/ml/models:ro
     depends_on:
       db:
         condition: service_healthy
@@ -86,8 +83,6 @@ services:
     command: >
       celery -A app.workers worker -B --concurrency=1 --loglevel=info
       -s /tmp/celerybeat-schedule
-    volumes:
-      - ./models:/srv/ml/models:ro
     depends_on:
       - api
     mem_limit: 400m

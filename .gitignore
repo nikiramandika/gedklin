@@ -21,15 +21,8 @@ celerybeat.pid
 !.env.example
 !.env.prod.example
 
-# Data mentah mitra dan hasil olahan tidak di-commit
-ml/data/raw/*
-ml/data/processed/*
-!ml/data/**/.gitkeep
-
-# Artefak model dilatih ulang lokal / di server; laporan dari data dummy
-ml/models/*.joblib
-ml/models/metadata.json
-ml/reports/*_dummy*
+# Keluaran skrip uji analisis AI (python -m app.uji_ai)
+hasil-uji-ai*.md
 
 # OS / editor
 .DS_Store

@@ -13,6 +13,7 @@ from app.models import (
     Role,
     User,
 )
+from app.routers.tracking import outlet_out
 from app.schemas import (
     CancelIn,
     CustomerOut,
@@ -30,9 +31,10 @@ from app.schemas import (
 )
 from app.security import require_roles
 from app.services import orders as order_service
+from app.services.app_settings import load_app_config
 from app.services.notifications import receipt_message, tracking_url
 from app.services.pricing import ItemRequest
-from app.services.queue import active_orders
+from app.services.queue import active_schedule
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 staff = require_roles(Role.CASHIER, Role.OWNER)
@@ -90,8 +92,14 @@ def create_order(
 
 @router.get("/queue", response_model=list[OrderOut])
 def queue(db: Session = Depends(get_db), _: User = Depends(staff)) -> list[OrderOut]:
-    """Antrean aktif: yang sedang diproses, Express + Reguler mepet janji (FIFO), lalu Reguler."""
-    return [to_out(o, i) for i, o in enumerate(active_orders(db), start=1)]
+    """Antrean aktif: yang sedang diproses, lalu slack terkecil (Least Slack Time)."""
+    out = []
+    for i, entry in enumerate(active_schedule(db), start=1):
+        item = to_out(entry.order, i)
+        item.processing_hours = entry.processing_hours
+        item.slack_hours = entry.slack_hours
+        out.append(item)
+    return out
 
 
 @router.get("", response_model=list[OrderOut])
@@ -230,9 +238,11 @@ def receipt(order_id: int, db: Session = Depends(get_db), _: User = Depends(staf
     """Nota digital. Nota sudah dikirim otomatis lewat gateway saat pesanan dibuat;
     link WA di sini untuk kirim ulang manual oleh kasir."""
     order = get_order_or_404(db, order_id)
-    message = receipt_message(order)
+    outlet = load_app_config(db).outlet
+    message = receipt_message(order, outlet)
     return ReceiptOut(
         order=to_out(order),
+        outlet=outlet_out(outlet),
         tracking_url=tracking_url(order),
         whatsapp_link=f"https://wa.me/{order.customer.phone_wa}?text={quote(message)}",
         message=message,

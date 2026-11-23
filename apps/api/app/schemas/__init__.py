@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, time
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models import (
     CatalogGroup,
@@ -125,6 +125,13 @@ class AppSettingsOut(BaseModel):
     default_open_time: time
     default_close_time: time
     closed_weekdays: list[int]
+    outlet_name: str
+    outlet_address: str
+    outlet_phone: str
+    wash_minutes_per_load: float
+    dry_minutes_per_load: float
+    iron_minutes_per_kg: float
+    iron_minutes_per_pcs: float
 
 
 class AppSettingsIn(BaseModel):
@@ -140,6 +147,25 @@ class AppSettingsIn(BaseModel):
     closed_weekdays: list[Annotated[int, Field(ge=0, le=6)]] | None = Field(
         default=None, max_length=7
     )
+    outlet_name: str | None = Field(default=None, min_length=1, max_length=60)
+    outlet_address: str | None = Field(default=None, max_length=200)
+    outlet_phone: str | None = Field(default=None, max_length=30)
+    wash_minutes_per_load: float | None = Field(default=None, gt=0, le=600)
+    dry_minutes_per_load: float | None = Field(default=None, ge=0, le=600)
+    iron_minutes_per_kg: float | None = Field(default=None, ge=0, le=120)
+    iron_minutes_per_pcs: float | None = Field(default=None, ge=0, le=120)
+
+    # Dirapikan sebelum dicek panjangnya, supaya nama berisi spasi saja ditolak.
+    @field_validator("outlet_name", "outlet_address", "outlet_phone", mode="before")
+    @classmethod
+    def _strip(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+
+class OutletOut(BaseModel):
+    name: str
+    address: str
+    phone: str
 
 
 class ServicePromiseOut(ORM):
@@ -275,14 +301,15 @@ class OrderOut(ORM):
     status: OrderStatus
     received_at: datetime
     promised_ready_at: datetime | None
-    predicted_ready_at: datetime | None
     ready_at: datetime | None
     picked_up_at: datetime | None
-    delay_notif_count: int
     ready_notif_sent: bool
     needs_followup: bool
     next_status: OrderStatus | None = None
     queue_position: int | None = None
+    # Hanya di antrean (LST): taksiran waktu proses dan kelonggaran sampai janji, jam kerja.
+    processing_hours: float | None = None
+    slack_hours: float | None = None
 
 
 class OrderDetailOut(OrderOut):
@@ -310,9 +337,10 @@ class WorkOrderOut(BaseModel):
     status: OrderStatus
     received_at: datetime
     promised_ready_at: datetime | None
-    predicted_ready_at: datetime | None
     queue_position: int
     next_status: OrderStatus | None
+    processing_hours: float
+    slack_hours: float | None
 
 
 class WorkStatusIn(BaseModel):
@@ -322,6 +350,7 @@ class WorkStatusIn(BaseModel):
 
 class ReceiptOut(BaseModel):
     order: OrderOut
+    outlet: OutletOut
     tracking_url: str
     whatsapp_link: str
     message: str
@@ -358,11 +387,11 @@ class TrackingOut(BaseModel):
     items: list[TrackingItemOut]
     price_total: int
     is_paid: bool
+    outlet: OutletOut
     outlet_today: OutletHoursOut
     status: OrderStatus
     received_at: datetime
     promised_ready_at: datetime | None
-    predicted_ready_at: datetime | None
     ready_at: datetime | None
     picked_up_at: datetime | None
     history: list[PublicStatusHistoryOut]
@@ -463,6 +492,15 @@ class AiAnalysisOut(ORM):
     created_at: datetime
 
 
+class ProfileIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _strip(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+
 class ChangePasswordIn(BaseModel):
     current_password: str
     new_password: str = Field(min_length=8)
@@ -494,13 +532,11 @@ class DashboardOut(BaseModel):
     active_loads: int
     ready_not_picked: int
     needs_followup: int
-    eta_mae_hours_7d: float | None
-    eta_within_tolerance_pct_7d: float | None
-    promise_mae_hours_7d: float | None
-    late_vs_promise_7d: int = 0
-    overdue_active: int = 0
-    eta_samples_7d: int
-    eta_tolerance_hours: float
-    model_version: str
+    # Ketepatan janji 7 hari terakhir dari pesanan yang sudah siap.
+    done_7d: int
+    late_vs_promise_7d: int
+    on_time_pct_7d: float | None
+    avg_late_hours_7d: float | None
+    overdue_active: int
     last_7_days: list[DailyCount]
     status_counts: dict[str, int]

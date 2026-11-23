@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db, utcnow
 from app.models import ActivityLog, User
-from app.schemas import ChangePasswordIn, LoginIn, TokenOut, UserOut
+from app.schemas import ChangePasswordIn, LoginIn, ProfileIn, TokenOut, UserOut
 from app.security import create_access_token, get_current_user, hash_password, verify_password
 from app.services.activity import log_activity
 
@@ -54,6 +54,26 @@ def login(data: LoginIn, db: Session = Depends(get_db)) -> TokenOut:
 
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user)) -> User:
+    return user
+
+
+@router.put("/me", response_model=UserOut)
+def update_me(
+    data: ProfileIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> User:
+    """Petugas mengganti nama tampilannya sendiri; username dan role tetap urusan pemilik."""
+    if data.name != user.name:
+        log_activity(
+            db,
+            user,
+            "user.profile",
+            f"Mengganti nama sendiri menjadi {data.name}",
+            entity_id=user.id,
+            changes={"nama": [user.name, data.name]},
+        )
+        user.name = data.name
+        db.commit()
+        db.refresh(user)
     return user
 
 

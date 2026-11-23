@@ -30,26 +30,22 @@ from app.models import (
     OrderStatus,
     OrderStatusHistory,
     PaymentMethod,
-    PredictionLog,
     Role,
     User,
 )
 from app.security import hash_password
 from app.services import pricing
 from app.services.app_settings import load_app_config
-from app.services.eta import get_predictor
 from app.services.notifications import format_rupiah
+from app.services.operations import LOCAL_TZ, shift_into_open_hours
 from app.services.orders import (
     PAYMENT_LABEL,
     STATUS_LABEL,
-    EtaContext,
+    PromiseContext,
     _order_items,
     generate_tracking_code,
-    predict_eta,
     promised_ready_at,
-    recompute_etas,
 )
-from gedklin_ml.features import LOCAL_TZ, shift_into_open_hours
 
 DAYS = 60
 # Mitra tutup setiap hari Minggu (weekday 6): tidak ada pesanan dan operasional ditandai tutup.
@@ -275,8 +271,7 @@ def seed_demo(db: Session, seed: int = 7) -> int:
     regulars = customers[:35]
     _daily_operations(db, rng, today)
     config = load_app_config(db)
-    ctx = EtaContext.load(db)
-    model_version = get_predictor().model_version
+    ctx = PromiseContext.load(db)
     methods = [PaymentMethod.CASH, PaymentMethod.QRIS, PaymentMethod.TRANSFER]
     racks = [f"{r}-{n:02d}" for r in "ABCD" for n in range(1, 13)]
     created = 0
@@ -315,7 +310,6 @@ def seed_demo(db: Session, seed: int = 7) -> int:
                 price_total=quote.total,
                 received_at=received,
                 status=OrderStatus.RECEIVED,
-                delay_notif_count=0,
                 ready_notif_sent=False,
                 needs_followup=False,
                 created_by=cashier.id,
@@ -378,30 +372,13 @@ def seed_demo(db: Session, seed: int = 7) -> int:
                 continue
 
             if ready > now:
-                # Masih di antrean: ETA dihitung model seperti pesanan sungguhan.
+                # Masih di antrean.
                 if processing < now:
                     order.status = OrderStatus.PROCESSING
                     steps.append((OrderStatus.PROCESSING, processing, rng.choice(workers)))
                 _history(db, order, steps)
-                eta = predict_eta(db, order, ctx)
-                order.initial_predicted_ready_at = order.last_notified_eta = eta
                 continue
 
-            initial = shift_into_open_hours(ready + timedelta(hours=rng.gauss(0, 2.2)), ctx.day_ops)
-            order.initial_predicted_ready_at = order.predicted_ready_at = initial
-            order.last_notified_eta = initial
-            db.add(
-                PredictionLog(
-                    order_id=order.id,
-                    features_json={},
-                    predicted_hours=round((initial - received) / timedelta(hours=1), 3),
-                    model_version=model_version,
-                    created_at=received,
-                )
-            )
-            if ready > initial + timedelta(hours=6) and customer.has_whatsapp:
-                order.delay_notif_count = 1
-                _notify(db, order, NotificationType.DELAY, initial - timedelta(hours=3), rng)
             order.status = OrderStatus.READY
             order.ready_at = ready
             order.rack_location = rng.choice(racks)
@@ -440,14 +417,13 @@ def seed_demo(db: Session, seed: int = 7) -> int:
         db.flush()
     db.add_all(sorted(db.info.pop("demo_logs", []), key=lambda log: log.created_at))
     db.commit()
-    recompute_etas(db, now)
     return created
 
 
 def remove_demo(db: Session) -> int:
     ids = list(db.scalars(select(Order.id).join(Customer).where(_demo_customer())))
     codes = list(db.scalars(select(Order.tracking_code).where(Order.id.in_(ids))))
-    for model in (Notification, PredictionLog, OrderStatusHistory, OrderItem):
+    for model in (Notification, OrderStatusHistory, OrderItem):
         db.execute(delete(model).where(model.order_id.in_(ids)))
     db.execute(delete(ActivityLog).where(ActivityLog.entity_id.in_(codes)))
     db.execute(delete(Order).where(Order.id.in_(ids)))

@@ -48,8 +48,9 @@ export function ReceiptView({ id }: { id: string }) {
           <>
             <article className="rounded-xl bg-white px-5 py-6 font-mono text-xs leading-relaxed text-black shadow-raise ring-1 ring-line print:rounded-none print:px-0 print:py-0 print:shadow-none print:ring-0">
               <div className="text-center">
-                <p className="text-base font-semibold tracking-wide">GEDKLIN LAUNDRY</p>
-                <p className="text-xs">Medan</p>
+                <p className="text-base font-semibold tracking-wide">{receipt.outlet.name.toUpperCase()}</p>
+                {receipt.outlet.address && <p className="text-xs">{receipt.outlet.address}</p>}
+                {receipt.outlet.phone && <p className="text-xs">{receipt.outlet.phone}</p>}
               </div>
               {receipt.order.status === "CANCELLED" && (
                 <p className="mt-2 border border-black py-1 text-center font-semibold">PESANAN DIBATALKAN</p>
@@ -80,11 +81,7 @@ export function ReceiptView({ id }: { id: string }) {
               )}
               <Divider />
               <p className="text-xs">Perkiraan siap diambil:</p>
-              <p className="font-semibold">{formatDateTime(receipt.order.predicted_ready_at)}</p>
-              {receipt.order.promised_ready_at &&
-                receipt.order.promised_ready_at !== receipt.order.predicted_ready_at && (
-                  <p className="text-xs">Janji standar layanan: {formatDateTime(receipt.order.promised_ready_at)}</p>
-                )}
+              <p className="font-semibold">{formatDateTime(receipt.order.promised_ready_at)}</p>
               <p className="mt-2 text-xs">Lacak status cucian:</p>
               <p className="break-all text-xs">{receipt.tracking_url}</p>
               <p className="mt-4 text-center text-xs">Terima kasih!</p>

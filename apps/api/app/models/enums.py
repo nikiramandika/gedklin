@@ -54,6 +54,7 @@ class PaymentMethod(StrEnum):
 class NotificationType(StrEnum):
     RECEIPT = "RECEIPT"
     READY = "READY"
+    # Tidak dibuat lagi sejak prediksi ML dihapus; tetap ada untuk riwayat lama.
     DELAY = "DELAY"
 
 

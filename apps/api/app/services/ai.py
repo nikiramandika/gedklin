@@ -132,7 +132,7 @@ def _provider_message(res: httpx.Response) -> str:
 
 def chat(config: AiConfig, system: str, user: str) -> str:
     if not config.api_key:
-        raise AiError("API key AI belum diisi. Buka Pengaturan AI di halaman Analisis AI.")
+        raise AiError("API key AI belum diisi. Isi di Pengaturan → Analisis AI.")
     provider = PROVIDERS[config.provider]
     headers = {"Authorization": f"Bearer {config.api_key}"}
     if config.provider == "openrouter":

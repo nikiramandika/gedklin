@@ -15,6 +15,7 @@ import {
   IconButton,
   Loading,
   PageHeader,
+  UrgentBadge,
   inputClass,
   tabClass,
   tabListClass,
@@ -23,6 +24,7 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { etaState, formatDateTime, formatKg, relativeEta } from "@/lib/format";
+import { isUrgent, workDuration } from "@/lib/priority";
 import type { Role, WorkItem, WorkOrder } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 
@@ -110,7 +112,7 @@ export default function AntreanPage() {
     <AppShell roles={ROLES}>
       <PageHeader
         title="Antrean Cucian"
-        description="Kerjakan dari nomor paling kecil. Express dan cucian yang mepet janji sudah otomatis naik ke atas."
+        description="Kerjakan dari nomor paling kecil."
       />
       {error && <ErrorText message={error} />}
       {!orders ? (
@@ -240,6 +242,7 @@ function WorkRow({
   const [error, setError] = useState<string | null>(null);
   const timing = etaState({ ...o, ready_at: null }, now);
   const late = timing === "late";
+  const urgent = isUrgent(o, now);
 
   async function start() {
     setBusy(true);
@@ -260,7 +263,7 @@ function WorkRow({
       }`}
     >
       <span
-        className={`tabular display self-start pt-0.5 text-2xl leading-none ${o.is_express ? "text-danger-700" : "text-faint"}`}
+        className={`tabular display self-start pt-0.5 text-2xl leading-none text-faint`}
         aria-label={`Urutan ${o.queue_position}`}
       >
         {o.queue_position}
@@ -269,6 +272,7 @@ function WorkRow({
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <span className="serial text-lg font-semibold tracking-[0.08em] text-ink">{o.tracking_code}</span>
+          {urgent && <UrgentBadge />}
           {o.is_express && <ExpressBadge />}
         </div>
         <p className="text-sm text-muted">{o.customer_name}</p>
@@ -294,11 +298,14 @@ function WorkRow({
             </span>
           ) : (
             <span className="tabular">
-              Target {formatDateTime(o.predicted_ready_at ?? o.promised_ready_at)}
-              {now > 0 && ` · ${relativeEta(o.predicted_ready_at ?? o.promised_ready_at, now)}`}
+              Janji {formatDateTime(o.promised_ready_at)}
+              {now > 0 && ` · ${relativeEta(o.promised_ready_at, now)}`}
             </span>
           )}
         </p>
+        {o.status === "RECEIVED" && (
+          <p className="tabular mt-1 pl-5 text-xs text-muted">Lama kerja {workDuration(o.processing_hours)}</p>
+        )}
       </div>
 
       <div className="col-start-2 sm:col-start-auto">

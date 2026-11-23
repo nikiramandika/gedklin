@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 
-import { AiSettingsDrawer, Markdown } from "@/components/ai";
+import { Markdown } from "@/components/ai";
 import { AppShell } from "@/components/AppShell";
 import { IconArrowLeft, IconHistory, IconKey, IconSparkles, IconTrash } from "@/components/icons";
 import { ConfirmDialog, useToast } from "@/components/overlay";
@@ -36,7 +36,7 @@ const SUGGESTIONS = [
 export default function AnalisisPage() {
   const [settings, setSettings] = useState<AiSettings | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
-  const [editing, setEditing] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     api<AiSettings>("/settings/ai")
@@ -48,17 +48,17 @@ export default function AnalisisPage() {
     <AppShell roles={ROLES}>
       <PageHeader
         title="Analisis AI"
-        description="Ringkasan dan saran dari data laporan. Yang dikirim ke AI hanya angka ringkasan, tanpa data pelanggan."
+        description="Ringkasan dan saran dari data laporan."
         actions={
           <>
             <Link href="/dasbor/laporan" className={buttonClass("secondary")}>
               <IconArrowLeft size={18} />
               Laporan
             </Link>
-            <Button variant="secondary" onClick={() => setEditing(true)} disabled={!settings}>
+            <Link href="/pengaturan#ai" className={buttonClass("secondary")}>
               <IconKey size={18} />
               Pengaturan AI
-            </Button>
+            </Link>
           </>
         }
       />
@@ -71,13 +71,8 @@ export default function AnalisisPage() {
           </Card>
         }
       >
-        <AnalysisContent settings={settings} settingsError={settingsError} onConfigure={() => setEditing(true)} />
+        <AnalysisContent settings={settings} settingsError={settingsError} onConfigure={() => router.push("/pengaturan#ai")} />
       </Suspense>
-
-      {/* Dipasang hanya saat dibuka supaya form selalu mulai dari pengaturan tersimpan. */}
-      {settings && editing && (
-        <AiSettingsDrawer settings={settings} onClose={() => setEditing(false)} onSaved={setSettings} />
-      )}
     </AppShell>
   );
 }
@@ -183,7 +178,7 @@ function AnalysisContent({
                 </Button>
               }
             >
-              Isi API key Gemini atau OpenRouter dulu di Pengaturan AI.
+              Analisis AI belum aktif. Isi API key di Pengaturan.
             </Alert>
           ) : (
             <div className="space-y-3">

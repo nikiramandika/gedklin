@@ -21,7 +21,7 @@ from app.models import (
 )
 from app.security import hash_password
 from app.services.app_settings import format_weekdays
-from gedklin_ml.features import MACHINE_CAPACITY_KG
+from app.services.operations import MACHINE_CAPACITY_KG
 
 CATALOG_PATH = Path(__file__).resolve().parents[1] / "seed" / "price_catalog.json"
 SECTIONS = ("kiloan", "khusus", "satuan", "dry_clean")

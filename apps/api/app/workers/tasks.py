@@ -8,9 +8,9 @@ from sqlalchemy import select
 
 from app.db import SessionLocal, utcnow
 from app.models import Notification, NotificationStatus, NotificationType, Order
+from app.services.app_settings import load_app_config
 from app.services.notifications import (
     SendDeferred,
-    delay_message,
     get_sender,
     ready_message,
     receipt_message,
@@ -44,11 +44,15 @@ def send_notification(self: Task, notification_id: int) -> str:
             return "no-whatsapp"
 
         if notif.type == NotificationType.RECEIPT:
-            message = receipt_message(order)
+            message = receipt_message(order, load_app_config(db).outlet)
         elif notif.type == NotificationType.READY:
-            message = ready_message(order)
+            message = ready_message(order, load_app_config(db).outlet)
         else:
-            message = delay_message(order, order.last_notified_eta or order.predicted_ready_at)
+            # Kabar "perkiraan mundur" sisa prediksi ML lama: tidak dikirim lagi.
+            notif.status = NotificationStatus.FAILED
+            notif.error = "Jenis notifikasi sudah tidak dipakai"
+            db.commit()
+            return "obsolete"
 
         try:
             msg_id = get_sender().send(order.customer.phone_wa, message)

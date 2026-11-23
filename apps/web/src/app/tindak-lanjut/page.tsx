@@ -19,7 +19,7 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { displayPhone, formatDateTime, formatRupiah, summarizeItems } from "@/lib/format";
-import type { Order, Role } from "@/lib/types";
+import type { Order, Outlet, Role } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 
 const ROLES: Role[] = ["cashier", "owner"];
@@ -31,10 +31,10 @@ const readyDate = new Intl.DateTimeFormat("id-ID", {
 });
 
 // Pesan pembuka untuk kasir; tetap bisa diubah di WhatsApp sebelum dikirim.
-function reminderLink(o: Order): string {
+function reminderLink(o: Order, outletName: string): string {
   const since = o.ready_at ? ` sejak ${readyDate.format(new Date(o.ready_at))}` : "";
   const bill = o.is_paid ? "" : ` Total tagihan ${formatRupiah(o.price_total)}, bisa dibayar saat ambil.`;
-  const text = `Halo ${o.customer.name}, cucian Anda di Gedklin Laundry (kode ${o.tracking_code}) sudah siap diambil${since}.${bill} Terima kasih.`;
+  const text = `Halo ${o.customer.name}, cucian Anda di ${outletName} (kode ${o.tracking_code}) sudah siap diambil${since}.${bill} Terima kasih.`;
   return `https://wa.me/${o.customer.phone_wa}?text=${encodeURIComponent(text)}`;
 }
 
@@ -47,7 +47,14 @@ export default function TindakLanjutPage() {
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [outletName, setOutletName] = useState("Gedklin Laundry");
   const now = useNow();
+
+  useEffect(() => {
+    api<Outlet>("/public/outlet", { auth: false })
+      .then((o) => setOutletName(o.name))
+      .catch(() => {});
+  }, []);
 
   const load = useCallback(
     () =>
@@ -146,7 +153,7 @@ export default function TindakLanjutPage() {
                   {o.customer.has_whatsapp ? (
                     <ButtonLink
                       variant="whatsapp"
-                      href={reminderLink(o)}
+                      href={reminderLink(o, outletName)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-full sm:w-auto"

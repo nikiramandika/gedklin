@@ -5,7 +5,6 @@ from collections.abc import Iterator
 _tmp = tempfile.mkdtemp()
 os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL", f"sqlite:///{_tmp}/test.db")
 os.environ["CELERY_TASK_ALWAYS_EAGER"] = "true"
-os.environ["MODEL_PATH"] = ""
 os.environ["WA_PROVIDER"] = "console"
 os.environ["JWT_SECRET"] = "test-secret-yang-cukup-panjang-untuk-hs256"
 

@@ -118,13 +118,8 @@ class Order(Base):
     picked_up_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     status: Mapped[OrderStatus] = mapped_column(_enum(OrderStatus), default=OrderStatus.RECEIVED)
 
-    # Tolok ukur terlambat; juga fallback ETA bila model tidak ada.
+    # Perkiraan siap di nota/lacak, tolok ukur terlambat, dan deadline penjadwalan LST.
     promised_ready_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
-    predicted_ready_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
-    # Perkiraan di nota, untuk mengukur akurasi model.
-    initial_predicted_ready_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
-    last_notified_eta: Mapped[datetime | None] = mapped_column(UTCDateTime)
-    delay_notif_count: Mapped[int] = mapped_column(Integer, default=0)
     ready_notif_sent: Mapped[bool] = mapped_column(Boolean, default=False)
     needs_followup: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
@@ -238,17 +233,6 @@ class Notification(Base):
     sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     provider_msg_id: Mapped[str | None] = mapped_column(String(100))
     error: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
-
-
-class PredictionLog(Base):
-    __tablename__ = "prediction_logs"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), index=True)
-    features_json: Mapped[dict] = mapped_column(JSON)
-    predicted_hours: Mapped[float] = mapped_column(Float)
-    model_version: Mapped[str] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
 

@@ -22,6 +22,7 @@ import {
   IconLogOut,
   IconMenu,
   IconReceipt,
+  IconSettings,
   IconTag,
   IconUser,
   IconUsers,
@@ -39,35 +40,38 @@ interface NavItem {
   roles: Role[];
 }
 
+// Urut dari yang paling sering dipakai: kerja harian, lalu memantau, lalu data yang jarang diubah.
+// Yang perlu ditindaklanjuti di atas daftar biasa; Pengaturan selalu paling bawah.
 const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
-    label: "Kerja harian",
+    label: "Harian",
     items: [
       { href: "/dasbor", label: "Dasbor", icon: IconDashboard, roles: ["owner"] },
       { href: "/kasir", label: "Kasir", icon: IconReceipt, roles: ["owner", "cashier"] },
-      { href: "/pelanggan", label: "Pelanggan", icon: IconUser, roles: ["owner", "cashier"] },
       { href: "/antrean", label: "Antrean Cucian", icon: IconList, roles: ["staff"] },
       { href: "/tindak-lanjut", label: "Tindak Lanjut", icon: IconAlert, roles: ["owner", "cashier"] },
-      { href: "/dasbor/laporan", label: "Laporan", icon: IconChart, roles: ["owner"] },
+      { href: "/pelanggan", label: "Pelanggan", icon: IconUser, roles: ["owner", "cashier"] },
     ],
   },
   {
-    label: "Pengaturan",
+    label: "Pantau",
     items: [
-      {
-        href: "/dasbor/operasional",
-        label: "Operasional Harian",
-        icon: IconCalendar,
-        roles: ["owner"],
-      },
+      { href: "/dasbor/laporan", label: "Laporan", icon: IconChart, roles: ["owner"] },
+      { href: "/dasbor/log", label: "Log Aktivitas", icon: IconHistory, roles: ["owner"] },
+    ],
+  },
+  {
+    label: "Kelola",
+    items: [
+      { href: "/dasbor/operasional", label: "Jadwal Outlet", icon: IconCalendar, roles: ["owner"] },
       { href: "/dasbor/layanan", label: "Layanan & Harga", icon: IconTag, roles: ["owner"] },
       { href: "/dasbor/akun", label: "Akun Karyawan", icon: IconUsers, roles: ["owner"] },
-      { href: "/dasbor/log", label: "Log Aktivitas", icon: IconHistory, roles: ["owner"] },
+      { href: "/pengaturan", label: "Pengaturan", icon: IconSettings, roles: ["owner", "cashier", "staff"] },
     ],
   },
 ];
 
-const ROLE_LABEL: Record<Role, string> = {
+export const ROLE_LABEL: Record<Role, string> = {
   owner: "Pemilik",
   cashier: "Staff Kasir",
   staff: "Staff",

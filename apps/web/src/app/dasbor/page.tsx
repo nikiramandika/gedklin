@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import {
-  IconAlert,
   IconChart,
   IconChevronRight,
   IconClock,
@@ -16,6 +15,7 @@ import {
   Alert,
   Card,
   ErrorText,
+  Kpi,
   PageHeader,
   Segmented,
   buttonClass,
@@ -129,33 +129,8 @@ function DashboardBody({ data }: { data: Dashboard }) {
           <WeekChart days={data.last_7_days} />
           <StatusCard counts={data.status_counts} />
         </div>
-        <AccuracyCard data={data} />
+        <PromiseCard data={data} />
       </div>
-    </div>
-  );
-}
-
-function Kpi({
-  label,
-  value,
-  sub,
-  warn,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  warn?: boolean;
-}) {
-  return (
-    <div className="rounded-2xl bg-surface p-4 shadow-card sm:p-5">
-      <p className="label-caps text-muted">{label}</p>
-      <p className="tabular display mt-1 truncate text-2xl text-ink">{value}</p>
-      {sub && (
-        <p className={`mt-1 flex items-center gap-1 text-sm ${warn ? "font-semibold text-warn-700" : "text-muted"}`}>
-          {warn && <IconAlert size={13} />}
-          {sub}
-        </p>
-      )}
     </div>
   );
 }
@@ -256,71 +231,39 @@ function WeekChart({ days }: { days: Dashboard["last_7_days"] }) {
   );
 }
 
-function AccuracyCard({ data }: { data: Dashboard }) {
-  const model = data.eta_mae_hours_7d;
-  const promise = data.promise_mae_hours_7d;
-  const scale = Math.max(model ?? 0, promise ?? 0, 1);
-
+function PromiseCard({ data }: { data: Dashboard }) {
   return (
     <Card
       icon={IconClock}
       tone="ok"
-      title="Akurasi perkiraan siap"
-      description={`7 hari terakhir · ${data.eta_samples_7d} pesanan selesai`}
+      title="Ketepatan waktu"
+      description={`7 hari terakhir · ${data.done_7d} pesanan selesai`}
     >
-      {model === null ? (
+      {data.on_time_pct_7d === null ? (
         <p className="text-sm text-muted">Belum ada pesanan selesai dalam 7 hari.</p>
       ) : (
         <div className="space-y-5">
           <div>
             <p className="tabular display text-3xl text-ink">
-              {data.eta_within_tolerance_pct_7d ?? "–"}
+              {data.on_time_pct_7d}
               <span className="text-xl text-muted">%</span>
             </p>
-            <p className="text-sm text-muted">meleset kurang dari {data.eta_tolerance_hours} jam</p>
+            <p className="text-sm text-muted">selesai tepat waktu</p>
           </div>
           <p className="text-sm text-ink-2">
-            <span className="tabular font-semibold">{data.late_vs_promise_7d}</span> dari {data.eta_samples_7d}{" "}
-            selesai lewat janji standar
-            {data.overdue_active > 0 && (
-              <>
-                {" "}
-                ·{" "}
-                <span className="font-medium text-danger-600">
-                  {data.overdue_active} aktif lewat janji
-                </span>
-              </>
+            <span className="tabular font-semibold">{data.late_vs_promise_7d}</span> terlambat
+            {data.avg_late_hours_7d !== null && (
+              <>, rata-rata {data.avg_late_hours_7d.toLocaleString("id-ID")} jam</>
             )}
           </p>
-          <div className="space-y-3">
-            <p className="label-caps text-muted">Rata-rata selisih</p>
-            <ErrorBar label="Perkiraan sistem" hours={model} scale={scale} strong />
-            {promise !== null && <ErrorBar label="Janji standar" hours={promise} scale={scale} />}
-          </div>
         </div>
       )}
-      <p className="mt-4 flex flex-wrap gap-x-1.5 border-t border-dashed border-field/50 pt-3 text-xs text-faint">
-        Model perkiraan
-        <span className="font-mono">{data.model_version}</span>
-      </p>
+      {data.overdue_active > 0 && (
+        <p className="mt-4 border-t border-dashed border-field/50 pt-3 text-sm font-medium text-danger-600">
+          {data.overdue_active} pesanan sudah lewat janji
+        </p>
+      )}
     </Card>
-  );
-}
-
-function ErrorBar({ label, hours, scale, strong }: { label: string; hours: number; scale: number; strong?: boolean }) {
-  return (
-    <div>
-      <div className="mb-1 flex justify-between text-sm">
-        <span className={strong ? "font-medium text-ink" : "text-muted"}>{label}</span>
-        <span className="tabular font-medium text-ink">±{hours.toFixed(1)} jam</span>
-      </div>
-      <div className="h-2 rounded-full bg-canvas">
-        <div
-          className={`h-2 rounded-full ${strong ? "bg-brand-600" : "bg-line-strong"}`}
-          style={{ width: `${(hours / scale) * 100}%` }}
-        />
-      </div>
-    </div>
   );
 }
 

@@ -8,15 +8,8 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://gedklin:gedklin@localhost:5432/gedklin"
     redis_url: str = "redis://localhost:6379/0"
-    model_path: str = "../../ml/models/best_model.joblib"
 
-    # Menunggu kesepakatan mitra.
-    delay_threshold_hours: float = 6
-    max_delay_notifications: int = 2
     followup_after_days: int = 3
-    eta_tolerance_hours: float = 6
-    # Menunggu kesepakatan mitra.
-    regular_escalation_hours: float = 8
 
     wa_provider: str = "console"
     wa_api_key: str = ""
