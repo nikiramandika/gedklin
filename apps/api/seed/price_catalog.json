@@ -5,7 +5,8 @@
     "unit: KILOAN_7KG = harga 7 kg pertama + tambahan per kg untuk sisa berat, KG = per kg, PCS = per potong, LOAD = per load item khusus",
     "Express hanya untuk item dengan express_eligible = true (CKL dan CKS). Harga Express = harga Reguler x express_multiplier, termasuk tambahan per kg.",
     "Berat di atas 8 kg tidak dihitung load kedua. Semua kelebihan di atas 7 kg kena tarif tambahan per kg.",
-    "Kapasitas mesin 8 kg per load, dipakai hanya untuk menghitung machine_loads (fitur ML), bukan harga."
+    "Kapasitas mesin 8 kg per load, dipakai hanya untuk menghitung machine_loads (fitur ML), bukan harga.",
+    "work_minutes: lama kerja (menit) per satuan harga untuk item non-kiloan. Masih TAKSIRAN, menunggu konfirmasi mitra. Kiloan tidak diisi karena dihitung dari muatan mesin."
   ],
   "promise_hours": {
     "_note": "Janji waktu standar dari mitra. null = belum diketahui. 1 hari = 24 jam kalender. Express hanya untuk CKL dan CKS. regular_min = batas bawah janji Reguler. default dipakai bila semua layanan di pesanan belum punya janji (sementara, bisa diubah pemilik).",
@@ -82,6 +83,7 @@
   "khusus": [
     {
       "code": "BEDCOVER_K",
+      "work_minutes": 150,
       "name": "Bed Cover Kecil",
       "process": "CKL",
       "unit": "PCS",
@@ -90,6 +92,7 @@
     },
     {
       "code": "BEDCOVER_B",
+      "work_minutes": 180,
       "name": "Bed Cover Besar",
       "process": "CKL",
       "unit": "PCS",
@@ -98,6 +101,7 @@
     },
     {
       "code": "GORDYN",
+      "work_minutes": 20,
       "name": "Gordyn Non Ring per kg",
       "process": "CKL",
       "unit": "KG",
@@ -107,6 +111,7 @@
     },
     {
       "code": "JAKET",
+      "work_minutes": 45,
       "name": "Jaket Non Kulit",
       "process": "CKS",
       "unit": "PCS",
@@ -172,6 +177,7 @@
   "satuan": [
     {
       "code": "BONEKA_S",
+      "work_minutes": 60,
       "name": "Boneka S",
       "price": 10000,
       "process": "SATUAN",
@@ -180,6 +186,7 @@
     },
     {
       "code": "BONEKA_M",
+      "work_minutes": 90,
       "name": "Boneka M",
       "price": 20000,
       "process": "SATUAN",
@@ -188,6 +195,7 @@
     },
     {
       "code": "BONEKA_L",
+      "work_minutes": 120,
       "name": "Boneka L",
       "price": 30000,
       "process": "SATUAN",
@@ -196,6 +204,7 @@
     },
     {
       "code": "CELANA_BAHAN",
+      "work_minutes": 15,
       "name": "Celana Panjang Bahan",
       "price": 15000,
       "process": "SATUAN",
@@ -204,6 +213,7 @@
     },
     {
       "code": "CELANA_JEANS",
+      "work_minutes": 20,
       "name": "Celana Panjang Jeans",
       "price": 17000,
       "process": "SATUAN",
@@ -212,6 +222,7 @@
     },
     {
       "code": "GAMIS_RINGAN",
+      "work_minutes": 20,
       "name": "Gamis Ringan",
       "price": 20000,
       "process": "SATUAN",
@@ -220,6 +231,7 @@
     },
     {
       "code": "GAMIS_BERAT",
+      "work_minutes": 30,
       "name": "Gamis Berat",
       "price": 25000,
       "process": "SATUAN",
@@ -228,6 +240,7 @@
     },
     {
       "code": "GAUN_NONPAYET",
+      "work_minutes": 30,
       "name": "Gaun Non Payet",
       "price": 22000,
       "process": "SATUAN",
@@ -236,6 +249,7 @@
     },
     {
       "code": "GAUN_PAYET",
+      "work_minutes": 45,
       "name": "Gaun Payet",
       "price": 25000,
       "process": "SATUAN",
@@ -244,6 +258,7 @@
     },
     {
       "code": "KAOS_OBLONG",
+      "work_minutes": 10,
       "name": "Kaos/Tshirt Oblong",
       "price": 10000,
       "process": "SATUAN",
@@ -252,6 +267,7 @@
     },
     {
       "code": "KAOS_BERKERAH",
+      "work_minutes": 12,
       "name": "Kaos/Tshirt Berkerah",
       "price": 12000,
       "process": "SATUAN",
@@ -260,6 +276,7 @@
     },
     {
       "code": "KEMEJA_PENDEK",
+      "work_minutes": 12,
       "name": "Kemeja Lengan Pendek",
       "price": 15000,
       "process": "SATUAN",
@@ -268,6 +285,7 @@
     },
     {
       "code": "KEMEJA_PANJANG",
+      "work_minutes": 15,
       "name": "Kemeja Lengan Panjang",
       "price": 17000,
       "process": "SATUAN",
@@ -276,6 +294,7 @@
     },
     {
       "code": "KHIMAR_M",
+      "work_minutes": 10,
       "name": "Khimar M",
       "price": 12000,
       "process": "SATUAN",
@@ -284,6 +303,7 @@
     },
     {
       "code": "KHIMAR_L",
+      "work_minutes": 12,
       "name": "Khimar L",
       "price": 15000,
       "process": "SATUAN",
@@ -292,6 +312,7 @@
     },
     {
       "code": "KHIMAR_XL",
+      "work_minutes": 15,
       "name": "Khimar XL",
       "price": 18000,
       "process": "SATUAN",
@@ -302,6 +323,7 @@
   "dry_clean": [
     {
       "code": "DC_SONGKET",
+      "work_minutes": 120,
       "name": "Dry Clean Songket",
       "process": "DRY_CLEAN",
       "unit": "PCS",
@@ -310,6 +332,7 @@
     },
     {
       "code": "DC_KAIN_TENUN",
+      "work_minutes": 120,
       "name": "Dry Clean Kain Tenun",
       "process": "DRY_CLEAN",
       "unit": "PCS",
@@ -318,6 +341,7 @@
     },
     {
       "code": "DC_KEBAYA_PAYET",
+      "work_minutes": 120,
       "name": "Dry Clean Kebaya Payet",
       "process": "DRY_CLEAN",
       "unit": "PCS",

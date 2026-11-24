@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
 import { STATUS_ACTION, etaState, formatDateTime, formatRupiah, relativeEta, summarizeItems } from "@/lib/format";
-import { isUrgent } from "@/lib/priority";
+import { isUrgent, startLabel } from "@/lib/priority";
 import type { Order } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 
@@ -452,6 +452,7 @@ function OrderRow({
   const timing = etaState(o, now);
   const overdue = timing === "late";
   const urgent = showPosition && isUrgent(o, now);
+  const start = showPosition && o.status === "RECEIVED" && !overdue ? startLabel(o) : null;
   const waitingDays = o.ready_at && now > 0 ? Math.floor((now - new Date(o.ready_at).getTime()) / DAY_MS) : 0;
 
   async function run() {
@@ -511,7 +512,7 @@ function OrderRow({
           >
             {o.customer.name}
           </button>
-          {urgent && <UrgentBadge />}
+          {(urgent || (showPosition && overdue)) && <UrgentBadge late={overdue} />}
           {o.is_express && <ExpressBadge />}
           {o.ready_at && <PaymentBadge paid={o.is_paid} />}
           {!o.customer.has_whatsapp && (
@@ -545,6 +546,17 @@ function OrderRow({
           </Link>
           <span aria-hidden="true">·</span>
           <span className="tabular">{formatRupiah(o.price_total)}</span>
+          {start && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span
+                title="Janji siap dikurangi lama kerja. Antrean diurutkan dari batas mulai yang paling dekat (Least Slack Time)."
+                className={`tabular ${(o.slack_hours ?? 0) < 0 ? "font-medium text-danger-700" : urgent ? "font-medium text-warn-700" : ""}`}
+              >
+                {start}
+              </span>
+            </>
+          )}
         </p>
       </div>
 

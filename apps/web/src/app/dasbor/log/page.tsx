@@ -85,6 +85,7 @@ const FIELD_LABEL: Record<string, string> = {
   kg_per_load: "Kapasitas per load (kg)",
   pcs_per_load: "Kapasitas per load (pcs)",
   max_extra: "Maks tambahan",
+  work_minutes: "Lama kerja (menit)",
   express_eligible: "Bisa Express",
   is_active: "Aktif",
   role: "Peran",

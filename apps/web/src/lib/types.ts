@@ -39,6 +39,8 @@ export interface CatalogItem {
   kg_per_load: number | null;
   pcs_per_load: number | null;
   max_extra: number | null;
+  /** Lama kerja (menit) per satuan harga. null = dihitung dari muatan mesin di Pengaturan. */
+  work_minutes: number | null;
   express_eligible: boolean;
   sort_order: number;
   is_active: boolean;
@@ -139,6 +141,8 @@ export interface Order {
   /** Hanya terisi di antrean: taksiran lama pengerjaan dan sisa waktu sampai janji (jam kerja). */
   processing_hours: number | null;
   slack_hours: number | null;
+  /** Paling lambat mulai dikerjakan agar selesai tepat janji (janji dikurangi lama kerja). */
+  latest_start_at: string | null;
 }
 
 export interface OrderDetail extends Order {
@@ -178,6 +182,8 @@ export interface WorkOrder {
   /** Taksiran lama pengerjaan dan sisa waktu sampai janji, dalam jam kerja. */
   processing_hours: number;
   slack_hours: number | null;
+  /** Paling lambat mulai dikerjakan agar selesai tepat janji (janji dikurangi lama kerja). */
+  latest_start_at: string | null;
 }
 
 export interface TrackingItem {

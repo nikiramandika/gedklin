@@ -1,4 +1,4 @@
-import { etaState } from "./format";
+import { etaState, formatDateTime } from "./format";
 import type { OrderStatus } from "./types";
 
 // Sisa waktu (jam kerja) sampai janji di bawah angka ini membuat pesanan ditandai "Segera".
@@ -23,3 +23,15 @@ export function isUrgent(
 export function workDuration(hours: number): string {
   return `±${hours.toLocaleString("id-ID", { maximumFractionDigits: 1 })} jam`;
 }
+
+// Slack LST ditampilkan sebagai batas mulai supaya mudah dibaca: janji dikurangi lama kerja.
+// Pesanan yang sudah lewat janji tidak memakainya karena label "Terlambat" sudah cukup.
+export function startLabel(o: { slack_hours: number | null; latest_start_at: string | null }): string | null {
+  if (o.slack_hours === null || !o.latest_start_at) return null;
+  if (o.slack_hours < 0) {
+    const late = Math.abs(o.slack_hours).toLocaleString("id-ID", { maximumFractionDigits: 1 });
+    return `Harus mulai sekarang · bisa telat ±${late} jam`;
+  }
+  return `Mulai paling lambat ${formatDateTime(o.latest_start_at)}`;
+}
+

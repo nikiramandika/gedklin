@@ -1,11 +1,11 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, time, timedelta
 
 import pytest
 
-from app.models import OrderStatus
+from app.models import CatalogUnit, OrderStatus
 from app.services.operations import DEFAULT_DAY_OPS, DayOps, WorkRates
-from app.services.queue import hours_until, processing_hours, schedule
+from app.services.queue import ItemWork, hours_until, processing_hours, schedule
 
 RATES = WorkRates(
     wash_minutes_per_load=60,
@@ -27,6 +27,7 @@ class Item:
     weight_kg: float | None = None
     qty_pcs: int | None = None
     machine_loads: int | None = None
+    catalog_code: str = ""
 
 
 def kiloan(process: str, kg: float) -> Item:
@@ -44,6 +45,7 @@ class FakeOrder:
     status: OrderStatus = OrderStatus.RECEIVED
     received_at: datetime = NOW - timedelta(hours=1)
     id: int = field(default_factory=lambda: next(_ids))
+    history: list[object] = field(default_factory=list)
 
 
 def codes(orders: list[FakeOrder]) -> list[str]:
@@ -122,3 +124,113 @@ def test_slack_counts_only_open_hours() -> None:
     assert hours_until(tuesday_4pm, wednesday_9am, always()) == -2
     short = DayOps(close_time=time(12, 0))
     assert hours_until(wednesday_9am, tuesday_4pm, always(short)) == 1
+
+
+def test_latest_start_steps_back_over_closed_hours() -> None:
+    # Janji Rabu 09.00, lama kerja 2 jam (CKL 5 kg): mundur ke 08.00, lalu ke Selasa 16.00.
+    wednesday_9am = datetime(2026, 10, 21, 2, 0, tzinfo=UTC)
+    order = FakeOrder("BESOK", [kiloan("CKL", 5)], wednesday_9am)
+    (entry,) = schedule([order], NOW, always(), RATES)
+    assert entry.latest_start_at == datetime(2026, 10, 20, 9, 0, tzinfo=UTC)
+    # Slack = jarak jam kerja dari sekarang sampai batas mulai itu.
+    assert entry.slack_hours == hours_until(entry.latest_start_at, NOW, always()) == 7
+
+
+def test_catalog_work_minutes_are_used_as_is() -> None:
+    work = {
+        "BEDCOVER": ItemWork(CatalogUnit.PCS, 150),
+        "GORDYN": ItemWork(CatalogUnit.KG, 20),
+        "SPREI": ItemWork(CatalogUnit.LOAD, 90),
+        "BONEKA": ItemWork(CatalogUnit.PCS, 60),
+    }
+    bedcover = Item("CKL", qty_pcs=2, catalog_code="BEDCOVER")
+    gordyn = Item("CKL", weight_kg=6, catalog_code="GORDYN")
+    sprei = Item("CKL", weight_kg=10, machine_loads=2, catalog_code="SPREI")
+    boneka = Item("SATUAN", qty_pcs=1, catalog_code="BONEKA")
+    # Dulu bed cover dan gordyn terhitung 0 jam karena tidak menghasilkan load mesin.
+    assert processing_hours([bedcover], DEFAULT_DAY_OPS, RATES) == 0
+    # Lama kerja katalog x jumlah, tidak dibagi ke petugas.
+    assert processing_hours([bedcover], DEFAULT_DAY_OPS, RATES, work) == 5
+    assert processing_hours([gordyn], DEFAULT_DAY_OPS, RATES, work) == 2
+    assert processing_hours([sprei], DEFAULT_DAY_OPS, RATES, work) == 3
+    assert processing_hours([boneka], DEFAULT_DAY_OPS, RATES, work) == 1
+    assert processing_hours([boneka], DayOps(staff_on_duty=4), RATES, work) == 1
+    # Item kiloan tanpa lama kerja sendiri tetap dihitung dari mesin, lalu dijumlah.
+    mixed = [boneka, kiloan("CKL", 5)]
+    assert processing_hours(mixed, DEFAULT_DAY_OPS, RATES, work) == 3
+
+
+# ---------- Simulasi mesin dan petugas paralel ----------
+
+FAR = NOW + timedelta(days=5)
+
+
+def test_single_order_forecast_matches_processing_time() -> None:
+    (entry,) = schedule([FakeOrder("A", [kiloan("CKS", 10)], FAR)], NOW, always(), RATES)
+    assert entry.forecast is not None
+    assert entry.forecast.start == 0
+    assert entry.forecast.ready == pytest.approx(entry.processing_hours, abs=0.01)
+    assert entry.forecast.staff == 2
+
+
+def test_orders_share_machines_and_wait_their_turn() -> None:
+    # 5 pesanan 1 load, 4 mesin cuci dan 3 pengering: load ke-5 menunggu mesin cuci, load ke-4
+    # dan ke-5 menunggu pengering. Tiap pesanan sendirian butuh 2 jam.
+    orders = [FakeOrder(f"P{i}", [kiloan("CKL", 8)], FAR + timedelta(hours=i)) for i in range(5)]
+    entries = schedule(orders, NOW, always(), RATES)
+    assert [e.processing_hours for e in entries] == [2.0] * 5
+    assert [e.forecast.ready for e in entries] == [2, 2, 2, 3, 3]
+    assert [e.forecast.start for e in entries] == [0, 0, 0, 0, 1]
+
+
+def test_staff_work_in_parallel_when_one_is_busy() -> None:
+    # Setrika saja 12 kg = 120 menit untuk satu petugas: dua petugas bersama, 1 jam.
+    ironing = Item("S", weight_kg=12)
+    urgent = FakeOrder("SETRIKA", [ironing], NOW + timedelta(hours=3))
+    # CKS: setrika baru bisa mulai setelah cuci-kering 2 jam. Saat itu kedua petugas kosong.
+    cks = FakeOrder("CKS", [kiloan("CKS", 6)], FAR)
+    entries = schedule([cks, urgent], NOW, always(), RATES)
+    by_code = {e.order.code: e.forecast for e in entries}
+    assert by_code["SETRIKA"].ready == 1 and by_code["SETRIKA"].staff == 2
+    assert by_code["CKS"].start == 0 and by_code["CKS"].ready == 2.5
+
+    # Pesanan setrika kedua menunggu kedua petugas kosong lagi (jam 1).
+    staff_busy = [urgent, FakeOrder("S2", [ironing], NOW + timedelta(hours=4))]
+    s1, s2 = schedule(staff_busy, NOW, always(), RATES)
+    assert (s1.forecast.ready, s2.forecast.start, s2.forecast.ready) == (1, 1, 2)
+
+
+def test_forecast_flags_late_even_when_slack_looks_fine() -> None:
+    # Sendirian tiap pesanan punya slack 1 jam, tapi pesanan kelima harus antre mesin.
+    orders = [FakeOrder(f"P{i}", [kiloan("CKL", 8)], NOW + timedelta(hours=3)) for i in range(5)]
+    entries = schedule(orders, NOW, always(), RATES)
+    assert all(e.slack_hours == 1 for e in entries)
+    assert [e.forecast.late_hours for e in entries] == [0, 0, 0, 0, 0]
+    tight = [FakeOrder(f"T{i}", [kiloan("CKL", 8)], NOW + timedelta(hours=2)) for i in range(5)]
+    late = [e.forecast.late_hours for e in schedule(tight, NOW, always(), RATES)]
+    assert late == [0, 0, 0, 1, 1]
+
+
+@dataclass
+class History:
+    to_status: OrderStatus
+    changed_at: datetime
+
+
+def test_started_order_counts_time_already_spent() -> None:
+    started = FakeOrder(
+        "JALAN",
+        [kiloan("CKL", 8)],
+        FAR,
+        status=OrderStatus.PROCESSING,
+        history=[History(OrderStatus.PROCESSING, NOW - timedelta(minutes=30))],
+    )
+    (entry,) = schedule([started], NOW, always(), RATES)
+    # Sudah jalan setengah jam dari 2 jam: sisa 1,5 jam.
+    assert entry.forecast.start == -0.5
+    assert entry.forecast.ready == 1.5
+    assert entry.forecast.ready_at == NOW + timedelta(hours=1, minutes=30)
+    # Mulai sebelum toko buka (07.30): hanya jam kerja sejak 08.00 yang terhitung.
+    early = replace(started, history=[History(OrderStatus.PROCESSING, NOW - timedelta(hours=1.5))])
+    (entry,) = schedule([early], NOW, always(), RATES)
+    assert entry.forecast.start == -1

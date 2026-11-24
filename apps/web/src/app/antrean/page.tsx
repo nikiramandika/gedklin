@@ -24,7 +24,7 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { etaState, formatDateTime, formatKg, relativeEta } from "@/lib/format";
-import { isUrgent, workDuration } from "@/lib/priority";
+import { isUrgent, startLabel, workDuration } from "@/lib/priority";
 import type { Role, WorkItem, WorkOrder } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 
@@ -112,7 +112,7 @@ export default function AntreanPage() {
     <AppShell roles={ROLES}>
       <PageHeader
         title="Antrean Cucian"
-        description="Kerjakan dari nomor paling kecil."
+        description="Kerjakan dari nomor paling kecil. Urutan diatur otomatis dari lama kerja dan janji siap."
       />
       {error && <ErrorText message={error} />}
       {!orders ? (
@@ -272,7 +272,7 @@ function WorkRow({
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <span className="serial text-lg font-semibold tracking-[0.08em] text-ink">{o.tracking_code}</span>
-          {urgent && <UrgentBadge />}
+          {(urgent || late) && <UrgentBadge late={late} />}
           {o.is_express && <ExpressBadge />}
         </div>
         <p className="text-sm text-muted">{o.customer_name}</p>
@@ -304,7 +304,20 @@ function WorkRow({
           )}
         </p>
         {o.status === "RECEIVED" && (
-          <p className="tabular mt-1 pl-5 text-xs text-muted">Lama kerja {workDuration(o.processing_hours)}</p>
+          <p className="tabular mt-1 pl-5 text-xs text-muted">
+            Lama kerja {workDuration(o.processing_hours)}
+            {o.slack_hours !== null && o.latest_start_at && !late && (
+              <>
+                {" · "}
+                <span
+                  title="Janji siap dikurangi lama kerja. Antrean diurutkan dari batas mulai yang paling dekat (Least Slack Time)."
+                  className={o.slack_hours < 0 ? "font-medium text-danger-700" : urgent ? "font-medium text-warn-700" : ""}
+                >
+                  {startLabel(o)}
+                </span>
+              </>
+            )}
+          </p>
         )}
       </div>
 

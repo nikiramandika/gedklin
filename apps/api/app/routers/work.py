@@ -13,7 +13,7 @@ from app.routers.orders import get_order_or_404
 from app.schemas import WorkItemOut, WorkOrderOut, WorkStatusIn
 from app.security import require_roles
 from app.services import orders as order_service
-from app.services.queue import ScheduledOrder, active_schedule
+from app.services.queue import ScheduledOrder, active_schedule, forecast_fields
 
 router = APIRouter(prefix="/work", tags=["work"])
 worker = require_roles(Role.STAFF, Role.OWNER)
@@ -36,6 +36,8 @@ def to_work_out(entry: ScheduledOrder, position: int) -> WorkOrderOut:
         next_status=order_service.next_status(order),
         processing_hours=entry.processing_hours,
         slack_hours=entry.slack_hours,
+        latest_start_at=entry.latest_start_at,
+        **forecast_fields(entry),
     )
 
 

@@ -152,6 +152,46 @@ def work_hours_between(start: datetime, end: datetime, day_ops: DayOpsLookup) ->
     return total / timedelta(hours=1)
 
 
+def add_work_hours(
+    start: datetime, hours: float, day_ops: DayOpsLookup, max_days: int = 60
+) -> datetime:
+    """Maju sejumlah jam kerja dari start; jam tutup dan hari libur dilewati."""
+    start_l = to_local(start)
+    left = timedelta(hours=max(float(hours), 0.0))
+    day = start_l.date()
+    for _ in range(max_days):
+        ops = day_ops(day)
+        if ops.is_open:
+            open_dt, close_dt = _open_window(day, ops)
+            lo = max(open_dt, start_l)
+            if close_dt > lo:
+                if close_dt - lo >= left:
+                    return (lo + left).astimezone(UTC)
+                left -= close_dt - lo
+        day += timedelta(days=1)
+    return (start_l + left).astimezone(UTC)
+
+
+def subtract_work_hours(
+    end: datetime, hours: float, day_ops: DayOpsLookup, max_days: int = 60
+) -> datetime:
+    """Mundur sejumlah jam kerja dari end; jam tutup dan hari libur dilewati."""
+    end_l = to_local(end)
+    left = timedelta(hours=max(float(hours), 0.0))
+    day = end_l.date()
+    for _ in range(max_days):
+        ops = day_ops(day)
+        if ops.is_open:
+            open_dt, close_dt = _open_window(day, ops)
+            hi = min(close_dt, end_l)
+            if hi > open_dt:
+                if hi - open_dt >= left:
+                    return (hi - left).astimezone(UTC)
+                left -= hi - open_dt
+        day -= timedelta(days=1)
+    return (end_l - left).astimezone(UTC)
+
+
 @dataclass(frozen=True)
 class Promise:
     regular_hours: float | None

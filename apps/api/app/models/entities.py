@@ -77,6 +77,9 @@ class ServiceCatalog(Base):
     kg_per_load: Mapped[float | None] = mapped_column(Float)
     pcs_per_load: Mapped[int | None] = mapped_column(Integer)
     max_extra: Mapped[float | None] = mapped_column(Float)
+    # Lama kerja (menit) per satuan harga: per pcs, per kg, atau per load. NULL = dihitung dari
+    # muatan mesin dan tarif di Pengaturan, cocok untuk kiloan.
+    work_minutes: Mapped[float | None] = mapped_column(Float)
     express_eligible: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false")
     )

@@ -34,7 +34,7 @@ from app.services import orders as order_service
 from app.services.app_settings import load_app_config
 from app.services.notifications import receipt_message, tracking_url
 from app.services.pricing import ItemRequest
-from app.services.queue import active_schedule
+from app.services.queue import active_schedule, forecast_fields
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 staff = require_roles(Role.CASHIER, Role.OWNER)
@@ -98,6 +98,9 @@ def queue(db: Session = Depends(get_db), _: User = Depends(staff)) -> list[Order
         item = to_out(entry.order, i)
         item.processing_hours = entry.processing_hours
         item.slack_hours = entry.slack_hours
+        item.latest_start_at = entry.latest_start_at
+        for key, value in forecast_fields(entry).items():
+            setattr(item, key, value)
         out.append(item)
     return out
 

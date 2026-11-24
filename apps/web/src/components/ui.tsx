@@ -55,9 +55,16 @@ export function ExpressBadge({ className = "" }: { className?: string }) {
   );
 }
 
-// Pesanan yang janjinya sudah dekat dibanding lama pengerjaannya.
-export function UrgentBadge() {
-  return (
+// Pesanan yang janjinya sudah dekat dibanding lama pengerjaannya, atau yang janjinya sudah lewat.
+export function UrgentBadge({ late = false }: { late?: boolean }) {
+  return late ? (
+    <span
+      title="Janji sudah lewat, kerjakan paling dulu"
+      className="inline-flex items-center whitespace-nowrap rounded bg-danger-50 px-1.5 py-0.5 text-xs font-medium leading-none text-danger-700 ring-1 ring-inset ring-danger-600/25"
+    >
+      Terlambat
+    </span>
+  ) : (
     <span
       title="Janji sudah dekat, kerjakan lebih dulu"
       className="inline-flex items-center whitespace-nowrap rounded bg-warn-50 px-1.5 py-0.5 text-xs font-medium leading-none text-warn-700 ring-1 ring-inset ring-warn-600/25"

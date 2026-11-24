@@ -650,6 +650,14 @@ function WorkTimeForm({ settings, onSaved }: { settings: AppSettings; onSaved: (
           </span>
         </p>
       )}
+      <p className="text-sm text-muted">
+        Tarif ini untuk kiloan dan layanan per load. Bed cover, satuan, dan dry clean punya lama kerja
+        sendiri di{" "}
+        <Link href="/dasbor/layanan" className="font-medium text-brand-700 underline underline-offset-2">
+          Layanan & Harga
+        </Link>
+        .
+      </p>
     </SettingsForm>
   );
 }

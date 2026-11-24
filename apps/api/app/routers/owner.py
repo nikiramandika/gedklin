@@ -58,6 +58,7 @@ CATALOG_FIELDS = (
     "kg_per_load",
     "pcs_per_load",
     "max_extra",
+    "work_minutes",
     "express_eligible",
     "is_active",
 )

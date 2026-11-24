@@ -117,3 +117,26 @@ def test_delete_only_unused_services(
     seed_reference_data(db)
     db.commit()
     assert db.scalar(select(ServiceCatalog).where(ServiceCatalog.code == "KHIMAR_XL")) is None
+
+
+def test_work_minutes_from_catalog_feed_the_queue(
+    client: TestClient, owner: dict, cashier: dict
+) -> None:
+    res = client.put("/catalog/BEDCOVER_K", json={"work_minutes": 90}, headers=owner)
+    assert res.status_code == 200, res.text
+    assert res.json()["work_minutes"] == 90
+    assert (
+        client.put("/catalog/BEDCOVER_K", json={"work_minutes": 0}, headers=owner).status_code
+        == 422
+    )
+
+    new_order(client, cashier, items=[{"catalog_code": "BEDCOVER_K", "qty_pcs": 2}])
+    (entry,) = client.get("/orders/queue", headers=cashier).json()
+    # 2 pcs x 90 menit, dipakai apa adanya.
+    assert entry["processing_hours"] == 3
+    assert entry["est_ready_at"] is not None and entry["est_staff"] == 2
+
+    # Dikosongkan lagi: kembali ke hitungan mesin (bed cover per pcs tidak punya load).
+    client.put("/catalog/BEDCOVER_K", json={"work_minutes": None}, headers=owner)
+    (entry,) = client.get("/orders/queue", headers=cashier).json()
+    assert entry["processing_hours"] == 0

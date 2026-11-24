@@ -27,7 +27,16 @@ import {
   tileListClass,
 } from "@/components/ui";
 import { api } from "@/lib/api";
-import { GROUP_RULES, PRICE_LABEL, UNIT_LABEL, codeFromName } from "@/lib/catalog";
+import {
+  GROUP_RULES,
+  PRICE_LABEL,
+  UNIT_LABEL,
+  WORK_UNIT,
+  autoWorkTime,
+  codeFromName,
+  needsWorkTime,
+  workMinutesLabel,
+} from "@/lib/catalog";
 import { GROUP_LABEL, PROCESS_LABEL, formatRupiah, priceRule } from "@/lib/format";
 import type {
   CatalogGroup,
@@ -232,6 +241,7 @@ function CatalogRow({
   onDelete: () => void;
 }) {
   const noPrice = item.price === null;
+  const workLabel = workMinutesLabel(item);
 
   return (
     <li className={`${tileClass} flex flex-wrap items-center gap-x-4 gap-y-3 p-4`}>
@@ -244,10 +254,19 @@ function CatalogRow({
               {noPrice ? "Belum ada harga" : "Nonaktif"}
             </span>
           )}
+          {needsWorkTime(item) && (
+            <span
+              title="Tanpa lama kerja, pesanan layanan ini dianggap cepat selesai dan salah tempat di antrean."
+              className="inline-flex items-center whitespace-nowrap rounded bg-warn-50 px-1.5 py-0.5 text-xs font-medium leading-none text-warn-700 ring-1 ring-inset ring-warn-600/25"
+            >
+              Lama kerja belum diisi
+            </span>
+          )}
         </span>
         <span className="mt-0.5 block text-sm text-muted">
           <span className="font-mono font-semibold text-ink-2">{item.code}</span>
           {PROCESS_LABEL[item.process] !== item.name && ` · ${PROCESS_LABEL[item.process]}`} · {priceRule(item)}
+          {workLabel && <span className="tabular"> · ±{workLabel}</span>}
         </span>
       </button>
       <p className="tabular text-right text-base font-semibold text-ink">
@@ -293,6 +312,7 @@ interface FormState {
   loadMode: LoadMode;
   perLoad: string;
   maxExtra: string;
+  workMinutes: string;
   express: boolean;
   active: boolean;
 }
@@ -320,6 +340,7 @@ function initialForm(item: CatalogItem | undefined, group: CatalogGroup): FormSt
       loadMode: item.kg_per_load ? "kg" : "pcs",
       perLoad: str(item.kg_per_load ?? item.pcs_per_load),
       maxExtra: str(item.max_extra),
+      workMinutes: str(item.work_minutes),
       express: item.express_eligible,
       active: item.is_active,
     };
@@ -338,6 +359,7 @@ function initialForm(item: CatalogItem | undefined, group: CatalogGroup): FormSt
     loadMode: "pcs",
     perLoad: "",
     maxExtra: "",
+    workMinutes: "",
     express: false,
     active: true,
   };
@@ -440,6 +462,7 @@ function ServiceForm({
       kg_per_load: form.loadMode === "kg" ? perLoad : null,
       pcs_per_load: form.loadMode === "pcs" ? perLoad : null,
       max_extra: form.unit === "LOAD" ? toNumber(form.maxExtra) : null,
+      work_minutes: toNumber(form.workMinutes),
       express_eligible: form.unit === "KILOAN_7KG" && form.express,
       is_active: form.active && !noPrice,
     };
@@ -601,6 +624,13 @@ function ServiceForm({
         )}
       </section>
 
+      <WorkTimeSection
+        unit={form.unit}
+        process={form.process}
+        value={form.workMinutes}
+        onChange={(workMinutes) => set({ workMinutes })}
+      />
+
       <section className="space-y-1">
         <h3 className="mb-2 text-sm font-semibold text-ink">Ketersediaan</h3>
         {form.unit === "KILOAN_7KG" && (
@@ -622,4 +652,75 @@ function ServiceForm({
       <ErrorText message={error} />
     </form>
   );
+}
+
+// Contoh jumlah untuk pratinjau lama kerja, supaya angka per satuan terasa nyata.
+const EXAMPLE_QTY: Record<CatalogUnit, number> = { KILOAN_7KG: 7, KG: 5, PCS: 3, LOAD: 2 };
+
+function WorkTimeSection({
+  unit,
+  process,
+  value,
+  onChange,
+}: {
+  unit: CatalogUnit;
+  process: Process;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const per = WORK_UNIT[unit];
+  const minutes = toNumber(value);
+  const auto = autoWorkTime({ unit, process });
+  const qty = EXAMPLE_QTY[unit];
+  const hint = auto ? (
+    <>
+      Boleh dikosongkan: dihitung otomatis dari muatan mesin di{" "}
+      <Link href="/pengaturan#pengerjaan" className="font-medium text-brand-700 underline underline-offset-2">
+        Pengaturan
+      </Link>
+      .
+    </>
+  ) : (
+    `Lama pengerjaan biasanya di laundry untuk satu ${per}, dari mulai dikerjakan sampai siap. Dipakai apa adanya.`
+  );
+
+  return (
+    <section className="space-y-3">
+      <div>
+        <h3 className="text-sm font-semibold text-ink">Lama pengerjaan</h3>
+        <p className="mt-0.5 text-xs text-muted">Dipakai untuk mengurutkan antrean cucian.</p>
+      </div>
+      <Field label={`Lama kerja per ${per}`} hint={hint}>
+        <div className="relative max-w-[14rem]">
+          <input
+            className={`${inputClass} tabular pr-16`}
+            inputMode="decimal"
+            value={value}
+            placeholder={auto ? "Otomatis" : undefined}
+            onChange={(e) => onChange(e.target.value)}
+          />
+          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted">
+            menit
+          </span>
+        </div>
+      </Field>
+      {minutes !== null && minutes > 0 ? (
+        <p className="rounded-xl bg-subtle px-4 py-3 text-sm text-ink-2" aria-live="polite">
+          Contoh {qty} {per} dikerjakan ±{" "}
+          <span className="tabular font-semibold text-ink">{workTime(minutes * qty)}</span>
+        </p>
+      ) : (
+        !auto && (
+          <p className="rounded-xl bg-warn-50 px-4 py-3 text-sm text-warn-700 ring-1 ring-inset ring-warn-600/20">
+            Belum diisi. Pesanan layanan ini akan dianggap cepat selesai sehingga bisa tertinggal di antrean.
+          </p>
+        )
+      )}
+    </section>
+  );
+}
+
+function workTime(minutes: number): string {
+  if (minutes < 60) return `${Math.round(minutes)} menit`;
+  return `${(minutes / 60).toLocaleString("id-ID", { maximumFractionDigits: 1 })} jam`;
 }

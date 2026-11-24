@@ -71,6 +71,7 @@ class CatalogItemOut(ORM):
     kg_per_load: float | None
     pcs_per_load: int | None
     max_extra: float | None
+    work_minutes: float | None
     express_eligible: bool
     sort_order: int
     is_active: bool
@@ -90,6 +91,7 @@ class CatalogItemCreate(BaseModel):
     kg_per_load: float | None = Field(default=None, gt=0)
     pcs_per_load: int | None = Field(default=None, gt=0)
     max_extra: float | None = Field(default=None, ge=0)
+    work_minutes: float | None = Field(default=None, gt=0, le=10080)
     express_eligible: bool = False
     is_active: bool = True
 
@@ -111,6 +113,7 @@ class CatalogItemUpdate(BaseModel):
     kg_per_load: float | None = Field(default=None, gt=0)
     pcs_per_load: int | None = Field(default=None, gt=0)
     max_extra: float | None = Field(default=None, ge=0)
+    work_minutes: float | None = Field(default=None, gt=0, le=10080)
     express_eligible: bool | None = None
     is_active: bool | None = None
 
@@ -310,6 +313,12 @@ class OrderOut(ORM):
     # Hanya di antrean (LST): taksiran waktu proses dan kelonggaran sampai janji, jam kerja.
     processing_hours: float | None = None
     slack_hours: float | None = None
+    latest_start_at: datetime | None = None
+    # Simulasi antrean dengan mesin dan petugas paralel.
+    est_start_at: datetime | None = None
+    est_ready_at: datetime | None = None
+    est_late_hours: float | None = None
+    est_staff: int | None = None
 
 
 class OrderDetailOut(OrderOut):
@@ -341,6 +350,11 @@ class WorkOrderOut(BaseModel):
     next_status: OrderStatus | None
     processing_hours: float
     slack_hours: float | None
+    latest_start_at: datetime | None
+    est_start_at: datetime | None
+    est_ready_at: datetime | None
+    est_late_hours: float | None
+    est_staff: int | None
 
 
 class WorkStatusIn(BaseModel):

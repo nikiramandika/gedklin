@@ -62,6 +62,7 @@ def catalog_rows(data: dict[str, Any]) -> list[ServiceCatalog]:
                 # min/maks pcs per load dibaca sebagai isi satu load (menunggu konfirmasi mitra).
                 pcs_per_load=e.get("max_pcs_per_load", e.get("min_pcs_per_load")),
                 max_extra=e.get("max_extra_pcs"),
+                work_minutes=e.get("work_minutes"),
                 express_eligible=bool(e.get("express_eligible", False)),
                 sort_order=order,
                 is_active=price is not None,

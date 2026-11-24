@@ -1,4 +1,4 @@
-import type { CatalogGroup, CatalogUnit, Process } from "./types";
+import type { CatalogGroup, CatalogItem, CatalogUnit, Process } from "./types";
 
 const KILOAN_PROCESSES: Process[] = ["C", "CK", "CKL", "CKS"];
 
@@ -31,4 +31,28 @@ export function codeFromName(name: string): string {
     .replace(/[^A-Z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .slice(0, 40);
+}
+
+// Satuan untuk "lama kerja per ...", sama dengan ItemWork di app/services/queue.py.
+export const WORK_UNIT: Record<CatalogUnit, string> = {
+  KILOAN_7KG: "kg",
+  KG: "kg",
+  PCS: "pcs",
+  LOAD: "load",
+};
+
+// Kiloan dan per load dihitung dari muatan mesin, setrika per kg dari tarif setrika. Selain itu
+// (per pcs, per kg non-setrika) tidak menghasilkan load, jadi tanpa lama kerja sendiri terhitung
+// hampir 0 jam dan pesanannya salah tempat di antrean.
+export function autoWorkTime(item: Pick<CatalogItem, "unit" | "process">): boolean {
+  return item.unit === "KILOAN_7KG" || item.unit === "LOAD" || (item.unit === "KG" && item.process === "S");
+}
+
+export function needsWorkTime(item: Pick<CatalogItem, "unit" | "process" | "work_minutes">): boolean {
+  return item.work_minutes === null && !autoWorkTime(item);
+}
+
+export function workMinutesLabel(item: Pick<CatalogItem, "unit" | "work_minutes">): string | null {
+  if (item.work_minutes === null) return null;
+  return `${item.work_minutes.toLocaleString("id-ID", { maximumFractionDigits: 1 })} mnt/${WORK_UNIT[item.unit]}`;
 }
