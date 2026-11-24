@@ -41,6 +41,9 @@ export interface CatalogItem {
   max_extra: number | null;
   /** Lama kerja (menit) per satuan harga. null = dihitung dari muatan mesin di Pengaturan. */
   work_minutes: number | null;
+  /** Janji siap ke pelanggan dalam jam. null = janji default di Pengaturan. */
+  promise_hours: number | null;
+  express_promise_hours: number | null;
   express_eligible: boolean;
   sort_order: number;
   is_active: boolean;
@@ -71,13 +74,6 @@ export interface Outlet {
   name: string;
   address: string;
   phone: string;
-}
-
-export interface ServicePromise {
-  process: Process;
-  regular_hours: number | null;
-  express_hours: number | null;
-  min_regular_hours: number | null;
 }
 
 export interface OrderItemInput {

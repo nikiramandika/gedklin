@@ -9,7 +9,6 @@ from app.models.entities import (
     OrderItem,
     OrderStatusHistory,
     ServiceCatalog,
-    ServicePromise,
     User,
 )
 from app.models.enums import (
@@ -44,6 +43,5 @@ __all__ = [
     "Process",
     "Role",
     "ServiceCatalog",
-    "ServicePromise",
     "User",
 ]

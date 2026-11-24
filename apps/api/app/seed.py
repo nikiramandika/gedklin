@@ -16,7 +16,6 @@ from app.models import (
     Process,
     Role,
     ServiceCatalog,
-    ServicePromise,
     User,
 )
 from app.security import hash_password
@@ -38,6 +37,7 @@ def load_catalog_file(path: Path = CATALOG_PATH) -> dict[str, Any]:
 
 def catalog_rows(data: dict[str, Any]) -> list[ServiceCatalog]:
     rows: list[ServiceCatalog] = []
+    promise = data["promise_hours"]
     entries = [(section, e) for section in SECTIONS for e in data.get(section, [])]
     for order, (section, e) in enumerate(entries, start=1):
         process = Process(e.get("process", "SATUAN"))
@@ -63,27 +63,15 @@ def catalog_rows(data: dict[str, Any]) -> list[ServiceCatalog]:
                 pcs_per_load=e.get("max_pcs_per_load", e.get("min_pcs_per_load")),
                 max_extra=e.get("max_extra_pcs"),
                 work_minutes=e.get("work_minutes"),
+                # Janji awal per proses dari price list; diatur per layanan di dasbor.
+                promise_hours=promise["regular"].get(process.value),
+                express_promise_hours=promise.get("express") if e.get("express_eligible") else None,
                 express_eligible=bool(e.get("express_eligible", False)),
                 sort_order=order,
                 is_active=price is not None,
             )
         )
     return rows
-
-
-def promise_rows(data: dict[str, Any]) -> list[ServicePromise]:
-    promise = data["promise_hours"]
-    minimum = promise.get("regular_min", {})
-    eligible = {e["process"] for e in data["kiloan"] if e.get("express_eligible")}
-    return [
-        ServicePromise(
-            process=Process(process),
-            regular_hours=hours,
-            express_hours=promise.get("express") if process in eligible else None,
-            min_regular_hours=minimum.get(process),
-        )
-        for process, hours in promise["regular"].items()
-    ]
 
 
 def setting_values(data: dict[str, Any]) -> dict[str, str]:
@@ -107,11 +95,6 @@ def seed_reference_data(db: Session, data: dict[str, Any] | None = None) -> list
             log.append(f"Katalog {row.code} dibuat")
     else:
         log.append("Katalog sudah ada, dikelola dari dasbor (tidak diubah)")
-    promised = set(db.scalars(select(ServicePromise.process)))
-    for row in promise_rows(data):
-        if row.process not in promised:
-            db.add(row)
-            log.append(f"Janji waktu {row.process} dibuat")
     for key, value in setting_values(data).items():
         if db.get(AppSetting, key) is None:
             db.add(AppSetting(key=key, value=value))

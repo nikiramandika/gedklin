@@ -68,17 +68,8 @@ DEFAULT_OUTLET = OutletProfile()
 
 
 class ItemLike(Protocol):
-    process: str
+    catalog_code: str
     is_express: bool
-
-
-def item_processes(items: Iterable[ItemLike]) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """Proses Reguler dan proses Express dipisah karena janjinya berbeda."""
-    regular: list[str] = []
-    express: list[str] = []
-    for item in items:
-        (express if item.is_express else regular).append(str(item.process))
-    return tuple(dict.fromkeys(regular)), tuple(dict.fromkeys(express))
 
 
 def _as_utc(dt: datetime) -> datetime:
@@ -203,14 +194,17 @@ def promised_hours(
     promises: Mapping[str, Promise],
     default_hours: float,
 ) -> float:
-    regular, express = item_processes(items)
+    """Janji pesanan = janji item yang paling lama, karena semua item diserahkan bersamaan.
+
+    Item Express memakai janji Express layanannya. Item tanpa janji dilewati; bila tidak ada
+    satu pun yang punya janji, dipakai janji default.
+    """
     known = []
-    for processes, is_express in ((regular, False), (express, True)):
-        for process in processes:
-            promise = promises.get(process)
-            if promise is None:
-                continue
-            hours = promise.express_hours if is_express else promise.regular_hours
-            if hours is not None:
-                known.append(float(hours))
+    for item in items:
+        promise = promises.get(item.catalog_code)
+        if promise is None:
+            continue
+        value = promise.express_hours if item.is_express else promise.regular_hours
+        if value is not None:
+            known.append(float(value))
     return max(known) if known else float(default_hours)

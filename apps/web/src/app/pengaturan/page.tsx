@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type ComponentType, type FormEvent, type ReactNode, type SVGProps } from "react";
+import { useEffect, useRef, useState, type ComponentType, type FormEvent, type ReactNode, type SVGProps } from "react";
 
 import { AppShell, ROLE_LABEL } from "@/components/AppShell";
 import { ChangePasswordModal } from "@/components/ChangePasswordModal";
@@ -23,9 +23,9 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { PROCESS_LABEL, initials } from "@/lib/format";
+import { initials } from "@/lib/format";
 import { WEEKDAYS, WEEKDAY_NAMES, describeWeek, hhmm } from "@/lib/schedule";
-import type { AiProvider, AiSettings, AppSettings, Role, ServicePromise, User } from "@/lib/types";
+import type { AiProvider, AiSettings, AppSettings, Role, User } from "@/lib/types";
 
 const ROLES: Role[] = ["owner", "cashier", "staff"];
 
@@ -64,15 +64,17 @@ function sectionFromHash(): SectionId {
   return SECTIONS.some((s) => s.id === hash) ? (hash as SectionId) : "akun";
 }
 
-// Dirender hanya setelah login (di klien), jadi hash URL aman dibaca saat render pertama.
 function PengaturanContent() {
   const { user } = useAuth();
   const owner = user?.role === "owner";
-  const [active, setActive] = useState<SectionId>(() => (owner ? sectionFromHash() : "akun"));
+  const [active, setActive] = useState<SectionId>("akun");
 
+  // Link dari halaman lain (mis. /pengaturan#harga) langsung membuka bagiannya. Hash dibaca setelah
+  // peran pemilik diketahui, karena data login bisa belum ada saat halaman pertama tampil.
   useEffect(() => {
     if (!owner) return;
     const onHash = () => setActive(sectionFromHash());
+    onHash();
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, [owner]);
@@ -112,9 +114,20 @@ function PengaturanContent() {
 }
 
 function SectionNav({ active, onOpen }: { active: SectionId; onOpen: (id: SectionId) => void }) {
+  const strip = useRef<HTMLUListElement>(null);
+
+  // Di HP tab bisa berada di luar layar (mis. dibuka dari link /pengaturan#harga); geser ke tab aktif.
+  useEffect(() => {
+    const list = strip.current;
+    const tab = list?.querySelector<HTMLElement>(`[data-section="${active}"]`);
+    if (!list || !tab) return;
+    list.scrollTo({ left: tab.offsetLeft - list.clientWidth / 2 + tab.clientWidth / 2, behavior: "smooth" });
+  }, [active]);
+
   const link = (s: (typeof SECTIONS)[number], className: string, children: ReactNode) => (
     <a
       href={`#${s.id}`}
+      data-section={s.id}
       aria-current={active === s.id ? "true" : undefined}
       onClick={(e) => {
         e.preventDefault();
@@ -129,7 +142,7 @@ function SectionNav({ active, onOpen }: { active: SectionId; onOpen: (id: Sectio
   return (
     <nav aria-label="Bagian pengaturan" className="lg:sticky lg:top-6">
       {/* HP & tablet: strip tab yang bisa digeser, rata dengan tepi halaman. */}
-      <ul className="-mx-4 flex gap-1 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:px-6 lg:hidden">
+      <ul ref={strip} className="-mx-4 flex gap-1 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:px-6 lg:hidden">
         {SECTIONS.map((s) => (
           <li key={s.id} className="shrink-0">
             {link(s, tabClass(active === s.id), s.label)}
@@ -224,7 +237,6 @@ function OwnerPanels({ active }: { active: SectionId }) {
 
       <Panel id="harga" active={active} title="Express & janji">
         {settings ? <PricingForm settings={settings} onSaved={setSettings} /> : placeholder}
-        <PromiseForm />
       </Panel>
 
       <Panel id="ai" active={active} title="Analisis AI">
@@ -689,7 +701,7 @@ function PricingForm({ settings, onSaved }: { settings: AppSettings; onSaved: (s
             />
           </div>
         </Field>
-        <Field label="Janji default" hint="Untuk layanan tanpa janji.">
+        <Field label="Janji default" hint="Untuk layanan yang belum punya janji sendiri.">
           <Suffixed suffix="jam">
             <input
               className={`${inputClass} tabular pr-12`}
@@ -701,90 +713,13 @@ function PricingForm({ settings, onSaved }: { settings: AppSettings; onSaved: (s
           </Suffixed>
         </Field>
       </div>
-    </SettingsForm>
-  );
-}
-
-function hoursValue(v: string): number | null {
-  return v.trim() === "" ? null : Number(v);
-}
-
-function PromiseForm() {
-  const [rows, setRows] = useState<ServicePromise[] | null>(null);
-  const [initial, setInitial] = useState<ServicePromise[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    api<ServicePromise[]>("/service-promises")
-      .then((r) => {
-        setRows(r);
-        setInitial(r);
-      })
-      .catch((e: Error) => setError(e.message));
-  }, []);
-
-  async function save() {
-    if (!rows) return;
-    setError(null);
-    setBusy(true);
-    try {
-      await Promise.all(
-        rows.map((r) =>
-          api(`/service-promises/${r.process}`, {
-            method: "PUT",
-            body: { regular_hours: r.regular_hours, express_hours: r.express_hours, min_regular_hours: r.min_regular_hours },
-          }),
-        ),
-      );
-      setInitial(rows);
-      setSaved(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal menyimpan");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (!rows) return <PanelLoading error={error} />;
-
-  const hoursInput = (i: number, key: "regular_hours" | "express_hours", label: string) => (
-    <input
-      className={`${inputClass} tabular px-2.5 text-center`}
-      type="number"
-      min={1}
-      placeholder="–"
-      value={rows[i][key] ?? ""}
-      onChange={(e) => {
-        setSaved(false);
-        const value = hoursValue(e.target.value);
-        setRows((rs) => rs && rs.map((r, j) => (j === i ? { ...r, [key]: value } : r)));
-      }}
-      aria-label={`${label} ${PROCESS_LABEL[rows[i].process]} (jam)`}
-    />
-  );
-
-  return (
-    <SettingsForm onSubmit={save} dirty={!same(rows, initial)} busy={busy} saved={saved} error={error}>
-      <Group title="Janji per layanan" description="Dalam jam.">
-        <div className="max-w-xl">
-          <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] gap-3 border-b border-line pb-2 text-sm font-medium text-muted">
-            <span>Layanan</span>
-            <span className="text-center">Reguler</span>
-            <span className="text-center">Express</span>
-          </div>
-          <ul className="divide-y divide-line">
-            {rows.map((r, i) => (
-              <li key={r.process} className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center gap-3 py-2">
-                <span className="text-sm text-ink-2">{PROCESS_LABEL[r.process]}</span>
-                {hoursInput(i, "regular_hours", "Janji Reguler")}
-                {hoursInput(i, "express_hours", "Janji Express")}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </Group>
+      <p className="text-sm text-muted">
+        Janji Reguler dan Express tiap layanan diatur di{" "}
+        <Link href="/dasbor/layanan" className="font-medium text-brand-700 underline underline-offset-2">
+          Layanan & Harga
+        </Link>
+        , karena boneka, gordyn, dan kemeja bisa beda janjinya.
+      </p>
     </SettingsForm>
   );
 }

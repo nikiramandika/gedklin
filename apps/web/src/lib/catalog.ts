@@ -51,8 +51,3 @@ export function autoWorkTime(item: Pick<CatalogItem, "unit" | "process">): boole
 export function needsWorkTime(item: Pick<CatalogItem, "unit" | "process" | "work_minutes">): boolean {
   return item.work_minutes === null && !autoWorkTime(item);
 }
-
-export function workMinutesLabel(item: Pick<CatalogItem, "unit" | "work_minutes">): string | null {
-  if (item.work_minutes === null) return null;
-  return `${item.work_minutes.toLocaleString("id-ID", { maximumFractionDigits: 1 })} mnt/${WORK_UNIT[item.unit]}`;
-}

@@ -11,10 +11,8 @@ from app.models import (
     Order,
     OrderItem,
     OrderStatus,
-    Process,
     Role,
     ServiceCatalog,
-    ServicePromise,
     User,
 )
 from app.schemas import (
@@ -30,8 +28,6 @@ from app.schemas import (
     DailyOperationIn,
     DailyOperationOut,
     DashboardOut,
-    ServicePromiseIn,
-    ServicePromiseOut,
     UserCreate,
     UserOut,
     UserUpdate,
@@ -59,10 +55,11 @@ CATALOG_FIELDS = (
     "pcs_per_load",
     "max_extra",
     "work_minutes",
+    "promise_hours",
+    "express_promise_hours",
     "express_eligible",
     "is_active",
 )
-PROMISE_FIELDS = ("regular_hours", "express_hours", "min_regular_hours")
 USER_FIELDS = ("name", "role", "is_active")
 DAILY_FIELDS = (
     "is_open",
@@ -281,39 +278,6 @@ def test_ai_settings(db: Session = Depends(get_db), _: User = Depends(owner)) ->
     except ai_service.AiError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
     return {"model": config.model, "reply": reply[:100]}
-
-
-@router.get("/service-promises", response_model=list[ServicePromiseOut])
-def list_promises(db: Session = Depends(get_db), _: User = Depends(owner)):
-    return list(db.scalars(select(ServicePromise).order_by(ServicePromise.id)))
-
-
-@router.put("/service-promises/{process}", response_model=ServicePromiseOut)
-def upsert_promise(
-    process: Process,
-    data: ServicePromiseIn,
-    db: Session = Depends(get_db),
-    me: User = Depends(owner),
-) -> ServicePromise:
-    row = db.scalar(select(ServicePromise).where(ServicePromise.process == process))
-    if row is None:
-        row = ServicePromise(process=process)
-        db.add(row)
-    before = snapshot(row, PROMISE_FIELDS)
-    for key, value in data.model_dump().items():
-        setattr(row, key, value)
-    changed = diff(before, snapshot(row, PROMISE_FIELDS))
-    if changed:
-        log_activity(
-            db,
-            me,
-            "settings.promise",
-            f"Mengubah janji waktu {process.value}",
-            entity_id=process.value,
-            changes=changed,
-        )
-    db.commit()
-    return row
 
 
 @router.get("/users", response_model=list[UserOut])

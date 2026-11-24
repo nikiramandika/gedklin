@@ -25,6 +25,10 @@ PASSWORD = "rahasia123"
 def schema() -> Iterator[None]:
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
+    # Tabel dan tipe enum dibuat ulang dengan OID baru. Koneksi lama di pool masih menyimpan
+    # prepared statement psycopg untuk skema lama, sehingga Postgres menolak dengan
+    # "cached plan must not change result type". Buang koneksi lama agar mulai bersih.
+    engine.dispose()
     with SessionLocal() as db:
         seed_reference_data(db)
         for role in Role:

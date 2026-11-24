@@ -32,6 +32,11 @@ def normalize(item: ServiceCatalog) -> None:
         raise CatalogError("Isi harga dulu sebelum mengaktifkan layanan")
     if item.express_eligible and item.unit != CatalogUnit.KILOAN_7KG:
         raise CatalogError("Express hanya bisa untuk layanan kiloan")
+    if not item.express_eligible:
+        item.express_promise_hours = None
+    elif item.promise_hours and item.express_promise_hours:
+        if item.express_promise_hours > item.promise_hours:
+            raise CatalogError("Janji Express harus lebih cepat dari janji Reguler")
 
     if item.unit == CatalogUnit.KILOAN_7KG:
         item.base_kg = item.base_kg or DEFAULT_BASE_KG

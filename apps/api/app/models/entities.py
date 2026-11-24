@@ -80,22 +80,15 @@ class ServiceCatalog(Base):
     # Lama kerja (menit) per satuan harga: per pcs, per kg, atau per load. NULL = dihitung dari
     # muatan mesin dan tarif di Pengaturan, cocok untuk kiloan.
     work_minutes: Mapped[float | None] = mapped_column(Float)
+    # Janji siap ke pelanggan (jam kalender). NULL = pakai janji default di Pengaturan.
+    promise_hours: Mapped[int | None] = mapped_column(Integer)
+    # Hanya untuk layanan yang bisa Express.
+    express_promise_hours: Mapped[int | None] = mapped_column(Integer)
     express_eligible: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false")
     )
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-
-
-class ServicePromise(Base):
-    __tablename__ = "service_promise"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    process: Mapped[Process] = mapped_column(_enum(Process), unique=True)
-    regular_hours: Mapped[int | None] = mapped_column(Integer)
-    express_hours: Mapped[int | None] = mapped_column(Integer)
-    # Batas bawah janji Reguler (mis. CKS 3-4 hari -> 72).
-    min_regular_hours: Mapped[int | None] = mapped_column(Integer)
 
 
 class AppSetting(Base):

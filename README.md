@@ -108,9 +108,10 @@ cd apps/web && npm run lint && npx tsc --noEmit && npm run build
 ## Harga & janji waktu
 
 - Price list awal mitra ada di `apps/api/seed/price_catalog.json`. `python -m app.seed` mengisinya ke
-  `service_catalog` **hanya bila katalog masih kosong**, plus `service_promise` dan `app_settings`
-  yang belum ada. Setelah itu pemilik mengelola layanan di `/dasbor/layanan`: tambah, ubah (nama,
-  kelompok, proses, satuan, harga, aturan min/maks, Bisa Express), nonaktifkan, dan hapus. Layanan
+  `service_catalog` **hanya bila katalog masih kosong** (janji per proses di file itu menjadi janji
+  awal tiap layanan), plus `app_settings` yang belum ada. Setelah itu pemilik mengelola layanan di
+  `/dasbor/layanan`: tambah, ubah (nama, kelompok, proses, satuan, harga, aturan min/maks, Bisa
+  Express, lama kerja, janji Reguler/Express), nonaktifkan, dan hapus. Layanan
   yang sudah dipakai di pesanan tidak bisa dihapus, cukup dinonaktifkan. Item dry clean belum punya
   harga, jadi nonaktif sampai harganya diisi.
 - `/pengaturan` mengumpulkan semua pengaturan: akun sendiri (nama, password) untuk semua peran, dan

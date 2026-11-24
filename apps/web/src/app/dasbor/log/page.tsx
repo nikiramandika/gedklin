@@ -86,6 +86,8 @@ const FIELD_LABEL: Record<string, string> = {
   pcs_per_load: "Kapasitas per load (pcs)",
   max_extra: "Maks tambahan",
   work_minutes: "Lama kerja (menit)",
+  promise_hours: "Janji Reguler (jam)",
+  express_promise_hours: "Janji Express (jam)",
   express_eligible: "Bisa Express",
   is_active: "Aktif",
   role: "Peran",

@@ -7,7 +7,7 @@ from datetime import date, time
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import AppSetting, DailyOperation, ServicePromise
+from app.models import AppSetting, DailyOperation, ServiceCatalog
 from app.services.operations import (
     DEFAULT_DAY_OPS,
     DEFAULT_OUTLET,
@@ -107,9 +107,15 @@ def save_app_settings(db: Session, values: dict[str, str]) -> None:
 
 
 def load_promises(db: Session) -> dict[str, Promise]:
+    """Janji per item katalog, dikunci dengan kode layanan."""
+    rows = db.execute(
+        select(
+            ServiceCatalog.code, ServiceCatalog.promise_hours, ServiceCatalog.express_promise_hours
+        )
+    )
     return {
-        row.process.value: Promise(regular_hours=row.regular_hours, express_hours=row.express_hours)
-        for row in db.scalars(select(ServicePromise))
+        code: Promise(regular_hours=regular, express_hours=express)
+        for code, regular, express in rows
     }
 
 

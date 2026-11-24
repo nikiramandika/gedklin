@@ -72,6 +72,8 @@ class CatalogItemOut(ORM):
     pcs_per_load: int | None
     max_extra: float | None
     work_minutes: float | None
+    promise_hours: int | None
+    express_promise_hours: int | None
     express_eligible: bool
     sort_order: int
     is_active: bool
@@ -92,6 +94,8 @@ class CatalogItemCreate(BaseModel):
     pcs_per_load: int | None = Field(default=None, gt=0)
     max_extra: float | None = Field(default=None, ge=0)
     work_minutes: float | None = Field(default=None, gt=0, le=10080)
+    promise_hours: int | None = Field(default=None, gt=0, le=24 * 30)
+    express_promise_hours: int | None = Field(default=None, gt=0, le=24 * 30)
     express_eligible: bool = False
     is_active: bool = True
 
@@ -114,6 +118,8 @@ class CatalogItemUpdate(BaseModel):
     pcs_per_load: int | None = Field(default=None, gt=0)
     max_extra: float | None = Field(default=None, ge=0)
     work_minutes: float | None = Field(default=None, gt=0, le=10080)
+    promise_hours: int | None = Field(default=None, gt=0, le=24 * 30)
+    express_promise_hours: int | None = Field(default=None, gt=0, le=24 * 30)
     express_eligible: bool | None = None
     is_active: bool | None = None
 
@@ -169,19 +175,6 @@ class OutletOut(BaseModel):
     name: str
     address: str
     phone: str
-
-
-class ServicePromiseOut(ORM):
-    process: Process
-    regular_hours: int | None
-    express_hours: int | None
-    min_regular_hours: int | None
-
-
-class ServicePromiseIn(BaseModel):
-    regular_hours: int | None = Field(default=None, gt=0, le=24 * 14)
-    express_hours: int | None = Field(default=None, gt=0, le=24 * 14)
-    min_regular_hours: int | None = Field(default=None, gt=0, le=24 * 14)
 
 
 class DailyOperationIn(BaseModel):

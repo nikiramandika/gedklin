@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { AppShell } from "@/components/AppShell";
-import { IconPlus, IconTag, IconTrash } from "@/components/icons";
+import { IconChevronRight, IconPlus, IconTag, IconTrash } from "@/components/icons";
 import { ConfirmDialog, Drawer, useToast } from "@/components/overlay";
 import {
   Button,
@@ -13,7 +13,6 @@ import {
   ErrorText,
   ExpressBadge,
   Field,
-  IconButton,
   Loading,
   PageHeader,
   Segmented,
@@ -35,22 +34,14 @@ import {
   autoWorkTime,
   codeFromName,
   needsWorkTime,
-  workMinutesLabel,
 } from "@/lib/catalog";
-import { GROUP_LABEL, PROCESS_LABEL, formatRupiah, priceRule } from "@/lib/format";
-import type {
-  CatalogGroup,
-  CatalogItem,
-  CatalogUnit,
-  Process,
-  Role,
-} from "@/lib/types";
+import { GROUP_LABEL, PROCESS_LABEL, formatRupiah } from "@/lib/format";
+import type { CatalogGroup, CatalogItem, CatalogUnit, Process, Role } from "@/lib/types";
 
 const ROLES: Role[] = ["owner"];
 const GROUPS: CatalogGroup[] = ["KILOAN", "SETRIKA", "KHUSUS", "SATUAN", "DRY_CLEAN"];
 
 type Editor = { item?: CatalogItem } | null;
-type Pending = { action: "delete" | "toggle"; item: CatalogItem } | null;
 
 export default function LayananPage() {
   const toast = useToast();
@@ -58,9 +49,9 @@ export default function LayananPage() {
   const [group, setGroup] = useState<CatalogGroup>("KILOAN");
   const [error, setError] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor>(null);
-  const [pending, setPending] = useState<Pending>(null);
-  const [pendingBusy, setPendingBusy] = useState(false);
-  const [pendingError, setPendingError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<CatalogItem | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const load = useCallback(
     () =>
@@ -74,31 +65,19 @@ export default function LayananPage() {
     load();
   }, [load]);
 
-  function ask(action: "delete" | "toggle", item: CatalogItem) {
-    setPendingError(null);
-    setPending({ action, item });
-  }
-
-  async function confirmPending() {
-    if (!pending) return;
-    const { action, item } = pending;
-    const path = `/catalog/${encodeURIComponent(item.code)}`;
-    setPendingBusy(true);
-    setPendingError(null);
+  async function confirmDelete() {
+    if (!deleting) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
     try {
-      if (action === "delete") {
-        await api(path, { method: "DELETE" });
-        toast(`${item.name} dihapus`);
-      } else {
-        await api(path, { method: "PUT", body: { is_active: !item.is_active } });
-        toast(`${item.name} ${item.is_active ? "dinonaktifkan" : "diaktifkan"}`);
-      }
-      setPending(null);
+      await api(`/catalog/${encodeURIComponent(deleting.code)}`, { method: "DELETE" });
+      toast(`${deleting.name} dihapus`);
+      setDeleting(null);
       await load();
     } catch (err) {
-      setPendingError(err instanceof Error ? err.message : "Gagal menyimpan");
+      setDeleteError(err instanceof Error ? err.message : "Gagal menghapus");
     } finally {
-      setPendingBusy(false);
+      setDeleteBusy(false);
     }
   }
 
@@ -112,7 +91,7 @@ export default function LayananPage() {
         actions={
           <>
             <Link href="/pengaturan#harga" className={buttonClass("secondary")}>
-              Express & janji waktu
+              Pengaturan Express
             </Link>
             <Button onClick={() => setEditor({})}>
               <IconPlus size={18} />
@@ -121,63 +100,45 @@ export default function LayananPage() {
           </>
         }
       />
-      <div>
-        <Card flush>
-          <div
-            role="tablist"
-            aria-label="Kelompok layanan"
-            className={tabListClass}
-          >
-            {GROUPS.map((g) => {
-              const active = g === group;
-              const n = catalog?.filter((c) => c.group === g).length;
-              return (
-                <button
-                  key={g}
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => setGroup(g)}
-                  className={tabClass(active)}
-                >
-                  {GROUP_LABEL[g]}
-                  {n !== undefined && <span className="tabular text-sm font-medium text-faint">{n}</span>}
-                </button>
-              );
-            })}
+      <Card flush>
+        <div role="tablist" aria-label="Kelompok layanan" className={tabListClass}>
+          {GROUPS.map((g) => {
+            const active = g === group;
+            const n = catalog?.filter((c) => c.group === g).length;
+            return (
+              <button key={g} role="tab" aria-selected={active} onClick={() => setGroup(g)} className={tabClass(active)}>
+                {GROUP_LABEL[g]}
+                {n !== undefined && <span className="tabular text-sm font-medium text-faint">{n}</span>}
+              </button>
+            );
+          })}
+        </div>
+        {error && (
+          <div className="px-4 pb-3 sm:px-5">
+            <ErrorText message={error} />
           </div>
-          {error && (
-            <div className="px-4 pb-3 sm:px-5">
-              <ErrorText message={error} />
-            </div>
-          )}
-          {!items ? (
-            !error && <Loading rows={5} />
-          ) : items.length === 0 ? (
-            <EmptyState
-              icon={IconTag}
-              title={`Belum ada layanan ${GROUP_LABEL[group].toLowerCase()}`}
-              action={
-                <Button variant="secondary" onClick={() => setEditor({})}>
-                  <IconPlus size={18} />
-                  Tambah layanan
-                </Button>
-              }
-            />
-          ) : (
-            <ul className={tileListClass}>
-              {items.map((c) => (
-                <CatalogRow
-                  key={c.code}
-                  item={c}
-                  onEdit={() => setEditor({ item: c })}
-                  onToggle={() => ask("toggle", c)}
-                  onDelete={() => ask("delete", c)}
-                />
-              ))}
-            </ul>
-          )}
-        </Card>
-      </div>
+        )}
+        {!items ? (
+          !error && <Loading rows={5} />
+        ) : items.length === 0 ? (
+          <EmptyState
+            icon={IconTag}
+            title={`Belum ada layanan ${GROUP_LABEL[group].toLowerCase()}`}
+            action={
+              <Button variant="secondary" onClick={() => setEditor({})}>
+                <IconPlus size={18} />
+                Tambah layanan
+              </Button>
+            }
+          />
+        ) : (
+          <ul className={tileListClass}>
+            {items.map((c) => (
+              <CatalogRow key={c.code} item={c} onEdit={() => setEditor({ item: c })} />
+            ))}
+          </ul>
+        )}
+      </Card>
 
       <ServiceDrawer
         editor={editor}
@@ -189,113 +150,101 @@ export default function LayananPage() {
           toast(created ? `${saved.name} ditambahkan` : "Perubahan disimpan");
           load();
         }}
+        onDelete={(item) => {
+          setEditor(null);
+          setDeleteError(null);
+          setDeleting(item);
+        }}
       />
 
       <ConfirmDialog
-        open={pending !== null}
-        onClose={() => setPending(null)}
-        onConfirm={confirmPending}
-        busy={pendingBusy}
-        error={pendingError}
-        {...confirmCopy(pending)}
-      />
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        onConfirm={confirmDelete}
+        busy={deleteBusy}
+        error={deleteError}
+        tone="danger"
+        title={`Hapus ${deleting?.name ?? "layanan"}?`}
+        confirmLabel="Hapus"
+      >
+        Layanan hilang dari kasir dan tidak bisa dikembalikan. Yang sudah pernah dipesan tidak bisa dihapus, cukup
+        matikan &quot;Tampil di kasir&quot;.
+      </ConfirmDialog>
     </AppShell>
   );
 }
 
-function confirmCopy(pending: Pending) {
-  const name = pending?.item.name ?? "layanan";
-  if (pending?.action === "delete")
-    return {
-      tone: "danger" as const,
-      title: `Hapus ${name}?`,
-      confirmLabel: "Hapus",
-      children:
-        "Layanan hilang dari daftar kasir dan tidak bisa dikembalikan. Layanan yang sudah pernah dipesan tidak bisa dihapus, cukup dinonaktifkan.",
-    };
-  if (pending?.item.is_active)
-    return {
-      tone: "warn" as const,
-      title: `Nonaktifkan ${name}?`,
-      confirmLabel: "Nonaktifkan",
-      children:
-        "Kasir tidak bisa memilih layanan ini untuk pesanan baru. Pesanan dan nota yang sudah ada tidak berubah, dan layanan bisa diaktifkan lagi kapan saja.",
-    };
-  return {
-    tone: "brand" as const,
-    title: `Aktifkan ${name}?`,
-    confirmLabel: "Aktifkan",
-    children: "Layanan akan langsung muncul di daftar kasir dengan harga yang tercantum.",
-  };
+/* ---------- Daftar ---------- */
+
+// Harga di kanan baris, dengan satuannya di bawah.
+const PRICE_UNIT: Record<CatalogUnit, (item: CatalogItem) => string> = {
+  KILOAN_7KG: (i) => `${i.base_kg ?? 7} kg pertama`,
+  KG: () => "per kg",
+  PCS: () => "per pcs",
+  LOAD: (i) => `per load ${i.kg_per_load ? `${i.kg_per_load} kg` : `${i.pcs_per_load} pcs`}`,
+};
+
+// Hari kalau pas kelipatan 24 jam, karena mitra menyebut janji dalam hari.
+function promiseText(hours: number): string {
+  return hours % 24 === 0 ? `${hours / 24} hari` : `${hours} jam`;
 }
 
-function CatalogRow({
-  item,
-  onEdit,
-  onToggle,
-  onDelete,
-}: {
-  item: CatalogItem;
-  onEdit: () => void;
-  onToggle: () => void;
-  onDelete: () => void;
-}) {
+function workText(minutes: number, unit: CatalogUnit): string {
+  return `${minutes.toLocaleString("id-ID", { maximumFractionDigits: 1 })} mnt/${WORK_UNIT[unit]}`;
+}
+
+// Satu baris keterangan singkat: aturan harga tambahan, lama kerja, janji.
+function rowMeta(item: CatalogItem): string {
+  const parts: string[] = [];
+  if (PROCESS_LABEL[item.process] !== item.name) parts.push(PROCESS_LABEL[item.process]);
+  if (item.extra_price) parts.push(`+${formatRupiah(item.extra_price)}/${item.unit === "LOAD" ? "pcs" : "kg"}`);
+  if (item.min_qty) parts.push(`min. ${item.min_qty} ${item.unit === "KG" ? "kg" : ""}`.trim());
+  if (item.work_minutes !== null) parts.push(workText(item.work_minutes, item.unit));
+  if (item.promise_hours !== null) parts.push(`siap ${promiseText(item.promise_hours)}`);
+  return parts.join(" · ");
+}
+
+function CatalogRow({ item, onEdit }: { item: CatalogItem; onEdit: () => void }) {
   const noPrice = item.price === null;
-  const workLabel = workMinutesLabel(item);
+  const meta = rowMeta(item);
 
   return (
-    <li className={`${tileClass} flex flex-wrap items-center gap-x-4 gap-y-3 p-4`}>
-      <button type="button" onClick={onEdit} className="min-w-0 flex-1 rounded-lg text-left">
-        <span className="flex flex-wrap items-center gap-2">
-          <span className={`text-base font-semibold ${item.is_active ? "text-ink" : "text-faint"}`}>{item.name}</span>
-          {item.express_eligible && <ExpressBadge />}
-          {!item.is_active && (
-            <span className="label-caps rounded-md bg-subtle px-2 py-1 leading-none ring-1 ring-inset ring-line text-faint">
-              {noPrice ? "Belum ada harga" : "Nonaktif"}
-            </span>
-          )}
-          {needsWorkTime(item) && (
-            <span
-              title="Tanpa lama kerja, pesanan layanan ini dianggap cepat selesai dan salah tempat di antrean."
-              className="inline-flex items-center whitespace-nowrap rounded bg-warn-50 px-1.5 py-0.5 text-xs font-medium leading-none text-warn-700 ring-1 ring-inset ring-warn-600/25"
-            >
-              Lama kerja belum diisi
-            </span>
-          )}
+    <li className={tileClass}>
+      <button type="button" onClick={onEdit} className="flex w-full items-center gap-4 rounded-xl p-4 text-left">
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-center gap-2">
+            <span className={`text-base font-semibold ${item.is_active ? "text-ink" : "text-faint"}`}>{item.name}</span>
+            {item.express_eligible && <ExpressBadge />}
+            {!item.is_active && <Tag>{noPrice ? "Belum ada harga" : "Tidak tampil"}</Tag>}
+            {needsWorkTime(item) && <Tag tone="warn">Lama kerja kosong</Tag>}
+          </span>
+          {meta && <span className="tabular mt-0.5 block text-sm text-muted">{meta}</span>}
         </span>
-        <span className="mt-0.5 block text-sm text-muted">
-          <span className="font-mono font-semibold text-ink-2">{item.code}</span>
-          {PROCESS_LABEL[item.process] !== item.name && ` · ${PROCESS_LABEL[item.process]}`} · {priceRule(item)}
-          {workLabel && <span className="tabular"> · ±{workLabel}</span>}
+        <span className="shrink-0 text-right">
+          <span className="tabular block text-base font-semibold text-ink">
+            {noPrice ? "–" : formatRupiah(item.price ?? 0)}
+          </span>
+          <span className="block text-xs text-muted">{PRICE_UNIT[item.unit](item)}</span>
         </span>
+        <IconChevronRight size={18} className="shrink-0 text-faint" aria-hidden="true" />
       </button>
-      <p className="tabular text-right text-base font-semibold text-ink">
-        {noPrice ? "–" : formatRupiah(item.price ?? 0)}
-      </p>
-      <div className="flex w-full items-center justify-end gap-1 sm:w-auto">
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={!item.is_active && noPrice}
-          title={!item.is_active && noPrice ? "Isi harga dulu lewat Ubah" : undefined}
-          onClick={onToggle}
-        >
-          {item.is_active ? "Nonaktifkan" : "Aktifkan"}
-        </Button>
-        <Button variant="secondary" size="sm" onClick={onEdit}>
-          Ubah
-        </Button>
-        <IconButton
-          label={`Hapus ${item.name}`}
-          icon={IconTrash}
-          size={18}
-          className="hover:bg-danger-50 hover:text-danger-600"
-          onClick={onDelete}
-        />
-      </div>
     </li>
   );
 }
+
+function Tag({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "warn" }) {
+  const style =
+    tone === "warn" ? "bg-warn-50 text-warn-700 ring-warn-600/25" : "bg-subtle text-muted ring-line";
+  return (
+    <span
+      className={`inline-flex items-center whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-medium leading-none ring-1 ring-inset ${style}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+/* ---------- Form ---------- */
 
 type LoadMode = "pcs" | "kg";
 
@@ -313,6 +262,8 @@ interface FormState {
   perLoad: string;
   maxExtra: string;
   workMinutes: string;
+  promise: string;
+  expressPromise: string;
   express: boolean;
   active: boolean;
 }
@@ -341,6 +292,8 @@ function initialForm(item: CatalogItem | undefined, group: CatalogGroup): FormSt
       perLoad: str(item.kg_per_load ?? item.pcs_per_load),
       maxExtra: str(item.max_extra),
       workMinutes: str(item.work_minutes),
+      promise: str(item.promise_hours),
+      expressPromise: str(item.express_promise_hours),
       express: item.express_eligible,
       active: item.is_active,
     };
@@ -360,6 +313,8 @@ function initialForm(item: CatalogItem | undefined, group: CatalogGroup): FormSt
     perLoad: "",
     maxExtra: "",
     workMinutes: "",
+    promise: "",
+    expressPromise: "",
     express: false,
     active: true,
   };
@@ -370,11 +325,13 @@ function ServiceDrawer({
   defaultGroup,
   onClose,
   onSaved,
+  onDelete,
 }: {
   editor: Editor;
   defaultGroup: CatalogGroup;
   onClose: () => void;
   onSaved: (item: CatalogItem, created: boolean) => void;
+  onDelete: (item: CatalogItem) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const item = editor?.item;
@@ -385,33 +342,52 @@ function ServiceDrawer({
     <Drawer
       open={editor !== null}
       onClose={onClose}
-      title={item ? `Ubah ${item.name}` : "Tambah layanan"}
-      description={
-        item
-          ? "Perubahan harga berlaku untuk pesanan berikutnya. Nota lama tidak berubah."
-          : "Isi sesuai price list mitra. Harga boleh dikosongkan bila belum diketahui."
-      }
+      title={item ? item.name : "Tambah layanan"}
+      description={item ? "Perubahan berlaku untuk pesanan berikutnya." : undefined}
       footer={
         <>
+          {item && (
+            <Button
+              variant="ghost"
+              className="mr-auto text-danger-700 hover:bg-danger-50"
+              onClick={() => onDelete(item)}
+              disabled={busy}
+            >
+              <IconTrash size={16} />
+              Hapus
+            </Button>
+          )}
           <Button variant="ghost" onClick={onClose} disabled={busy}>
             Batal
           </Button>
           <Button type="submit" form={FORM_ID} loading={busy}>
-            {item ? "Simpan perubahan" : "Tambah layanan"}
+            {item ? "Simpan" : "Tambah layanan"}
           </Button>
         </>
       }
     >
       {editor && (
-        <ServiceForm
-          key={formKey}
-          item={item}
-          defaultGroup={defaultGroup}
-          onBusy={setBusy}
-          onSaved={onSaved}
-        />
+        <ServiceForm key={formKey} item={item} defaultGroup={defaultGroup} onBusy={setBusy} onSaved={onSaved} />
       )}
     </Drawer>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="space-y-3 border-t border-line pt-5 first:border-t-0 first:pt-0">
+      <h3 className="text-sm font-semibold text-ink">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function Suffixed({ suffix, children }: { suffix: string; children: ReactNode }) {
+  return (
+    <div className="relative">
+      {children}
+      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted">{suffix}</span>
+    </div>
   );
 }
 
@@ -432,6 +408,7 @@ function ServiceForm({
   const [error, setError] = useState<string | null>(null);
   const rules = GROUP_RULES[form.group];
   const noPrice = form.price.trim() === "";
+  const kiloan = form.unit === "KILOAN_7KG";
 
   const set = (patch: Partial<FormState>) => setForm((f) => ({ ...f, ...patch }));
 
@@ -457,13 +434,15 @@ function ServiceForm({
       unit: form.unit,
       price: toNumber(form.price),
       extra_price: ["KILOAN_7KG", "LOAD"].includes(form.unit) ? toNumber(form.extra) : null,
-      base_kg: form.unit === "KILOAN_7KG" ? toNumber(form.baseKg) : null,
+      base_kg: kiloan ? toNumber(form.baseKg) : null,
       min_qty: ["KG", "LOAD"].includes(form.unit) ? toNumber(form.minQty) : null,
       kg_per_load: form.loadMode === "kg" ? perLoad : null,
       pcs_per_load: form.loadMode === "pcs" ? perLoad : null,
       max_extra: form.unit === "LOAD" ? toNumber(form.maxExtra) : null,
       work_minutes: toNumber(form.workMinutes),
-      express_eligible: form.unit === "KILOAN_7KG" && form.express,
+      promise_hours: toNumber(form.promise),
+      express_promise_hours: kiloan && form.express ? toNumber(form.expressPromise) : null,
+      express_eligible: kiloan && form.express,
       is_active: form.active && !noPrice,
     };
     try {
@@ -478,34 +457,58 @@ function ServiceForm({
     }
   }
 
-  const money = (value: string, onChange: (v: string) => void, label: string) => (
+  const money = (value: string, onChange: (v: string) => void, label: string, placeholder?: string) => (
     <div className="relative">
       <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted">Rp</span>
       <input
         className={`${inputClass} tabular pl-9`}
         inputMode="numeric"
         value={value}
+        placeholder={placeholder}
         onChange={(e) => onChange(e.target.value.replace(/\D/g, ""))}
         aria-label={label}
       />
     </div>
   );
 
-  const decimal = (value: string, onChange: (v: string) => void, required = false) => (
+  const decimal = (value: string, onChange: (v: string) => void, required = false, placeholder?: string) => (
     <input
       className={`${inputClass} tabular`}
       inputMode="decimal"
       value={value}
+      placeholder={placeholder}
       onChange={(e) => onChange(e.target.value)}
       required={required}
     />
   );
 
+  const hours = (value: string, onChange: (v: string) => void, placeholder: string) => (
+    <Suffixed suffix="jam">
+      <input
+        className={`${inputClass} tabular pr-12`}
+        inputMode="numeric"
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value.replace(/\D/g, ""))}
+      />
+    </Suffixed>
+  );
+
+  // Hint janji: tampilkan dalam hari begitu angkanya pas, supaya mudah dicek.
+  const daysHint = (value: string, empty: string) => {
+    const n = toNumber(value);
+    if (n === null) return empty;
+    return n > 0 && n % 24 === 0 ? `= ${n / 24} hari` : undefined;
+  };
+
+  const per = WORK_UNIT[form.unit];
+  const autoWork = autoWorkTime({ unit: form.unit, process: form.process });
+  const workMissing = !autoWork && form.workMinutes.trim() === "";
+
   return (
     <form id={FORM_ID} onSubmit={submit} className="space-y-5">
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold text-ink">Identitas</h3>
-        <Field label="Nama layanan">
+      <Section title="Layanan">
+        <Field label="Nama">
           <input
             className={inputClass}
             value={form.name}
@@ -515,23 +518,6 @@ function ServiceForm({
             onChange={(e) =>
               set({ name: e.target.value, ...(!codeTouched && { code: codeFromName(e.target.value) }) })
             }
-          />
-        </Field>
-        <Field
-          label="Kode"
-          hint={editing ? "Tidak bisa diubah (dipakai di nota lama)." : "Huruf besar, angka, garis bawah."}
-        >
-          <input
-            className={`${inputClass} font-mono uppercase`}
-            value={form.code}
-            disabled={editing}
-            required
-            maxLength={40}
-            pattern="[A-Z0-9_]+"
-            onChange={(e) => {
-              setCodeTouched(true);
-              set({ code: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "") });
-            }}
           />
         </Field>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -558,169 +544,133 @@ function ServiceForm({
             </Select>
           </Field>
         </div>
-      </section>
-
-      <section className="space-y-3 rounded-md border border-dashed border-field/60 p-4">
-        <h3 className="text-sm font-semibold text-ink">Harga</h3>
-        <Field label="Satuan harga">
-          <Select
-            value={form.unit}
-            disabled={rules.units.length === 1}
-            onChange={(e) => set({ unit: e.target.value as CatalogUnit })}
-          >
-            {rules.units.map((u) => (
-              <option key={u} value={u}>
-                {UNIT_LABEL[u]}
-              </option>
-            ))}
-          </Select>
+        <Field label="Kode" hint={editing ? "Tidak bisa diubah karena dipakai di nota." : "Terisi otomatis dari nama."}>
+          <input
+            className={`${inputClass} font-mono uppercase`}
+            value={form.code}
+            disabled={editing}
+            required
+            maxLength={40}
+            pattern="[A-Z0-9_]+"
+            onChange={(e) => {
+              setCodeTouched(true);
+              set({ code: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "") });
+            }}
+          />
         </Field>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label={PRICE_LABEL[form.unit]} hint="Kosongkan bila belum diketahui.">
-            {money(form.price, (price) => set({ price }), PRICE_LABEL[form.unit])}
+      </Section>
+
+      <Section title="Harga">
+        {rules.units.length > 1 && (
+          <Field label="Dihitung">
+            <Select value={form.unit} onChange={(e) => set({ unit: e.target.value as CatalogUnit })}>
+              {rules.units.map((u) => (
+                <option key={u} value={u}>
+                  {UNIT_LABEL[u]}
+                </option>
+              ))}
+            </Select>
           </Field>
-          {form.unit === "KILOAN_7KG" && (
+        )}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label={PRICE_LABEL[form.unit]}>{money(form.price, (price) => set({ price }), PRICE_LABEL[form.unit], "Belum ada")}</Field>
+          {kiloan && (
             <>
-              <Field label="Berat dasar (kg)" hint="Sudah termasuk harga dasar.">
-                {decimal(form.baseKg, (baseKg) => set({ baseKg }), true)}
+              <Field label="Berat dasar">
+                <Suffixed suffix="kg">{decimal(form.baseKg, (baseKg) => set({ baseKg }), true)}</Suffixed>
               </Field>
-              <Field label="Tambahan per kg" hint="Setiap kg di atas berat dasar." className="sm:col-span-2">
-                {money(form.extra, (extra) => set({ extra }), "Tambahan per kg")}
+              <Field label="Per kg berikutnya" className="sm:col-span-2">
+                {money(form.extra, (extra) => set({ extra }), "Per kg berikutnya")}
               </Field>
             </>
           )}
           {(form.unit === "KG" || form.unit === "LOAD") && (
-            <Field
-              label={form.unit === "KG" ? "Minimal (kg)" : "Minimal (pcs atau kg)"}
-              hint="Kosongkan bila tanpa minimal."
-            >
-              {decimal(form.minQty, (minQty) => set({ minQty }))}
+            <Field label={form.unit === "KG" ? "Minimal (kg)" : "Minimal (pcs atau kg)"}>
+              {decimal(form.minQty, (minQty) => set({ minQty }), false, "Tanpa minimal")}
             </Field>
           )}
         </div>
         {form.unit === "LOAD" && (
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Kapasitas satu load" className="sm:col-span-2">
+            <Field label="Isi satu load" className="sm:col-span-2">
               <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2">
                 <Segmented<LoadMode>
-                  label="Satuan kapasitas"
+                  label="Satuan isi load"
                   value={form.loadMode}
                   onChange={(loadMode) => set({ loadMode })}
                   options={[
-                    { value: "pcs", label: "Per pcs" },
-                    { value: "kg", label: "Per kg" },
+                    { value: "pcs", label: "pcs" },
+                    { value: "kg", label: "kg" },
                   ]}
                 />
                 {decimal(form.perLoad, (perLoad) => set({ perLoad }), true)}
               </div>
             </Field>
-            <Field label="Tambahan per pcs">
-              {money(form.extra, (extra) => set({ extra }), "Tambahan per pcs")}
-            </Field>
-            <Field label="Maks tambahan per load (pcs)">
-              {decimal(form.maxExtra, (maxExtra) => set({ maxExtra }))}
+            <Field label="Tambahan per pcs">{money(form.extra, (extra) => set({ extra }), "Tambahan per pcs")}</Field>
+            <Field label="Maks tambahan per load">
+              <Suffixed suffix="pcs">{decimal(form.maxExtra, (maxExtra) => set({ maxExtra }))}</Suffixed>
             </Field>
           </div>
         )}
-      </section>
+      </Section>
 
-      <WorkTimeSection
-        unit={form.unit}
-        process={form.process}
-        value={form.workMinutes}
-        onChange={(workMinutes) => set({ workMinutes })}
-      />
+      <Section title="Waktu">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field
+            label={`Lama kerja per ${per}`}
+            hint={
+              autoWork ? (
+                "Kosong = dihitung dari mesin."
+              ) : workMissing ? (
+                <span className="text-warn-700">Isi supaya urutan antrean tepat.</span>
+              ) : undefined
+            }
+          >
+            <Suffixed suffix="menit">
+              <input
+                className={`${inputClass} tabular pr-16`}
+                inputMode="decimal"
+                value={form.workMinutes}
+                placeholder={autoWork ? "Otomatis" : undefined}
+                aria-invalid={workMissing || undefined}
+                onChange={(e) => set({ workMinutes: e.target.value })}
+              />
+            </Suffixed>
+          </Field>
+          <Field label="Janji siap" hint={daysHint(form.promise, "Kosong = janji default.")}>
+            {hours(form.promise, (promise) => set({ promise }), "Default")}
+          </Field>
+        </div>
+      </Section>
 
-      <section className="space-y-1">
-        <h3 className="mb-2 text-sm font-semibold text-ink">Ketersediaan</h3>
-        {form.unit === "KILOAN_7KG" && (
+      {kiloan && (
+        <Section title="Express">
           <Switch
             label="Bisa Express"
-            description="Harga = Reguler × pengali."
+            description="Harga Reguler × pengali Express."
             checked={form.express}
             onChange={(express) => set({ express })}
           />
-        )}
+          {form.express && (
+            <div className="sm:max-w-[calc(50%-0.375rem)]">
+              <Field label="Janji Express" hint={daysHint(form.expressPromise, "Harus lebih cepat dari Reguler.")}>
+                {hours(form.expressPromise, (expressPromise) => set({ expressPromise }), "Default")}
+              </Field>
+            </div>
+          )}
+        </Section>
+      )}
+
+      <Section title="Status">
         <Switch
-          label="Aktif"
-          description={noPrice ? "Isi harga dulu." : "Tampil di kasir."}
+          label="Tampil di kasir"
+          description={noPrice ? "Isi harga dulu." : undefined}
           checked={form.active && !noPrice}
           onChange={(active) => set({ active })}
         />
-      </section>
+      </Section>
 
       <ErrorText message={error} />
     </form>
   );
-}
-
-// Contoh jumlah untuk pratinjau lama kerja, supaya angka per satuan terasa nyata.
-const EXAMPLE_QTY: Record<CatalogUnit, number> = { KILOAN_7KG: 7, KG: 5, PCS: 3, LOAD: 2 };
-
-function WorkTimeSection({
-  unit,
-  process,
-  value,
-  onChange,
-}: {
-  unit: CatalogUnit;
-  process: Process;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  const per = WORK_UNIT[unit];
-  const minutes = toNumber(value);
-  const auto = autoWorkTime({ unit, process });
-  const qty = EXAMPLE_QTY[unit];
-  const hint = auto ? (
-    <>
-      Boleh dikosongkan: dihitung otomatis dari muatan mesin di{" "}
-      <Link href="/pengaturan#pengerjaan" className="font-medium text-brand-700 underline underline-offset-2">
-        Pengaturan
-      </Link>
-      .
-    </>
-  ) : (
-    `Lama pengerjaan biasanya di laundry untuk satu ${per}, dari mulai dikerjakan sampai siap. Dipakai apa adanya.`
-  );
-
-  return (
-    <section className="space-y-3">
-      <div>
-        <h3 className="text-sm font-semibold text-ink">Lama pengerjaan</h3>
-        <p className="mt-0.5 text-xs text-muted">Dipakai untuk mengurutkan antrean cucian.</p>
-      </div>
-      <Field label={`Lama kerja per ${per}`} hint={hint}>
-        <div className="relative max-w-[14rem]">
-          <input
-            className={`${inputClass} tabular pr-16`}
-            inputMode="decimal"
-            value={value}
-            placeholder={auto ? "Otomatis" : undefined}
-            onChange={(e) => onChange(e.target.value)}
-          />
-          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted">
-            menit
-          </span>
-        </div>
-      </Field>
-      {minutes !== null && minutes > 0 ? (
-        <p className="rounded-xl bg-subtle px-4 py-3 text-sm text-ink-2" aria-live="polite">
-          Contoh {qty} {per} dikerjakan ±{" "}
-          <span className="tabular font-semibold text-ink">{workTime(minutes * qty)}</span>
-        </p>
-      ) : (
-        !auto && (
-          <p className="rounded-xl bg-warn-50 px-4 py-3 text-sm text-warn-700 ring-1 ring-inset ring-warn-600/20">
-            Belum diisi. Pesanan layanan ini akan dianggap cepat selesai sehingga bisa tertinggal di antrean.
-          </p>
-        )
-      )}
-    </section>
-  );
-}
-
-function workTime(minutes: number): string {
-  if (minutes < 60) return `${Math.round(minutes)} menit`;
-  return `${(minutes / 60).toLocaleString("id-ID", { maximumFractionDigits: 1 })} jam`;
 }

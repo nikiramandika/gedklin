@@ -140,3 +140,20 @@ def test_work_minutes_from_catalog_feed_the_queue(
     client.put("/catalog/BEDCOVER_K", json={"work_minutes": None}, headers=owner)
     (entry,) = client.get("/orders/queue", headers=cashier).json()
     assert entry["processing_hours"] == 0
+
+
+def test_promise_is_set_per_service(client: TestClient, owner: dict, cashier: dict) -> None:
+    res = client.put("/catalog/BONEKA_L", json={"promise_hours": 120}, headers=owner)
+    assert res.status_code == 200, res.text
+    boneka = new_order(client, cashier, items=[{"catalog_code": "BONEKA_L", "qty_pcs": 1}])
+    kemeja = new_order(
+        client,
+        cashier,
+        customer_phone="081111111111",
+        items=[{"catalog_code": "KEMEJA_PENDEK", "qty_pcs": 1}],
+    )
+    assert boneka["promised_ready_at"] != kemeja["promised_ready_at"]
+
+    # Janji Express lebih lama dari Reguler ditolak.
+    body = {"promise_hours": 24, "express_promise_hours": 48}
+    assert client.put("/catalog/CKL", json=body, headers=owner).status_code == 422

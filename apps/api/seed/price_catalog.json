@@ -9,7 +9,7 @@
     "work_minutes: lama kerja (menit) per satuan harga untuk item non-kiloan. Masih TAKSIRAN, menunggu konfirmasi mitra. Kiloan tidak diisi karena dihitung dari muatan mesin."
   ],
   "promise_hours": {
-    "_note": "Janji waktu standar dari mitra. null = belum diketahui. 1 hari = 24 jam kalender. Express hanya untuk CKL dan CKS. regular_min = batas bawah janji Reguler. default dipakai bila semua layanan di pesanan belum punya janji (sementara, bisa diubah pemilik).",
+    "_note": "Janji waktu standar dari mitra. null = belum diketahui. 1 hari = 24 jam kalender. Express hanya untuk CKL dan CKS. Janji per proses ini hanya isi awal janji tiap layanan saat seed; selanjutnya diatur per layanan di dasbor. regular_min = batas bawah janji Reguler (catatan saja, tidak dipakai). default dipakai bila semua layanan di pesanan belum punya janji (sementara, bisa diubah pemilik).",
     "express": 24,
     "regular": {
       "C": null,

@@ -6,7 +6,6 @@ from app.services.operations import (
     DayOps,
     Promise,
     count_loads,
-    item_processes,
     machine_loads,
     promise_deadline,
     promised_hours,
@@ -18,12 +17,16 @@ PROMISES = {
     "CKL": Promise(regular_hours=48, express_hours=24),
     "CKS": Promise(regular_hours=96, express_hours=24),
     "CK": Promise(regular_hours=None, express_hours=None),
+    # Proses sama (CKL / satuan), janji berbeda per layanan.
+    "BEDCOVER_K": Promise(regular_hours=72, express_hours=None),
+    "BONEKA_L": Promise(regular_hours=120, express_hours=None),
+    "KEMEJA_PENDEK": Promise(regular_hours=48, express_hours=None),
 }
 
 
 @dataclass
 class Item:
-    process: str
+    catalog_code: str
     is_express: bool = False
 
 
@@ -46,20 +49,25 @@ def test_machine_loads_8_kg_per_machine() -> None:
     assert machine_loads(12, capacity_kg=10) == 2
 
 
-def test_item_processes_split_regular_and_express_without_duplicates() -> None:
-    items = [Item("CKS", True), Item("CKL"), Item("CKS", True), Item("SATUAN")]
-    assert item_processes(items) == (("CKL", "SATUAN"), ("CKS",))
-
-
 def test_promised_hours_takes_longest_known_promise() -> None:
     ckl, cks = Item("CKL"), Item("CKS")
     assert promised_hours([ckl, cks], PROMISES, 48) == 96
     express_ckl, express_cks = Item("CKL", is_express=True), Item("CKS", is_express=True)
     assert promised_hours([express_ckl, express_cks], PROMISES, 48) == 24
-    # Bedcover tidak bisa Express, jadi janji Reguler CKL (48 jam) yang berlaku.
+    # Item tanpa Express memakai janji Reguler-nya.
     assert promised_hours([express_cks, ckl], PROMISES, 48) == 48
+    # Tanpa janji (atau layanan tidak dikenal) memakai janji default.
     assert promised_hours([Item("CK")], PROMISES, 48) == 48
-    assert promised_hours([Item("SATUAN")], PROMISES, 36) == 36
+    assert promised_hours([Item("LAIN")], PROMISES, 36) == 36
+
+
+def test_promise_is_per_service_not_per_process() -> None:
+    assert promised_hours([Item("KEMEJA_PENDEK")], PROMISES, 48) == 48
+    assert promised_hours([Item("BONEKA_L")], PROMISES, 48) == 120
+    # Bed cover (proses CKL) punya janji sendiri, tidak ikut janji kiloan CKL.
+    assert promised_hours([Item("BEDCOVER_K")], PROMISES, 48) == 72
+    # Boneka dan kemeja diserahkan bersamaan: ikut yang paling lama.
+    assert promised_hours([Item("KEMEJA_PENDEK"), Item("BONEKA_L")], PROMISES, 48) == 120
 
 
 def test_shift_into_open_hours() -> None:

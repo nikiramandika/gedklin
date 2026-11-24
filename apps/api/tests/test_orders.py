@@ -276,18 +276,17 @@ def test_daily_operations_capacity_and_promises(client: TestClient, owner: dict)
     assert res.status_code == 200, res.text
     assert res.json()["washers_available"] == 3
 
-    promises = client.get("/service-promises", headers=owner).json()
-    by_process = {p["process"]: p for p in promises}
-    assert by_process["CKS"]["regular_hours"] == 96
-    assert by_process["CKS"]["min_regular_hours"] == 72
-    assert by_process["CK"]["regular_hours"] is None
-    assert {p for p, v in by_process.items() if v["express_hours"] == 24} == {"CKL", "CKS"}
-    assert "DRY_CLEAN" in by_process
-
+    catalog = {c["code"]: c for c in client.get("/catalog", headers=owner).json()}
+    assert (catalog["CKS"]["promise_hours"], catalog["CKS"]["express_promise_hours"]) == (96, 24)
+    assert catalog["CK"]["promise_hours"] is None
+    express = {code for code, c in catalog.items() if c["express_promise_hours"] == 24}
+    assert express == {"CKL", "CKS"}
+    # Layanan tanpa Express tidak menyimpan janji Express.
     res = client.put(
-        "/service-promises/CK", json={"regular_hours": 36, "express_hours": 24}, headers=owner
+        "/catalog/CK", json={"promise_hours": 36, "express_promise_hours": 24}, headers=owner
     )
-    assert res.status_code == 200 and res.json()["regular_hours"] == 36
+    assert res.status_code == 200
+    assert (res.json()["promise_hours"], res.json()["express_promise_hours"]) == (36, None)
 
 
 @pytest.mark.parametrize(
