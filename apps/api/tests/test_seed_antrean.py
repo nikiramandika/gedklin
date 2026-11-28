@@ -15,7 +15,7 @@ def test_scenario_shows_weight_and_deadline_ordering(db: Session) -> None:
         e for e in active_schedule(db, NOW) if e.order.customer.phone_wa.startswith("6281299088")
     ]
     names = [e.order.customer.name for e in entries]
-    # Budi (24 kg) di atas Rina (4 kg) walau janji Rina lebih awal.
+    # Budi (40 kg, melebihi kapasitas 4 mesin) di atas Rina (4 kg) walau janji Rina lebih awal.
     assert names == [
         "Budi Santoso",
         "Rina Marpaung",
@@ -27,8 +27,8 @@ def test_scenario_shows_weight_and_deadline_ordering(db: Session) -> None:
     ]
     budi, rina = entries[0], entries[1]
     assert budi.order.promised_ready_at > rina.order.promised_ready_at
-    assert (budi.processing_hours, budi.slack_hours) == (4.0, 0.5)
-    assert (rina.processing_hours, rina.slack_hours) == (2.0, 1.0)
+    assert (budi.processing_hours, budi.slack_hours) == (6.0, 0.5)
+    assert (rina.processing_hours, rina.slack_hours) == (3.0, 1.0)
     assert all(e.order.received_at <= NOW for e in entries)
 
 

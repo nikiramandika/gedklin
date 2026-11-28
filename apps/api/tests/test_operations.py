@@ -95,6 +95,17 @@ def test_promise_deadline_skips_closed_days() -> None:
     assert promise_deadline(utc(24, 16), 24, closed_sunday) == utc(26, 16)
 
 
+def test_promise_starts_at_next_opening_when_received_while_closed() -> None:
+    def closed_sunday(d: date) -> DayOps:
+        return DayOps(is_open=False) if d.weekday() == 6 else DEFAULT_DAY_OPS
+
+    # Minggu 25 Okt 10.00 (tutup): jam janji baru jalan Senin 08.00.
+    assert promise_deadline(utc(25, 10), 3, closed_sunday) == utc(26, 11)
+    assert promise_deadline(utc(25, 10), 24, closed_sunday) == utc(27, 8)
+    # Senin 20.00 (sudah tutup): mulai Selasa 08.00.
+    assert promise_deadline(utc(26, 20), 3, closed_sunday) == utc(27, 11)
+
+
 def test_work_hours_between_counts_only_open_hours() -> None:
     # Selasa 15.00 -> Rabu 10.00: 2 jam + 2 jam.
     assert work_hours_between(utc(20, 15), utc(21, 10), always()) == 4

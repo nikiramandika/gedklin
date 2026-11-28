@@ -72,6 +72,7 @@ class CatalogItemOut(ORM):
     pcs_per_load: int | None
     max_extra: float | None
     work_minutes: float | None
+    work_per_order: bool
     promise_hours: int | None
     express_promise_hours: int | None
     express_eligible: bool
@@ -94,6 +95,7 @@ class CatalogItemCreate(BaseModel):
     pcs_per_load: int | None = Field(default=None, gt=0)
     max_extra: float | None = Field(default=None, ge=0)
     work_minutes: float | None = Field(default=None, gt=0, le=10080)
+    work_per_order: bool = False
     promise_hours: int | None = Field(default=None, gt=0, le=24 * 30)
     express_promise_hours: int | None = Field(default=None, gt=0, le=24 * 30)
     express_eligible: bool = False
@@ -118,6 +120,7 @@ class CatalogItemUpdate(BaseModel):
     pcs_per_load: int | None = Field(default=None, gt=0)
     max_extra: float | None = Field(default=None, ge=0)
     work_minutes: float | None = Field(default=None, gt=0, le=10080)
+    work_per_order: bool | None = None
     promise_hours: int | None = Field(default=None, gt=0, le=24 * 30)
     express_promise_hours: int | None = Field(default=None, gt=0, le=24 * 30)
     express_eligible: bool | None = None

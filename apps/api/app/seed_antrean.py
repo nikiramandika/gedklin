@@ -2,7 +2,8 @@
 
 Menambah beberapa pesanan "Belum diproses" dengan berat dan janji yang diatur relatif terhadap
 waktu sekarang, supaya di papan kasir dan layar Antrean Cucian terlihat:
-- cucian berat yang janjinya dekat naik di atas cucian ringan yang janjinya lebih awal;
+- cucian berat (melebihi kapasitas mesin) yang janjinya dekat naik di atas cucian ringan yang
+  janjinya lebih awal;
 - badge "Segera" pada pesanan yang sisa waktunya tinggal sedikit;
 - pesanan yang masih longgar tetap di bawah.
 
@@ -54,20 +55,21 @@ class Case:
     work_hours_left: float
 
 
-# Taksiran lama kerja memakai pengaturan bawaan (4 mesin cuci, 3 pengering, 2 petugas,
-# 60/60 menit per load, setrika 10 menit/kg, 5 menit/pcs).
+# Lama kerja memakai data mitra di katalog (kiloan per putaran mesin: CK 2 jam, CKL/CKS 3 jam,
+# kemeja/celana 1 jam per pcs) dengan 4 mesin cuci bawaan.
 CASES = [
-    # ±4 jam kerja, sisa 4,5 jam -> slack 0,5: paling atas walau janji Rina lebih awal.
-    Case("Budi Santoso", [pricing.ItemRequest("CKS", weight_kg=24)], True, 4.5),
-    # ±2 jam kerja, sisa 3 jam -> slack 1.
-    Case("Rina Marpaung", [pricing.ItemRequest("CKL", weight_kg=4)], True, 3),
-    # ±2,8 jam kerja, sisa 6 jam -> slack 3,2: masih "Segera".
+    # 40 kg = 5 load, melebihi 4 mesin -> 2 putaran = 6 jam. Sisa 6,5 jam -> slack 0,5: paling
+    # atas walau janji Rina lebih awal.
+    Case("Budi Santoso", [pricing.ItemRequest("CKS", weight_kg=40)], True, 6.5),
+    # 1 putaran = 3 jam, sisa 4 jam -> slack 1.
+    Case("Rina Marpaung", [pricing.ItemRequest("CKL", weight_kg=4)], True, 4),
+    # 3 jam, sisa 6 jam -> slack 3: masih "Segera".
     Case("Tono Sihombing", [pricing.ItemRequest("CKS", weight_kg=10)], False, 6),
-    # ±2 jam kerja, sisa 9 jam -> longgar.
+    # 3 jam, sisa 9 jam -> longgar.
     Case("Sari Lubis", [pricing.ItemRequest("CKL", weight_kg=6)], False, 9),
-    # ±2 jam kerja, sisa 14 jam.
+    # 2 jam, sisa 14 jam.
     Case("Dewi Purba", [pricing.ItemRequest("CK", weight_kg=15)], False, 14),
-    # Satuan, ±10 menit, sisa 20 jam.
+    # Satuan 4 pcs x 1 jam, sisa 20 jam.
     Case(
         "Joko Tarigan",
         [
@@ -77,7 +79,7 @@ CASES = [
         False,
         20,
     ),
-    # ±2 jam kerja, sisa 30 jam -> paling bawah.
+    # 3 jam, sisa 30 jam -> paling bawah.
     Case("Lina Ginting", [pricing.ItemRequest("CKL", weight_kg=8)], False, 30),
 ]
 

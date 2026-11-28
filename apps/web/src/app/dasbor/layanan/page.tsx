@@ -189,8 +189,18 @@ function promiseText(hours: number): string {
   return hours % 24 === 0 ? `${hours / 24} hari` : `${hours} jam`;
 }
 
-function workText(minutes: number, unit: CatalogUnit): string {
-  return `${minutes.toLocaleString("id-ID", { maximumFractionDigits: 1 })} mnt/${WORK_UNIT[unit]}`;
+// 1 hari kerja = jam buka 08.00-17.00, sama dengan backend.
+const WORK_DAY_MINUTES = 540;
+
+function durationText(minutes: number): string {
+  if (minutes >= WORK_DAY_MINUTES && minutes % WORK_DAY_MINUTES === 0) return `${minutes / WORK_DAY_MINUTES} hari kerja`;
+  if (minutes < 60) return `${Math.round(minutes)} mnt`;
+  return `${(minutes / 60).toLocaleString("id-ID", { maximumFractionDigits: 1 })} jam`;
+}
+
+function workText(item: CatalogItem): string {
+  const per = item.work_per_order ? "pesanan" : WORK_UNIT[item.unit];
+  return `${durationText(item.work_minutes ?? 0)}/${per}`;
 }
 
 // Satu baris keterangan singkat: aturan harga tambahan, lama kerja, janji.
@@ -199,7 +209,7 @@ function rowMeta(item: CatalogItem): string {
   if (PROCESS_LABEL[item.process] !== item.name) parts.push(PROCESS_LABEL[item.process]);
   if (item.extra_price) parts.push(`+${formatRupiah(item.extra_price)}/${item.unit === "LOAD" ? "pcs" : "kg"}`);
   if (item.min_qty) parts.push(`min. ${item.min_qty} ${item.unit === "KG" ? "kg" : ""}`.trim());
-  if (item.work_minutes !== null) parts.push(workText(item.work_minutes, item.unit));
+  if (item.work_minutes !== null) parts.push(workText(item));
   if (item.promise_hours !== null) parts.push(`siap ${promiseText(item.promise_hours)}`);
   return parts.join(" · ");
 }
@@ -262,6 +272,7 @@ interface FormState {
   perLoad: string;
   maxExtra: string;
   workMinutes: string;
+  workPerOrder: boolean;
   promise: string;
   expressPromise: string;
   express: boolean;
@@ -292,6 +303,7 @@ function initialForm(item: CatalogItem | undefined, group: CatalogGroup): FormSt
       perLoad: str(item.kg_per_load ?? item.pcs_per_load),
       maxExtra: str(item.max_extra),
       workMinutes: str(item.work_minutes),
+      workPerOrder: item.work_per_order,
       promise: str(item.promise_hours),
       expressPromise: str(item.express_promise_hours),
       express: item.express_eligible,
@@ -313,6 +325,7 @@ function initialForm(item: CatalogItem | undefined, group: CatalogGroup): FormSt
     perLoad: "",
     maxExtra: "",
     workMinutes: "",
+    workPerOrder: false,
     promise: "",
     expressPromise: "",
     express: false,
@@ -440,6 +453,7 @@ function ServiceForm({
       pcs_per_load: form.loadMode === "pcs" ? perLoad : null,
       max_extra: form.unit === "LOAD" ? toNumber(form.maxExtra) : null,
       work_minutes: toNumber(form.workMinutes),
+      work_per_order: !kiloan && form.workPerOrder,
       promise_hours: toNumber(form.promise),
       express_promise_hours: kiloan && form.express ? toNumber(form.expressPromise) : null,
       express_eligible: kiloan && form.express,
@@ -502,6 +516,7 @@ function ServiceForm({
   };
 
   const per = WORK_UNIT[form.unit];
+  const workMinutes = toNumber(form.workMinutes);
   const autoWork = autoWorkTime({ unit: form.unit, process: form.process });
   const workMissing = !autoWork && form.workMinutes.trim() === "";
 
@@ -616,27 +631,42 @@ function ServiceForm({
 
       <Section title="Waktu">
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field
-            label={`Lama kerja per ${per}`}
-            hint={
-              autoWork ? (
-                "Kosong = dihitung dari mesin."
-              ) : workMissing ? (
-                <span className="text-warn-700">Isi supaya urutan antrean tepat.</span>
-              ) : undefined
-            }
-          >
-            <Suffixed suffix="menit">
-              <input
-                className={`${inputClass} tabular pr-16`}
-                inputMode="decimal"
-                value={form.workMinutes}
-                placeholder={autoWork ? "Otomatis" : undefined}
-                aria-invalid={workMissing || undefined}
-                onChange={(e) => set({ workMinutes: e.target.value })}
+          <div className="space-y-2">
+            <Field
+              label={kiloan ? "Lama kerja per putaran (7 kg)" : "Lama kerja"}
+              hint={
+                workMissing ? (
+                  <span className="text-warn-700">Isi supaya urutan antrean tepat.</span>
+                ) : workMinutes !== null && workMinutes >= 60 ? (
+                  `= ${durationText(workMinutes)}`
+                ) : autoWork && workMinutes === null ? (
+                  "Kosong = dihitung dari mesin."
+                ) : undefined
+              }
+            >
+              <Suffixed suffix="menit">
+                <input
+                  className={`${inputClass} tabular pr-16`}
+                  inputMode="decimal"
+                  value={form.workMinutes}
+                  placeholder={autoWork ? "Otomatis" : undefined}
+                  aria-invalid={workMissing || undefined}
+                  onChange={(e) => set({ workMinutes: e.target.value })}
+                />
+              </Suffixed>
+            </Field>
+            {!kiloan && (
+              <Segmented<"unit" | "order">
+                label="Lama kerja dihitung"
+                value={form.workPerOrder ? "order" : "unit"}
+                onChange={(v) => set({ workPerOrder: v === "order" })}
+                options={[
+                  { value: "unit", label: `per ${per}` },
+                  { value: "order", label: "per pesanan" },
+                ]}
               />
-            </Suffixed>
-          </Field>
+            )}
+          </div>
           <Field label="Janji siap" hint={daysHint(form.promise, "Kosong = janji default.")}>
             {hours(form.promise, (promise) => set({ promise }), "Default")}
           </Field>

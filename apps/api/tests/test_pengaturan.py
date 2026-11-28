@@ -59,6 +59,8 @@ def test_outlet_name_on_receipt_tracking_and_public_endpoint(
 
 
 def test_cycle_times_change_queue_estimate(client: TestClient, owner: dict, cashier: dict) -> None:
+    # Tarif mesin dipakai untuk layanan yang belum punya lama kerja sendiri.
+    client.put("/catalog/CKL", json={"work_minutes": None}, headers=owner)
     new_order(client, cashier)  # CKL 5 kg = 1 load cuci + 1 load kering
     queue = client.get("/orders/queue", headers=cashier).json()
     assert queue[0]["processing_hours"] == 2

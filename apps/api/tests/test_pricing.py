@@ -63,10 +63,10 @@ def test_express_doubles_base_and_extra(db: Session) -> None:
     assert apply_express(25_000, 1.5) == 37_500
 
 
-def test_express_only_for_ckl_and_cks(db: Session) -> None:
+def test_express_only_for_eligible_kiloan(db: Session) -> None:
     eligible = {c.code for c in db.scalars(select(ServiceCatalog)) if c.express_eligible}
-    assert eligible == {"CKL", "CKS"}
-    for code, kwargs in (("CK", {"weight_kg": 5}), ("BEDCOVER_K", {"qty_pcs": 1})):
+    assert eligible == {"CK", "CKL", "CKS"}
+    for code, kwargs in (("C", {"weight_kg": 5}), ("BEDCOVER_K", {"qty_pcs": 1})):
         regular = price_regular(item(db, code), **kwargs)
         express = price_item(
             item(db, code),
@@ -154,8 +154,8 @@ def test_quote_express_only_doubles_eligible_items_and_rejects_inactive(db: Sess
         quote(db, requests, is_express=False, express_multiplier=2)
 
 
-def test_express_rejected_without_ckl_or_cks(db: Session) -> None:
-    requests = [ItemRequest("CK", weight_kg=5), ItemRequest("BEDCOVER_K", qty_pcs=1)]
+def test_express_rejected_without_eligible_service(db: Session) -> None:
+    requests = [ItemRequest("C", weight_kg=5), ItemRequest("BEDCOVER_K", qty_pcs=1)]
     with pytest.raises(PricingError, match="Express hanya"):
         quote(db, requests, is_express=True, express_multiplier=2)
 

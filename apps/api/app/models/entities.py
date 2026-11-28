@@ -80,6 +80,11 @@ class ServiceCatalog(Base):
     # Lama kerja (menit) per satuan harga: per pcs, per kg, atau per load. NULL = dihitung dari
     # muatan mesin dan tarif di Pengaturan, cocok untuk kiloan.
     work_minutes: Mapped[float | None] = mapped_column(Float)
+    # True = lama kerja berlaku sekali per pesanan (mis. gordyn 2 hari berapa pun beratnya),
+    # bukan dikali jumlah.
+    work_per_order: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
     # Janji siap ke pelanggan (jam kalender). NULL = pakai janji default di Pengaturan.
     promise_hours: Mapped[int | None] = mapped_column(Integer)
     # Hanya untuk layanan yang bisa Express.

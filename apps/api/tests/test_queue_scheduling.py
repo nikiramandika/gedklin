@@ -160,6 +160,27 @@ def test_catalog_work_minutes_are_used_as_is() -> None:
     assert processing_hours(mixed, DEFAULT_DAY_OPS, RATES, work) == 3
 
 
+def test_kiloan_counts_machine_rounds_and_per_order_is_fixed() -> None:
+    work = {
+        "CKL": ItemWork(CatalogUnit.KILOAN_7KG, 180),
+        "GORDYN": ItemWork(CatalogUnit.KG, 1080, per_order=True),
+    }
+
+    def ckl(kg: float) -> Item:
+        return Item("CKL", weight_kg=kg, machine_loads=max(1, -(-int(kg) // 8)), catalog_code="CKL")
+
+    # 4 mesin: sampai 4 load selesai dalam 1 putaran (3 jam), 5 load butuh 2 putaran.
+    assert processing_hours([ckl(4)], DEFAULT_DAY_OPS, RATES, work) == 3
+    assert processing_hours([ckl(24)], DEFAULT_DAY_OPS, RATES, work) == 3
+    assert processing_hours([ckl(40)], DEFAULT_DAY_OPS, RATES, work) == 6
+    # Mesin tinggal 2: 3 load jadi 2 putaran.
+    assert processing_hours([ckl(24)], DayOps(washers_available=2), RATES, work) == 6
+    # Gordyn 2 hari kerja (18 jam) per pesanan, berapa pun beratnya.
+    for kg in (2, 9):
+        gordyn = Item("CKL", weight_kg=kg, catalog_code="GORDYN")
+        assert processing_hours([gordyn], DEFAULT_DAY_OPS, RATES, work) == 18
+
+
 # ---------- Simulasi mesin dan petugas paralel ----------
 
 FAR = NOW + timedelta(days=5)

@@ -590,18 +590,6 @@ function ScheduleForm({ settings, onSaved }: { settings: AppSettings; onSaved: (
 
 /* ---------- Waktu pengerjaan ---------- */
 
-// Hitungan sama dengan backend (services/queue.py).
-function exampleHours(s: AppSettings, v: Record<string, string>, kg: number): number | null {
-  const capacity = num(v.capacity);
-  const minutes = [num(v.wash), num(v.dry), num(v.ironKg)];
-  if (!(capacity > 0) || minutes.some((x) => !Number.isFinite(x) || x < 0)) return null;
-  const loads = Math.ceil(kg / capacity);
-  const wash = Math.ceil(loads / Math.max(s.default_washers_available, 1)) * minutes[0];
-  const dry = Math.ceil(loads / Math.max(s.default_dryers_available, 1)) * minutes[1];
-  const iron = (kg * minutes[2]) / Math.max(s.default_staff_on_duty, 1);
-  return (wash + dry + iron) / 60;
-}
-
 function WorkTimeForm({ settings, onSaved }: { settings: AppSettings; onSaved: (s: AppSettings) => void }) {
   const initial = {
     capacity: String(settings.machine_capacity_kg),
@@ -612,7 +600,6 @@ function WorkTimeForm({ settings, onSaved }: { settings: AppSettings; onSaved: (
   };
   const [v, setV] = useState(initial);
   const { busy, saved, error, save } = useSettingsSave(onSaved);
-  const example = exampleHours(settings, v, 10);
 
   const field = (key: keyof typeof v, label: string, suffix: string) => (
     <Field label={label}>
@@ -654,21 +641,12 @@ function WorkTimeForm({ settings, onSaved }: { settings: AppSettings; onSaved: (
           {field("ironPcs", "Setrika per potong", "menit")}
         </div>
       </Group>
-      {example !== null && (
-        <p className="rounded-xl bg-subtle px-4 py-3 text-sm text-ink-2" aria-live="polite">
-          Cucian 10 kg cuci-setrika selesai dalam ±{" "}
-          <span className="tabular font-semibold text-ink">
-            {example.toLocaleString("id-ID", { maximumFractionDigits: 1 })} jam
-          </span>
-        </p>
-      )}
       <p className="text-sm text-muted">
-        Tarif ini untuk kiloan dan layanan per load. Bed cover, satuan, dan dry clean punya lama kerja
-        sendiri di{" "}
+        Lama kerja tiap layanan diatur di{" "}
         <Link href="/dasbor/layanan" className="font-medium text-brand-700 underline underline-offset-2">
           Layanan & Harga
         </Link>
-        .
+        . Lama tiap tahap di sini hanya dipakai untuk layanan yang lama kerjanya masih kosong.
       </p>
     </SettingsForm>
   );

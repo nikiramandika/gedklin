@@ -3,11 +3,13 @@
 1. Prioritas (LST)
    slack = sisa jam kerja sampai janji siap - taksiran waktu proses pesanan
 
-   Waktu proses ditaksir dari berat: berat -> jumlah load mesin -> siklus cuci/kering yang bisa
-   berjalan paralel di beberapa mesin, ditambah setrika manual per kg/pcs oleh petugas yang
-   bertugas. Item katalog yang punya lama kerja sendiri (gordyn, bed cover, satuan, dry clean)
-   memakai angka itu apa adanya dikali jumlahnya: angka itu ketetapan dari laundry, sudah
-   termasuk siapa dan berapa orang yang mengerjakan, jadi tidak dibagi lagi ke petugas.
+   Waktu proses memakai lama kerja dari katalog (ketetapan mitra) apa adanya, tidak dibagi ke
+   petugas: dikali jumlah (kemeja 1 jam/pcs), atau sekali per pesanan untuk layanan yang
+   waktunya tidak bergantung jumlah (gordyn 2 hari). Kiloan "per 7 kg" dihitung per putaran
+   mesin: load pesanan dibagi ke mesin cuci yang tersedia, jadi 24 kg (3 load) dengan 4 mesin
+   tetap 1 putaran, tapi bila mesin tinggal 2 menjadi 2 putaran.
+   Layanan tanpa lama kerja ditaksir dari berat: jumlah load -> siklus cuci/kering di mesin yang
+   tersedia, ditambah setrika manual per kg/pcs yang dibagi ke petugas yang bertugas.
 
    Slack terkecil dikerjakan duluan, jadi pesanan berat yang janjinya sudah dekat naik ke atas,
    sedangkan pesanan ringan yang janjinya masih jauh boleh menunggu. Express tidak diberi jalur
@@ -67,12 +69,18 @@ class ItemLike(Protocol):
 
 @dataclass(frozen=True)
 class ItemWork:
-    """Lama kerja dari katalog: menit per satuan harga."""
+    """Lama kerja dari katalog: menit per satuan harga, atau per pesanan."""
 
     unit: CatalogUnit
     minutes: float
+    per_order: bool = False
 
-    def total_minutes(self, item: ItemLike) -> float:
+    def total_minutes(self, item: ItemLike, washers: int = 1) -> float:
+        if self.per_order:
+            return self.minutes
+        if self.unit == CatalogUnit.KILOAN_7KG:
+            # Per putaran mesin: load berjalan bersamaan di mesin yang tersedia.
+            return math.ceil(max(int(item.machine_loads or 0), 1) / max(washers, 1)) * self.minutes
         if self.unit == CatalogUnit.LOAD:
             qty = float(item.machine_loads or 0)
         elif self.unit == CatalogUnit.PCS:
@@ -103,14 +111,17 @@ class WorkParts:
 
 
 def work_parts(
-    items: Iterable[ItemLike], rates: WorkRates, item_work: Mapping[str, ItemWork] | None = None
+    items: Iterable[ItemLike],
+    rates: WorkRates,
+    item_work: Mapping[str, ItemWork] | None = None,
+    washers: int = 1,
 ) -> WorkParts:
     wash_loads = dry_loads = 0
     iron = catalog = 0.0
     for item in items:
         work = (item_work or {}).get(item.catalog_code)
         if work is not None:
-            catalog += work.total_minutes(item)
+            catalog += work.total_minutes(item, washers)
             continue
         process = str(item.process)
         loads = int(item.machine_loads or 0)
@@ -132,7 +143,7 @@ def processing_hours(
     item_work: Mapping[str, ItemWork] | None = None,
 ) -> float:
     """Lama kerja bila pesanan ini dikerjakan sendirian dengan semua mesin dan petugas."""
-    parts = work_parts(items, rates, item_work)
+    parts = work_parts(items, rates, item_work, day.washers_available)
     # Load dibagi ke mesin yang tersedia; mesin rusak semua (0) dianggap 1 agar tidak membagi 0.
     washers = max(day.washers_available, 1)
     dryers = max(day.dryers_available, 1)
@@ -144,11 +155,14 @@ def processing_hours(
 
 def load_item_work(db: Session) -> dict[str, ItemWork]:
     rows = db.execute(
-        select(ServiceCatalog.code, ServiceCatalog.unit, ServiceCatalog.work_minutes).where(
-            ServiceCatalog.work_minutes.is_not(None)
-        )
+        select(
+            ServiceCatalog.code,
+            ServiceCatalog.unit,
+            ServiceCatalog.work_minutes,
+            ServiceCatalog.work_per_order,
+        ).where(ServiceCatalog.work_minutes.is_not(None))
     )
-    return {code: ItemWork(unit, minutes) for code, unit, minutes in rows}
+    return {code: ItemWork(unit, minutes, per_order) for code, unit, minutes, per_order in rows}
 
 
 def hours_until(deadline: datetime, now: datetime, day_ops: DayOpsLookup) -> float:
@@ -204,7 +218,8 @@ def schedule_order(
     rates: WorkRates,
     item_work: Mapping[str, ItemWork] | None = None,
 ) -> ScheduledOrder:
-    hours = processing_hours(order.items, day_ops(local_date(now)), rates, item_work)
+    day = day_ops(local_date(now))
+    hours = processing_hours(order.items, day, rates, item_work)
     slack = latest_start = None
     if order.promised_ready_at is not None:
         slack = hours_until(order.promised_ready_at, now, day_ops) - hours
@@ -214,7 +229,7 @@ def schedule_order(
         round(hours, 2),
         None if slack is None else round(slack, 2),
         latest_start,
-        work_parts(order.items, rates, item_work),
+        work_parts(order.items, rates, item_work, day.washers_available),
     )
 
 

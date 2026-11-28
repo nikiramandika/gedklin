@@ -122,7 +122,8 @@ def test_delete_only_unused_services(
 def test_work_minutes_from_catalog_feed_the_queue(
     client: TestClient, owner: dict, cashier: dict
 ) -> None:
-    res = client.put("/catalog/BEDCOVER_K", json={"work_minutes": 90}, headers=owner)
+    body = {"work_minutes": 90, "work_per_order": False}
+    res = client.put("/catalog/BEDCOVER_K", json=body, headers=owner)
     assert res.status_code == 200, res.text
     assert res.json()["work_minutes"] == 90
     assert (
@@ -134,6 +135,11 @@ def test_work_minutes_from_catalog_feed_the_queue(
     (entry,) = client.get("/orders/queue", headers=cashier).json()
     # 2 pcs x 90 menit, dipakai apa adanya.
     assert entry["processing_hours"] == 3
+
+    # Per pesanan: 90 menit sekali, berapa pun jumlahnya.
+    client.put("/catalog/BEDCOVER_K", json={"work_per_order": True}, headers=owner)
+    (entry,) = client.get("/orders/queue", headers=cashier).json()
+    assert entry["processing_hours"] == 1.5
     assert entry["est_ready_at"] is not None and entry["est_staff"] == 2
 
     # Dikosongkan lagi: kembali ke hitungan mesin (bed cover per pcs tidak punya load).

@@ -11,9 +11,10 @@ from datetime import UTC, date, datetime, timedelta
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Order, OrderStatus, PaymentMethod
+from app.models import Order, OrderStatus, PaymentMethod, ServiceCatalog
 from app.routers.reports import ai_context
 from app.services import ai
 from app.services.ai_check import check_answer, extract_claims
@@ -62,7 +63,14 @@ def dataset(db: Session) -> None:
     | 2 | Sen 02/11 11.00   | CKL 9 kg        | 39.000  | -     | Rab 04/11 11  | -             |
     | 3 | Sel 03/11 09.00   | CKS 8 kg Express| 110.000 | QRIS  | Rab 04/11 09  | Rab 11.00 (+2)|
     | 4 | Rab 04/11 14.00   | CKL 5 kg        | batal   | -     |               |               |
+
+    Janji dikunci di sini (CKL 48 jam, Express CKS 24 jam) supaya tabel tidak ikut berubah bila
+    janji di katalog diubah.
     """
+    catalog = {c.code: c for c in db.scalars(select(ServiceCatalog))}
+    catalog["CKL"].promise_hours = 48
+    catalog["CKS"].express_promise_hours = 24
+    db.commit()
     first = _order(db, "081100000001", wib(2, 10), ItemRequest("CKL", 5), paid=PaymentMethod.CASH)
     _order(db, "081100000002", wib(2, 11), ItemRequest("CKL", 9))
     express = _order(

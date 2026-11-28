@@ -41,6 +41,8 @@ export interface CatalogItem {
   max_extra: number | null;
   /** Lama kerja (menit) per satuan harga. null = dihitung dari muatan mesin di Pengaturan. */
   work_minutes: number | null;
+  /** true = lama kerja sekali per pesanan, bukan dikali jumlah. */
+  work_per_order: boolean;
   /** Janji siap ke pelanggan dalam jam. null = janji default di Pengaturan. */
   promise_hours: number | null;
   express_promise_hours: number | null;

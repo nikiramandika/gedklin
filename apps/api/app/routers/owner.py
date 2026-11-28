@@ -55,6 +55,7 @@ CATALOG_FIELDS = (
     "pcs_per_load",
     "max_extra",
     "work_minutes",
+    "work_per_order",
     "promise_hours",
     "express_promise_hours",
     "express_eligible",
@@ -127,7 +128,15 @@ def update_catalog_item(
     item = _get_catalog_or_404(db, code)
     before = snapshot(item, CATALOG_FIELDS)
     changes = data.model_dump(exclude_unset=True)
-    for key in ("name", "group", "process", "unit", "is_active", "express_eligible"):
+    for key in (
+        "name",
+        "group",
+        "process",
+        "unit",
+        "is_active",
+        "express_eligible",
+        "work_per_order",
+    ):
         if key in changes and changes[key] is None:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{key} wajib diisi")
     for key, value in changes.items():

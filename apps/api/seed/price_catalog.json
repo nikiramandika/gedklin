@@ -3,13 +3,13 @@
   "_notes": [
     "process: C = cuci, CK = cuci+kering, CKL = cuci+kering+lipat, CKS = cuci+kering+setrika, S = setrika saja, SATUAN = cuci-setrika manual tanpa mesin, DRY_CLEAN = dry clean",
     "unit: KILOAN_7KG = harga 7 kg pertama + tambahan per kg untuk sisa berat, KG = per kg, PCS = per potong, LOAD = per load item khusus",
-    "Express hanya untuk item dengan express_eligible = true (CKL dan CKS). Harga Express = harga Reguler x express_multiplier, termasuk tambahan per kg.",
+    "Express hanya untuk item dengan express_eligible = true (CK, CKL, CKS). Harga Express = harga Reguler x express_multiplier, termasuk tambahan per kg.",
     "Berat di atas 8 kg tidak dihitung load kedua. Semua kelebihan di atas 7 kg kena tarif tambahan per kg.",
     "Kapasitas mesin 8 kg per load, dipakai hanya untuk menghitung machine_loads (fitur ML), bukan harga.",
-    "work_minutes: lama kerja (menit) per satuan harga untuk item non-kiloan. Masih TAKSIRAN, menunggu konfirmasi mitra. Kiloan tidak diisi karena dihitung dari muatan mesin."
+    "work_minutes / work_per_order / promise_hours / express_promise_hours: dari tabel mitra (26 Nov 2026). Lama kerja dalam menit; 1 hari kerja = 9 jam (08.00-17.00). work_per_order = true berarti lama kerja berlaku sekali per pesanan, bukan dikali jumlah. Kiloan per 7 kg = per putaran mesin (load dibagi ke mesin yang tersedia). Janji dalam jam kalender."
   ],
   "promise_hours": {
-    "_note": "Janji waktu standar dari mitra. null = belum diketahui. 1 hari = 24 jam kalender. Express hanya untuk CKL dan CKS. Janji per proses ini hanya isi awal janji tiap layanan saat seed; selanjutnya diatur per layanan di dasbor. regular_min = batas bawah janji Reguler (catatan saja, tidak dipakai). default dipakai bila semua layanan di pesanan belum punya janji (sementara, bisa diubah pemilik).",
+    "_note": "Janji waktu standar dari mitra. null = belum diketahui. 1 hari = 24 jam kalender. Janji per proses ini hanya cadangan bila layanan tidak punya promise_hours sendiri; selanjutnya diatur per layanan di dasbor. regular_min = batas bawah janji Reguler (catatan saja, tidak dipakai). default dipakai bila semua layanan di pesanan belum punya janji (sementara, bisa diubah pemilik).",
     "express": 24,
     "regular": {
       "C": null,
@@ -32,6 +32,9 @@
   "kiloan": [
     {
       "code": "C",
+      "work_minutes": 45,
+      "work_per_order": false,
+      "promise_hours": 24,
       "name": "Cuci",
       "process": "C",
       "unit": "KILOAN_7KG",
@@ -42,16 +45,24 @@
     },
     {
       "code": "CK",
+      "work_minutes": 120,
+      "work_per_order": false,
+      "promise_hours": 48,
+      "express_promise_hours": 3,
       "name": "Cuci + Kering",
       "process": "CK",
       "unit": "KILOAN_7KG",
       "price": 20000,
       "extra_price_per_kg": 5000,
       "base_kg": 7,
-      "express_eligible": false
+      "express_eligible": true
     },
     {
       "code": "CKL",
+      "work_minutes": 180,
+      "work_per_order": false,
+      "promise_hours": 72,
+      "express_promise_hours": 3,
       "name": "Cuci + Kering + Lipat",
       "process": "CKL",
       "unit": "KILOAN_7KG",
@@ -62,6 +73,10 @@
     },
     {
       "code": "CKS",
+      "work_minutes": 180,
+      "work_per_order": false,
+      "promise_hours": 72,
+      "express_promise_hours": 4,
       "name": "Cuci + Kering + Setrika",
       "process": "CKS",
       "unit": "KILOAN_7KG",
@@ -72,6 +87,9 @@
     },
     {
       "code": "SETRIKA",
+      "work_minutes": 9,
+      "work_per_order": false,
+      "promise_hours": 48,
       "name": "Setrika per kg",
       "process": "S",
       "unit": "KG",
@@ -83,7 +101,9 @@
   "khusus": [
     {
       "code": "BEDCOVER_K",
-      "work_minutes": 150,
+      "work_minutes": 540,
+      "work_per_order": true,
+      "promise_hours": 48,
       "name": "Bed Cover Kecil",
       "process": "CKL",
       "unit": "PCS",
@@ -92,7 +112,9 @@
     },
     {
       "code": "BEDCOVER_B",
-      "work_minutes": 180,
+      "work_minutes": 540,
+      "work_per_order": true,
+      "promise_hours": 48,
       "name": "Bed Cover Besar",
       "process": "CKL",
       "unit": "PCS",
@@ -101,7 +123,9 @@
     },
     {
       "code": "GORDYN",
-      "work_minutes": 20,
+      "work_minutes": 1080,
+      "work_per_order": true,
+      "promise_hours": 48,
       "name": "Gordyn Non Ring per kg",
       "process": "CKL",
       "unit": "KG",
@@ -111,7 +135,9 @@
     },
     {
       "code": "JAKET",
-      "work_minutes": 45,
+      "work_minutes": 1080,
+      "work_per_order": true,
+      "promise_hours": 72,
       "name": "Jaket Non Kulit",
       "process": "CKS",
       "unit": "PCS",
@@ -120,6 +146,9 @@
     },
     {
       "code": "SELIMUT_K",
+      "work_minutes": 120,
+      "work_per_order": false,
+      "promise_hours": 48,
       "name": "Selimut Kecil",
       "process": "CKL",
       "unit": "LOAD",
@@ -131,6 +160,9 @@
     },
     {
       "code": "SELIMUT_B",
+      "work_minutes": 540,
+      "work_per_order": true,
+      "promise_hours": 48,
       "name": "Selimut Besar",
       "process": "CKL",
       "unit": "LOAD",
@@ -142,6 +174,9 @@
     },
     {
       "code": "SPREI_K",
+      "work_minutes": 180,
+      "work_per_order": false,
+      "promise_hours": 48,
       "name": "Sprei Kecil",
       "process": "CKL",
       "unit": "LOAD",
@@ -153,6 +188,9 @@
     },
     {
       "code": "SPREI_B_RIMPLE",
+      "work_minutes": 180,
+      "work_per_order": false,
+      "promise_hours": 48,
       "name": "Sprei Besar Rimple",
       "process": "CKL",
       "unit": "LOAD",
@@ -164,6 +202,9 @@
     },
     {
       "code": "SPREI_B_NONRIMPLE",
+      "work_minutes": 180,
+      "work_per_order": false,
+      "promise_hours": 48,
       "name": "Sprei Besar Non Rimple",
       "process": "CKL",
       "unit": "LOAD",
@@ -177,7 +218,9 @@
   "satuan": [
     {
       "code": "BONEKA_S",
-      "work_minutes": 60,
+      "work_minutes": 240,
+      "work_per_order": false,
+      "promise_hours": 72,
       "name": "Boneka S",
       "price": 10000,
       "process": "SATUAN",
@@ -186,7 +229,9 @@
     },
     {
       "code": "BONEKA_M",
-      "work_minutes": 90,
+      "work_minutes": 240,
+      "work_per_order": false,
+      "promise_hours": 72,
       "name": "Boneka M",
       "price": 20000,
       "process": "SATUAN",
@@ -195,7 +240,9 @@
     },
     {
       "code": "BONEKA_L",
-      "work_minutes": 120,
+      "work_minutes": 240,
+      "work_per_order": false,
+      "promise_hours": 72,
       "name": "Boneka L",
       "price": 30000,
       "process": "SATUAN",
@@ -204,7 +251,9 @@
     },
     {
       "code": "CELANA_BAHAN",
-      "work_minutes": 15,
+      "work_minutes": 60,
+      "work_per_order": false,
+      "promise_hours": 24,
       "name": "Celana Panjang Bahan",
       "price": 15000,
       "process": "SATUAN",
@@ -213,7 +262,9 @@
     },
     {
       "code": "CELANA_JEANS",
-      "work_minutes": 20,
+      "work_minutes": 60,
+      "work_per_order": false,
+      "promise_hours": 24,
       "name": "Celana Panjang Jeans",
       "price": 17000,
       "process": "SATUAN",
@@ -222,7 +273,9 @@
     },
     {
       "code": "GAMIS_RINGAN",
-      "work_minutes": 20,
+      "work_minutes": 60,
+      "work_per_order": false,
+      "promise_hours": 24,
       "name": "Gamis Ringan",
       "price": 20000,
       "process": "SATUAN",
@@ -231,7 +284,9 @@
     },
     {
       "code": "GAMIS_BERAT",
-      "work_minutes": 30,
+      "work_minutes": 60,
+      "work_per_order": false,
+      "promise_hours": 24,
       "name": "Gamis Berat",
       "price": 25000,
       "process": "SATUAN",
@@ -240,7 +295,9 @@
     },
     {
       "code": "GAUN_NONPAYET",
-      "work_minutes": 30,
+      "work_minutes": 120,
+      "work_per_order": false,
+      "promise_hours": 48,
       "name": "Gaun Non Payet",
       "price": 22000,
       "process": "SATUAN",
@@ -249,7 +306,9 @@
     },
     {
       "code": "GAUN_PAYET",
-      "work_minutes": 45,
+      "work_minutes": 120,
+      "work_per_order": false,
+      "promise_hours": 48,
       "name": "Gaun Payet",
       "price": 25000,
       "process": "SATUAN",
@@ -258,7 +317,9 @@
     },
     {
       "code": "KAOS_OBLONG",
-      "work_minutes": 10,
+      "work_minutes": 60,
+      "work_per_order": false,
+      "promise_hours": 24,
       "name": "Kaos/Tshirt Oblong",
       "price": 10000,
       "process": "SATUAN",
@@ -267,7 +328,9 @@
     },
     {
       "code": "KAOS_BERKERAH",
-      "work_minutes": 12,
+      "work_minutes": 60,
+      "work_per_order": false,
+      "promise_hours": 24,
       "name": "Kaos/Tshirt Berkerah",
       "price": 12000,
       "process": "SATUAN",
@@ -276,7 +339,9 @@
     },
     {
       "code": "KEMEJA_PENDEK",
-      "work_minutes": 12,
+      "work_minutes": 60,
+      "work_per_order": false,
+      "promise_hours": 24,
       "name": "Kemeja Lengan Pendek",
       "price": 15000,
       "process": "SATUAN",
@@ -285,7 +350,9 @@
     },
     {
       "code": "KEMEJA_PANJANG",
-      "work_minutes": 15,
+      "work_minutes": 60,
+      "work_per_order": false,
+      "promise_hours": 24,
       "name": "Kemeja Lengan Panjang",
       "price": 17000,
       "process": "SATUAN",
@@ -294,7 +361,9 @@
     },
     {
       "code": "KHIMAR_M",
-      "work_minutes": 10,
+      "work_minutes": 120,
+      "work_per_order": false,
+      "promise_hours": 48,
       "name": "Khimar M",
       "price": 12000,
       "process": "SATUAN",
@@ -303,7 +372,9 @@
     },
     {
       "code": "KHIMAR_L",
-      "work_minutes": 12,
+      "work_minutes": 120,
+      "work_per_order": false,
+      "promise_hours": 48,
       "name": "Khimar L",
       "price": 15000,
       "process": "SATUAN",
@@ -312,7 +383,9 @@
     },
     {
       "code": "KHIMAR_XL",
-      "work_minutes": 15,
+      "work_minutes": 120,
+      "work_per_order": false,
+      "promise_hours": 48,
       "name": "Khimar XL",
       "price": 18000,
       "process": "SATUAN",
@@ -324,6 +397,8 @@
     {
       "code": "DC_SONGKET",
       "work_minutes": 120,
+      "work_per_order": false,
+      "promise_hours": 24,
       "name": "Dry Clean Songket",
       "process": "DRY_CLEAN",
       "unit": "PCS",
@@ -333,6 +408,8 @@
     {
       "code": "DC_KAIN_TENUN",
       "work_minutes": 120,
+      "work_per_order": false,
+      "promise_hours": 24,
       "name": "Dry Clean Kain Tenun",
       "process": "DRY_CLEAN",
       "unit": "PCS",
@@ -342,6 +419,8 @@
     {
       "code": "DC_KEBAYA_PAYET",
       "work_minutes": 120,
+      "work_per_order": false,
+      "promise_hours": 24,
       "name": "Dry Clean Kebaya Payet",
       "process": "DRY_CLEAN",
       "unit": "PCS",

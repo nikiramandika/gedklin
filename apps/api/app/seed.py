@@ -63,9 +63,14 @@ def catalog_rows(data: dict[str, Any]) -> list[ServiceCatalog]:
                 pcs_per_load=e.get("max_pcs_per_load", e.get("min_pcs_per_load")),
                 max_extra=e.get("max_extra_pcs"),
                 work_minutes=e.get("work_minutes"),
-                # Janji awal per proses dari price list; diatur per layanan di dasbor.
-                promise_hours=promise["regular"].get(process.value),
-                express_promise_hours=promise.get("express") if e.get("express_eligible") else None,
+                work_per_order=bool(e.get("work_per_order", False)),
+                # Janji per layanan; bila tidak ada, janji per proses dari price list.
+                promise_hours=e.get("promise_hours", promise["regular"].get(process.value)),
+                express_promise_hours=(
+                    e.get("express_promise_hours", promise.get("express"))
+                    if e.get("express_eligible")
+                    else None
+                ),
                 express_eligible=bool(e.get("express_eligible", False)),
                 sort_order=order,
                 is_active=price is not None,

@@ -35,7 +35,8 @@ export function codeFromName(name: string): string {
 
 // Satuan untuk "lama kerja per ...", sama dengan ItemWork di app/services/queue.py.
 export const WORK_UNIT: Record<CatalogUnit, string> = {
-  KILOAN_7KG: "kg",
+  // Kiloan per putaran mesin (7 kg); load pesanan dibagi ke mesin yang tersedia.
+  KILOAN_7KG: "putaran",
   KG: "kg",
   PCS: "pcs",
   LOAD: "load",

@@ -113,8 +113,10 @@ def promise_deadline(
     """Batas janji: jam kalender dari start, tetapi hari tutup tidak dihitung.
 
     Kebijakan mitra: pesanan Sabtu dengan janji 2 hari siap Selasa, bukan Senin.
+    Pesanan yang diterima saat tutup (hari libur atau di luar jam buka) mulai dihitung dari
+    jam buka berikutnya, supaya janji 3 jam dari hari Minggu tidak langsung terlambat Senin pagi.
     """
-    local = to_local(start)
+    local = to_local(shift_into_open_hours(start, day_ops))
     end = local + timedelta(hours=max(float(hours), 0.0))
     day = local.date() + timedelta(days=1)
     for _ in range(max_days):

@@ -61,8 +61,8 @@ def test_quote_endpoint_and_validation(client: TestClient, cashier: dict) -> Non
     assert res.status_code == 200, res.text
     assert res.json()["total"] == 25_000  # minimal 5 kg
 
-    express_ck = {"is_express": True, "items": [{"catalog_code": "CK", "weight_kg": 5}]}
-    res = client.post("/orders/quote", json=express_ck, headers=cashier)
+    express_c = {"is_express": True, "items": [{"catalog_code": "C", "weight_kg": 5}]}
+    res = client.post("/orders/quote", json=express_c, headers=cashier)
     assert res.status_code == 422 and "Express hanya" in res.json()["detail"]
 
     body["items"] = [{"catalog_code": "CKS"}]
@@ -73,7 +73,7 @@ def test_quote_endpoint_and_validation(client: TestClient, cashier: dict) -> Non
 
 
 def test_promise_after_closing_moves_to_next_opening(db: Session) -> None:
-    # Selasa 18.00 WIB + CKL 2 hari = Kamis 18.00, lewat jam tutup -> Jumat 08.00 WIB.
+    # Selasa 18.00 WIB + CKL 3 hari = Jumat 18.00, lewat jam tutup -> Sabtu 08.00 WIB.
     order = create_order(
         db,
         customer_name="Budi",
@@ -83,7 +83,7 @@ def test_promise_after_closing_moves_to_next_opening(db: Session) -> None:
         user=None,
         now=datetime(2026, 10, 20, 11, 0, tzinfo=UTC),
     )
-    assert order.promised_ready_at == datetime(2026, 10, 23, 1, 0, tzinfo=UTC)
+    assert order.promised_ready_at == datetime(2026, 10, 24, 1, 0, tzinfo=UTC)
 
 
 def test_flow_and_ready_notification_sent_once(
@@ -166,10 +166,10 @@ def test_receipt_shows_promise_as_estimate(db: Session) -> None:
         is_express=False,
         items=[ItemRequest("CKL", weight_kg=5)],
         user=None,
-        # Selasa 20/10/2026 09.00 WIB + 48 jam.
+        # Selasa 20/10/2026 09.00 WIB + 72 jam (CKL 3 hari).
         now=datetime(2026, 10, 20, 2, 0, tzinfo=UTC),
     )
-    assert "Perkiraan siap: Kamis, 22/10/2026 09:00 WIB" in receipt_message(order, DEFAULT_OUTLET)
+    assert "Perkiraan siap: Jumat, 23/10/2026 09:00 WIB" in receipt_message(order, DEFAULT_OUTLET)
 
 
 def test_legacy_delay_notification_is_not_sent(
@@ -277,13 +277,13 @@ def test_daily_operations_capacity_and_promises(client: TestClient, owner: dict)
     assert res.json()["washers_available"] == 3
 
     catalog = {c["code"]: c for c in client.get("/catalog", headers=owner).json()}
-    assert (catalog["CKS"]["promise_hours"], catalog["CKS"]["express_promise_hours"]) == (96, 24)
-    assert catalog["CK"]["promise_hours"] is None
-    express = {code for code, c in catalog.items() if c["express_promise_hours"] == 24}
-    assert express == {"CKL", "CKS"}
+    # Data mitra: CKS 3 hari, Express 4 jam.
+    assert (catalog["CKS"]["promise_hours"], catalog["CKS"]["express_promise_hours"]) == (72, 4)
+    express = {code for code, c in catalog.items() if c["express_promise_hours"] is not None}
+    assert express == {"CK", "CKL", "CKS"}
     # Layanan tanpa Express tidak menyimpan janji Express.
     res = client.put(
-        "/catalog/CK", json={"promise_hours": 36, "express_promise_hours": 24}, headers=owner
+        "/catalog/C", json={"promise_hours": 36, "express_promise_hours": 24}, headers=owner
     )
     assert res.status_code == 200
     assert (res.json()["promise_hours"], res.json()["express_promise_hours"]) == (36, None)
